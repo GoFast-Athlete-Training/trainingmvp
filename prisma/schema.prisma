@@ -1,0 +1,182 @@
+// This schema mirrors the existing GoFast backend schema
+// We only include the models we need for training
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Athlete {
+  id         String @id @default(cuid())
+  firebaseId String @unique
+
+  // Training Profile
+  myCurrentPace       String?
+  myWeeklyMileage     Int?
+  myTrainingGoal      String?
+  myTargetRace        String?
+  myTrainingStartDate DateTime?
+
+  // System fields
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlans TrainingPlan[]
+  plannedDays   TrainingDayPlanned[]
+  executedDays  TrainingDayExecuted[]
+  activities    AthleteActivity[]
+
+  @@map("athletes")
+}
+
+model AthleteActivity {
+  id        String @id @default(cuid())
+  athleteId String
+
+  // Source Information
+  sourceActivityId String @unique
+  source           String @default("garmin")
+
+  // Core Activity Data
+  activityType String?
+  activityName String?
+  startTime    DateTime?
+  duration     Int?
+  distance     Float?
+  averageSpeed Float?
+  calories     Int?
+
+  // Performance Metrics
+  averageHeartRate Int?
+  maxHeartRate     Int?
+  elevationGain    Float?
+
+  // Timestamps
+  syncedAt      DateTime @default(now())
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@map("athlete_activities")
+}
+
+model Race {
+  id String @id @default(cuid())
+
+  // Race Event Details
+  raceName      String
+  raceType      String
+  raceDate      DateTime
+  location      String?
+  distanceMiles Float
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlans TrainingPlan[]
+
+  @@map("races")
+}
+
+model TrainingPlan {
+  id        String @id @default(cuid())
+  athleteId String
+  raceId    String
+
+  // PLAN IDENTITY
+  trainingPlanName String
+
+  // CYCLE-LEVEL GOALS
+  trainingPlanGoalTime              String
+  trainingPlanGoalPace              String?
+  trainingPlanBaseline5k            String
+  trainingPlanBaselineWeeklyMileage Int?
+
+  // PLAN STRUCTURE
+  trainingPlanStartDate  DateTime
+  trainingPlanTotalWeeks Int
+
+  // MONEY METRIC
+  trainingPlanAdaptive5kTime String?
+
+  // STATUS
+  status String @default("draft")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  athlete     Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  race        Race                    @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  plannedDays TrainingDayPlanned[]
+
+  @@map("training_plans")
+}
+
+model TrainingDayPlanned {
+  id             String  @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+
+  // Day Identification
+  date      DateTime
+  weekIndex Int
+  dayIndex  Int
+  dayName   String?
+
+  // Training Context
+  phase String
+
+  // PLANNED WORKOUT
+  plannedData Json
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId, weekIndex, dayIndex])
+  @@map("training_days_planned")
+}
+
+model TrainingDayExecuted {
+  id        String @id @default(cuid())
+  athleteId String
+
+  // THE LINK - shell container for AthleteActivity
+  activityId String? @unique
+
+  // Optional metadata
+  weekIndex Int
+  dayIndex  Int
+  date      DateTime
+
+  // Snapshot/computed fields
+  plannedData Json?
+  analysis    Json?
+  feedback    Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@map("training_days_executed")
+}
+
