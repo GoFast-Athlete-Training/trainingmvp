@@ -115,24 +115,24 @@ export async function linkActivityToDay(
     throw new Error('Day not found or access denied');
   }
 
-  // Check if activity is already linked
-  const existing = await prisma.trainingDayExecuted.findFirst({
+  // Check if activity is already linked to another day
+  const activityAlreadyLinked = await prisma.trainingDayExecuted.findFirst({
     where: {
       activityId,
     },
   });
 
-  if (existing) {
+  if (activityAlreadyLinked) {
     throw new Error('Activity already linked to another day');
   }
 
-  // Check if already exists
+  // Check if executed day already exists for this date
   const startOfDay = new Date(plannedDay.date);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(plannedDay.date);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const existing = await prisma.trainingDayExecuted.findFirst({
+  const existingExecutedDay = await prisma.trainingDayExecuted.findFirst({
     where: {
       athleteId,
       date: {
@@ -142,10 +142,10 @@ export async function linkActivityToDay(
     },
   });
 
-  if (existing) {
+  if (existingExecutedDay) {
     // Update existing
     await prisma.trainingDayExecuted.update({
-      where: { id: existing.id },
+      where: { id: existingExecutedDay.id },
       data: {
         activityId,
         plannedData: plannedDay.plannedData as any,
