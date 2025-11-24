@@ -16,26 +16,24 @@ export async function computeGoFastScore(
   athleteId: string,
   executedDayId: string
 ): Promise<GoFastScore> {
+  // First get the executed day
   const executed = await prisma.trainingDayExecuted.findUnique({
     where: { id: executedDayId },
-    include: {
-      athlete: {
-        include: {
-          activities: {
-            where: {
-              id: executed.activityId || undefined,
-            },
-          },
-        },
-      },
-    },
   });
 
   if (!executed || !executed.activityId || !executed.plannedData) {
     throw new Error('Executed day not found or missing data');
   }
 
-  const activity = executed.athlete.activities[0];
+  // Then get the activity separately
+  const activity = await prisma.athleteActivity.findUnique({
+    where: { id: executed.activityId },
+  });
+
+  if (!activity) {
+    throw new Error('Activity not found');
+  }
+
   const planned = executed.plannedData as any;
 
   // Calculate pace variance
