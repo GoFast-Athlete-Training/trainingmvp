@@ -1,0 +1,56 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function SplashPage() {
+  const router = useRouter();
+  const [hasRouted, setHasRouted] = useState(false);
+
+  useEffect(() => {
+    // 1500ms splash delay - THEN route
+    const timeoutId = setTimeout(() => {
+      if (!hasRouted) {
+        setHasRouted(true);
+        // For now, route directly to training hub
+        // TODO: Add Firebase auth check here
+        // if (firebaseUser) {
+        //   router.replace('/training');
+        // } else {
+        //   router.replace('/signup');
+        // }
+        router.replace('/training');
+      }
+    }, 1500);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [router, hasRouted]);
+
+  // SPLASH SCREEN ONLY - no buttons, just branding
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex flex-col items-center justify-center p-6">
+      <div className="text-center space-y-6">
+        {/* Running Person Icon */}
+        <div className="flex justify-center mb-8">
+          <div className="text-9xl">
+            🏃‍♂️
+          </div>
+        </div>
+
+        {/* Welcome Text */}
+        <div className="space-y-4">
+          <h1 className="text-5xl md:text-6xl font-bold text-white drop-shadow-2xl tracking-tight">
+            Welcome to <span className="text-orange-100">GoFast</span>
+          </h1>
+          
+          <p className="text-xl md:text-2xl text-white/90 font-medium drop-shadow-lg max-w-md mx-auto">
+            We power your training so you can go fast.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
