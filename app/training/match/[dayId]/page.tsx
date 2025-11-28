@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import api from '@/lib/api';
 import { formatDate } from '@/lib/utils/dates';
 import { mpsToPaceString } from '@/lib/utils/pace';
-
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
 
 interface Activity {
   id: string;
@@ -41,14 +40,13 @@ export default function MatchView() {
 
   async function loadMatchData() {
     try {
-      const response = await fetch(`/api/training/match/${dayId}?athleteId=${TEST_ATHLETE_ID}`);
-      if (!response.ok) {
-        throw new Error('Failed to load match data');
-      }
-      const data = await response.json();
-      setMatchData(data);
-    } catch (error) {
+      const response = await api.get(`/training/match/${dayId}`);
+      setMatchData(response.data);
+    } catch (error: any) {
       console.error('Error loading match data:', error);
+      if (error.response?.status === 401) {
+        router.push('/signup');
+      }
     } finally {
       setLoading(false);
     }
@@ -57,24 +55,14 @@ export default function MatchView() {
   async function handleMatch(activityId: string) {
     try {
       setMatching(true);
-      const response = await fetch(`/api/training/match/${dayId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activityId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to match activity');
-      }
-
-      const result = await response.json();
+      const response = await api.post(`/training/match/${dayId}`, { activityId });
       
       // Show success message
-      alert(`Workout matched! GoFastScore: ${Math.round(result.score.overallScore)}/100`);
+      alert(`Workout matched! GoFastScore: ${Math.round(response.data.score.overallScore)}/100`);
       
       // Redirect back to day view
       router.push(`/training/day/${dayId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error matching activity:', error);
       alert('Failed to match activity');
     } finally {

@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import api from '@/lib/api';
 import { formatDate, isToday } from '@/lib/utils/dates';
 import { formatPace, mpsToPaceString } from '@/lib/utils/pace';
-
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
 
 interface DayData {
   id: string;
@@ -37,14 +36,13 @@ export default function DayView() {
 
   async function loadDay() {
     try {
-      const response = await fetch(`/api/training/day/${dayId}?athleteId=${TEST_ATHLETE_ID}`);
-      if (!response.ok) {
-        throw new Error('Failed to load day');
-      }
-      const data = await response.json();
-      setDayData(data);
-    } catch (error) {
+      const response = await api.get(`/training/day/${dayId}`);
+      setDayData(response.data);
+    } catch (error: any) {
       console.error('Error loading day:', error);
+      if (error.response?.status === 401) {
+        router.push('/signup');
+      }
     } finally {
       setLoading(false);
     }
@@ -52,19 +50,11 @@ export default function DayView() {
 
   async function handleAutoMatch(activityId: string) {
     try {
-      const response = await fetch(`/api/training/match/${dayId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activityId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to match activity');
-      }
+      await api.post(`/training/match/${dayId}`, { activityId });
 
       // Reload day data
       await loadDay();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error matching activity:', error);
       alert('Failed to match activity');
     }

@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
+import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const athleteId = searchParams.get('athleteId') || TEST_ATHLETE_ID;
+    // Get athleteId from Firebase token
+    let athleteId: string;
+    try {
+      athleteId = await getAthleteIdFromRequest(request);
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
+    }
 
     const activePlan = await prisma.trainingPlan.findFirst({
       where: {

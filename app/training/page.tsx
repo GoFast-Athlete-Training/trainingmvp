@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { prisma } from '@/lib/prisma';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { LocalStorageAPI } from '@/lib/localstorage';
+import api from '@/lib/api';
 import { formatDate, isToday } from '@/lib/utils/dates';
 import { formatPace } from '@/lib/utils/pace';
-
-// TODO: Replace with actual auth
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
 
 interface TodayWorkout {
   id: string;
@@ -37,22 +37,58 @@ export default function TrainingHub() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadHubData();
-  }, []);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        console.log('❌ No Firebase user → redirecting to signup');
+        router.push('/signup');
+        return;
+      }
+
+      // Check if athlete is in localStorage
+      let athlete = LocalStorageAPI.getAthlete();
+      
+      // If no athlete or hydration is stale, hydrate
+      const hydrationTimestamp = LocalStorageAPI.getHydrationTimestamp();
+      const isStale = !hydrationTimestamp || (Date.now() - hydrationTimestamp > 5 * 60 * 1000); // 5 minutes
+      
+      if (!athlete || isStale) {
+        try {
+          console.log('🔄 Hydrating athlete data...');
+          const response = await api.post('/athlete/hydrate');
+          if (response.data.success) {
+            LocalStorageAPI.setAthlete(response.data.athlete);
+            LocalStorageAPI.setHydrationTimestamp(Date.now());
+            athlete = response.data.athlete;
+          }
+        } catch (err: any) {
+          console.error('❌ Failed to hydrate:', err);
+          if (err.response?.status === 401 || err.response?.status === 404) {
+            router.push('/signup');
+            return;
+          }
+        }
+      }
+
+      // Load hub data
+      loadHubData();
+    });
+
+    return () => unsubscribe();
+  }, [router]);
 
   async function loadHubData() {
     try {
-      const response = await fetch(`/api/training/hub?athleteId=${TEST_ATHLETE_ID}`);
-      if (!response.ok) {
-        throw new Error('Failed to load hub data');
-      }
-      const data = await response.json();
+      const response = await api.get('/training/hub');
+      const data = response.data;
       
       setTodayWorkout(data.todayWorkout);
       setPlanStatus(data.planStatus);
       setRaceReadiness(data.raceReadiness);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading hub data:', error);
+      if (error.response?.status === 401) {
+        router.push('/signup');
+      }
     } finally {
       setLoading(false);
     }

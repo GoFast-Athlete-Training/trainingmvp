@@ -2,24 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 export default function SplashPage() {
   const router = useRouter();
   const [hasRouted, setHasRouted] = useState(false);
 
   useEffect(() => {
-    // 1500ms splash delay - THEN route
+    // 1500ms splash delay - THEN check auth and route
     const timeoutId = setTimeout(() => {
       if (!hasRouted) {
         setHasRouted(true);
-        // For now, route directly to training hub
-        // TODO: Add Firebase auth check here
-        // if (firebaseUser) {
-        //   router.replace('/training');
-        // } else {
-        //   router.replace('/signup');
-        // }
-        router.replace('/training');
+        
+        // Check Firebase auth state
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            router.replace('/training');
+          } else {
+            router.replace('/signup');
+          }
+          unsubscribe();
+        });
       }
     }, 1500);
 

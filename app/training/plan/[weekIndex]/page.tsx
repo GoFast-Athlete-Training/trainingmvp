@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import api from '@/lib/api';
 import { getDayName, formatDate, isToday } from '@/lib/utils/dates';
 import { formatPace } from '@/lib/utils/pace';
-
-// TODO: Replace with actual auth
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
 
 interface Day {
   id: string;
@@ -38,16 +36,13 @@ export default function WeekView() {
 
   async function loadWeek() {
     try {
-      const response = await fetch(
-        `/api/training/plan/${weekIndex}?athleteId=${TEST_ATHLETE_ID}`
-      );
-      if (!response.ok) {
-        throw new Error('Failed to load week');
-      }
-      const data = await response.json();
-      setWeek(data);
-    } catch (error) {
+      const response = await api.get(`/training/plan/${weekIndex}`);
+      setWeek(response.data);
+    } catch (error: any) {
       console.error('Error loading week:', error);
+      if (error.response?.status === 401) {
+        router.push('/signup');
+      }
     } finally {
       setLoading(false);
     }

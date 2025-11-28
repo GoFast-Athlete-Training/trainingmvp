@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-// TODO: Replace with actual auth
-const TEST_ATHLETE_ID = process.env.NEXT_PUBLIC_TEST_ATHLETE_ID || 'test-athlete-id';
+import api from '@/lib/api';
 
 interface Phase {
   name: string;
@@ -32,14 +30,13 @@ export default function PlanOverview() {
 
   async function loadPlan() {
     try {
-      const response = await fetch(`/api/training/plan?athleteId=${TEST_ATHLETE_ID}`);
-      if (!response.ok) {
-        throw new Error('Failed to load plan');
-      }
-      const data = await response.json();
-      setPlan(data);
-    } catch (error) {
+      const response = await api.get('/training/plan');
+      setPlan(response.data);
+    } catch (error: any) {
       console.error('Error loading plan:', error);
+      if (error.response?.status === 401) {
+        router.push('/signup');
+      }
     } finally {
       setLoading(false);
     }

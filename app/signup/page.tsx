@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signInWithGoogle } from '@/lib/auth';
+import api from '@/lib/api';
+import { LocalStorageAPI } from '@/lib/localstorage';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -17,17 +20,45 @@ export default function SignUpPage() {
     try {
       console.log('🚀 Starting signup with Google...');
       
-      // TODO: Add Firebase Google auth here
-      // const { auth } = await import('@/lib/firebase');
-      // const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
-      // const googleProvider = new GoogleAuthProvider();
-      // const result = await signInWithPopup(auth, googleProvider);
-      // const user = result.user;
+      // Sign in with Google
+      const user = await signInWithGoogle();
+      console.log('✅ Firebase auth successful:', user.uid);
       
-      // For now, just route to training (remove when Firebase is added)
-      setTimeout(() => {
-        router.replace('/training');
-      }, 1000);
+      // Check if athlete exists, create if not
+      try {
+        const hydrateResponse = await api.post('/athlete/hydrate');
+        if (hydrateResponse.data.success) {
+          console.log('✅ Athlete found, storing in localStorage');
+          LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+          LocalStorageAPI.setHydrationTimestamp(Date.now());
+          router.replace('/training');
+        }
+      } catch (hydrateErr: any) {
+        // If 404, athlete doesn't exist - create it
+        if (hydrateErr.response?.status === 404) {
+          console.log('👤 Athlete not found, creating new athlete...');
+          try {
+            const createResponse = await api.post('/athlete/create', {
+              email: user.email || '',
+              firstName: user.displayName?.split(' ')[0] || '',
+              lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+            });
+            
+            // Hydrate the newly created athlete
+            const hydrateResponse = await api.post('/athlete/hydrate');
+            if (hydrateResponse.data.success) {
+              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+              LocalStorageAPI.setHydrationTimestamp(Date.now());
+              router.replace('/training');
+            }
+          } catch (createErr: any) {
+            console.error('❌ Failed to create athlete:', createErr);
+            setError('Failed to create account. Please try again.');
+          }
+        } else {
+          throw hydrateErr;
+        }
+      }
       
     } catch (err: any) {
       console.error('❌ Signup failed:', err);
