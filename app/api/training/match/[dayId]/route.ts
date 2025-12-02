@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getActivitiesForDay, linkActivityToDay } from '@/lib/services/match-logic';
-import { computeGoFastScore, updateAdaptive5KTime } from '@/lib/services/analysis';
+import { computeGoFastScore, updateCanonicalFiveKPace } from '@/lib/services/analysis';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 
 export async function GET(
@@ -103,8 +103,8 @@ export async function POST(
       },
     });
 
-    // Update adaptive 5K time
-    const new5kTime = await updateAdaptive5KTime(athleteId, score.overallScore);
+    // Update canonical 5K pace
+    const new5kTime = await updateCanonicalFiveKPace(athleteId, score.overallScore);
 
     return NextResponse.json({
       success: true,

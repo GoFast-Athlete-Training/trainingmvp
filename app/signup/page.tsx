@@ -24,40 +24,44 @@ export default function SignUpPage() {
       const user = await signInWithGoogle();
       console.log('✅ Firebase auth successful:', user.uid);
       
-      // Check if athlete exists, create if not
-      try {
-        const hydrateResponse = await api.post('/athlete/hydrate');
-        if (hydrateResponse.data.success) {
-          console.log('✅ Athlete found, storing in localStorage');
-          LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-          LocalStorageAPI.setHydrationTimestamp(Date.now());
-          router.replace('/training');
-        }
-      } catch (hydrateErr: any) {
-        // If 404, athlete doesn't exist - create it
-        if (hydrateErr.response?.status === 404) {
-          console.log('👤 Athlete not found, creating new athlete...');
-          try {
-            const createResponse = await api.post('/athlete/create', {
-              email: user.email || '',
-              firstName: user.displayName?.split(' ')[0] || '',
-              lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-            });
-            
-            // Hydrate the newly created athlete
-            const hydrateResponse = await api.post('/athlete/hydrate');
-            if (hydrateResponse.data.success) {
-              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-              LocalStorageAPI.setHydrationTimestamp(Date.now());
-              router.replace('/training');
-            }
-          } catch (createErr: any) {
-            console.error('❌ Failed to create athlete:', createErr);
-            setError('Failed to create account. Please try again.');
+      // Get Firebase token
+      const firebaseToken = await user.getIdToken();
+      localStorage.setItem('firebaseToken', firebaseToken);
+      
+      // Create or get athlete (upsert pattern)
+      console.log('🌐 SIGNUP: Calling backend API: /athlete/create');
+      const createResponse = await api.post('/athlete/create', {});
+      
+      console.log('✅ SIGNUP: Backend API response:', createResponse.data);
+      
+      if (!createResponse.data || !createResponse.data.success) {
+        throw new Error(`Backend API failed: ${createResponse.data?.message || 'Invalid response'}`);
+      }
+
+      // Store athlete data
+      localStorage.setItem('firebaseId', user.uid);
+      localStorage.setItem('athleteId', createResponse.data.athleteId);
+      
+      // Check if athlete has onboarding data (has myTargetRace)
+      const athlete = createResponse.data.data;
+      if (athlete?.myTargetRace) {
+        // Athlete has onboarding data, go to training
+        console.log('✅ SIGNUP: Existing athlete with onboarding → Training');
+        // Hydrate to get full data
+        try {
+          const hydrateResponse = await api.post('/athlete/hydrate');
+          if (hydrateResponse.data.success) {
+            LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+            LocalStorageAPI.setHydrationTimestamp(Date.now());
           }
-        } else {
-          throw hydrateErr;
+        } catch (err) {
+          console.warn('⚠️ Could not hydrate, continuing anyway');
         }
+        router.replace('/training');
+      } else {
+        // New athlete, go to onboarding
+        console.log('✅ SIGNUP: New athlete → Onboarding');
+        router.replace('/onboarding');
       }
       
     } catch (err: any) {

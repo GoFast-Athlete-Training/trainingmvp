@@ -86,9 +86,10 @@ export async function computeGoFastScore(
 }
 
 /**
- * Update adaptive 5K time based on workout quality
+ * Update canonical 5K pace based on workout quality
+ * This updates the athlete's canonical identity, not plan-specific data
  */
-export async function updateAdaptive5KTime(
+export async function updateCanonicalFiveKPace(
   athleteId: string,
   qualityScore: number
 ): Promise<string> {
@@ -100,7 +101,8 @@ export async function updateAdaptive5KTime(
     throw new Error('Athlete not found');
   }
 
-  const current5k = parsePaceToSeconds(athlete.myCurrentPace || '8:00');
+  // Use canonicalFiveKPace if available, fallback to myCurrentPace (legacy)
+  const current5k = parsePaceToSeconds(athlete.canonicalFiveKPace || athlete.myCurrentPace || '8:00');
   
   // New 5K = old 5K - (qualityScore * 0.8 seconds)
   // Higher quality = faster predicted time
@@ -109,30 +111,13 @@ export async function updateAdaptive5KTime(
 
   const new5kTime = secondsToPaceString(new5kSeconds);
 
-  // Update athlete
+  // Update canonical identity
   await prisma.athlete.update({
     where: { id: athleteId },
     data: {
-      myCurrentPace: new5kTime,
+      canonicalFiveKPace: new5kTime,
     },
   });
-
-  // Also update training plan if exists
-  const activePlan = await prisma.trainingPlan.findFirst({
-    where: {
-      athleteId,
-      status: 'active',
-    },
-  });
-
-  if (activePlan) {
-    await prisma.trainingPlan.update({
-      where: { id: activePlan.id },
-      data: {
-        trainingPlanAdaptive5kTime: new5kTime,
-      },
-    });
-  }
 
   return new5kTime;
 }

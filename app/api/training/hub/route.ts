@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
         status: 'active',
       },
       include: {
-        race: true,
+        raceRegistry: true,
+        trainingPlanFiveKPace: true,
       },
     });
 
@@ -87,14 +88,15 @@ export async function GET(request: NextRequest) {
     const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
     const currentWeek = Math.floor(daysSinceStart / 7);
 
-    // Get race readiness
-    const adaptive5k = activePlan.trainingPlanAdaptive5kTime || null;
+    // Get race readiness (using plan snapshot 5K pace)
+    const plan5kPace = activePlan.trainingPlanFiveKPace?.fiveKPace || null;
     let raceReadiness = null;
 
-    if (adaptive5k && activePlan.race) {
-      // Calculate goal delta (simplified)
-      const goalPace = parsePaceToSeconds(activePlan.trainingPlanGoalPace || '8:00');
-      const currentPace = parsePaceToSeconds(adaptive5k);
+    if (plan5kPace && activePlan.raceRegistry) {
+      // Get goal pace from race registry or training plan goal time
+      // For now, simplified - would need to calculate from goal time and race distance
+      const goalPace = parsePaceToSeconds('8:00'); // Placeholder
+      const currentPace = parsePaceToSeconds(plan5kPace);
       const delta = currentPace - goalPace;
 
       let status: 'on-track' | 'behind' | 'impossible' = 'on-track';
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
       }
 
       raceReadiness = {
-        adaptive5k,
+        current5kPace: plan5kPace,
         goalDelta: formatDelta(delta),
         status,
       };

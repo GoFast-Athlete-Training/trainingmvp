@@ -24,7 +24,7 @@ interface PlanStatus {
 }
 
 interface RaceReadiness {
-  adaptive5k: string | null;
+  current5kPace: string | null;
   goalDelta: string | null;
   status: 'on-track' | 'behind' | 'impossible';
 }
@@ -67,6 +67,13 @@ export default function TrainingHub() {
             return;
           }
         }
+      }
+
+      // Check if athlete has completed onboarding
+      if (athlete && !athlete.myTargetRace) {
+        console.log('⚠️ Athlete has not completed onboarding → redirecting');
+        router.push('/onboarding');
+        return;
       }
 
       // Load hub data
@@ -208,9 +215,9 @@ export default function TrainingHub() {
             <h2 className="text-xl font-semibold mb-4">Race Readiness Snapshot</h2>
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-600">Adaptive 5K Time</p>
+                <p className="text-sm text-gray-600">Current 5K Pace</p>
                 <p className="text-2xl font-bold">
-                  {raceReadiness.adaptive5k || 'N/A'}
+                  {raceReadiness.current5kPace || 'N/A'}
                 </p>
               </div>
               {raceReadiness.goalDelta && (

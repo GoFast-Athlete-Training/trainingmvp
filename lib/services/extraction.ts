@@ -41,7 +41,7 @@ Rules:
 - goalTime: Finish time in HH:MM:SS or MM:SS format
 - baseline5k: Current 5K time in MM:SS format per mile (e.g., "8:30")
 - weeklyMileage: Current weekly mileage as a number string (e.g., "25")
-- preferredRunDays: Array of day indices (0=Monday, 6=Sunday). If not specified, return empty array.
+- preferredRunDays: Array of day indices (1=Monday, 7=Sunday). If not specified, return empty array.
 
 If a field is missing or unclear, return null for that field.
 

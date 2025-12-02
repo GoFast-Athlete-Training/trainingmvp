@@ -14,7 +14,11 @@ model Athlete {
   id         String @id @default(cuid())
   firebaseId String @unique
 
-  // Training Profile
+  // Canonical Identity (can be updated)
+  canonicalFiveKPace  String? // mm:ss format
+  preferredRunDays    Int[]   // e.g. [1,3,5] where 1=Monday, 7=Sunday (empty array if not set)
+
+  // Legacy fields (deprecated, keep for migration)
   myCurrentPace       String?
   myWeeklyMileage     Int?
   myTrainingGoal      String?
@@ -26,10 +30,12 @@ model Athlete {
   updatedAt DateTime @updatedAt
 
   // Relations
-  trainingPlans TrainingPlan[]
-  plannedDays   TrainingDayPlanned[]
-  executedDays  TrainingDayExecuted[]
-  activities    AthleteActivity[]
+  trainingPlans              TrainingPlan[]
+  plannedDays                TrainingDayPlanned[]
+  executedDays               TrainingDayExecuted[]
+  activities                 AthleteActivity[]
+  trainingPlanFiveKPaces     TrainingPlanFiveKPace[]
+  trainingPlanPreferredDays  TrainingPlanPreferredDays[]
 
   @@map("athletes")
 }
@@ -68,6 +74,7 @@ model AthleteActivity {
   @@map("athlete_activities")
 }
 
+// Legacy Race model - deprecated, use RaceRegistry instead
 model Race {
   id String @id @default(cuid())
 
@@ -82,32 +89,48 @@ model Race {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relations (deprecated - no new plans should use this)
+  // trainingPlans TrainingPlan[] // Removed - use RaceRegistry instead
+
+  @@map("races")
+}
+
+// Race Registry - Global catalogue of races
+model RaceRegistry {
+  id        String   @id @default(cuid())
+  name      String
+  distance  String   // "marathon", "half", "5k", "10k", etc.
+  date      DateTime
+  city      String?
+  state     String?
+  country   String?
+  createdBy String   // athleteId who created it
+  isGlobal  Boolean  @default(false) // true = available to all users
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
   trainingPlans TrainingPlan[]
 
-  @@map("races")
+  @@map("race_registry")
 }
 
 model TrainingPlan {
   id        String @id @default(cuid())
   athleteId String
-  raceId    String
+  raceRegistryId String // References RaceRegistry
 
   // PLAN IDENTITY
   trainingPlanName String
 
   // CYCLE-LEVEL GOALS
-  trainingPlanGoalTime              String
-  trainingPlanGoalPace              String?
-  trainingPlanBaseline5k            String
-  trainingPlanBaselineWeeklyMileage Int?
+  trainingPlanGoalTime String?
 
   // PLAN STRUCTURE
   trainingPlanStartDate  DateTime
   trainingPlanTotalWeeks Int
-
-  // MONEY METRIC
-  trainingPlanAdaptive5kTime String?
 
   // STATUS
   status String @default("draft")
@@ -117,9 +140,11 @@ model TrainingPlan {
   updatedAt DateTime @updatedAt
 
   // Relations
-  athlete     Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  race        Race                    @relation(fields: [raceId], references: [id], onDelete: Cascade)
-  plannedDays TrainingDayPlanned[]
+  athlete                Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  raceRegistry           RaceRegistry            @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  plannedDays            TrainingDayPlanned[]
+  trainingPlanFiveKPace  TrainingPlanFiveKPace?
+  trainingPlanPreferredDays TrainingPlanPreferredDays?
 
   @@map("training_plans")
 }
@@ -130,15 +155,14 @@ model TrainingDayPlanned {
   athleteId      String
 
   // Day Identification
-  date      DateTime
   weekIndex Int
-  dayIndex  Int
-  dayName   String?
+  dayIndex  Int  // MUST be 1-7 (1=Monday, 7=Sunday)
+  phase     String // "base", "build", "peak", "taper"
 
-  // Training Context
-  phase String
+  // Computed date (calculated by backend, not from AI)
+  date      DateTime
 
-  // PLANNED WORKOUT
+  // PLANNED WORKOUT (atomic element)
   plannedData Json
 
   // Timestamps
@@ -151,6 +175,44 @@ model TrainingDayPlanned {
 
   @@unique([trainingPlanId, weekIndex, dayIndex])
   @@map("training_days_planned")
+}
+
+// Plan-specific snapshot: 5K pace at time of plan creation
+model TrainingPlanFiveKPace {
+  id            String @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+  fiveKPace      String // mm:ss format
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId])
+  @@map("training_plan_five_k_pace")
+}
+
+// Plan-specific snapshot: Preferred run days at time of plan creation
+model TrainingPlanPreferredDays {
+  id            String @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+  preferredDays  Int[] // e.g. [1,3,5] where 1=Monday, 7=Sunday
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId])
+  @@map("training_plan_preferred_days")
 }
 
 model TrainingDayExecuted {

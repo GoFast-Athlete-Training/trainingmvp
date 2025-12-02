@@ -38,10 +38,12 @@ export function formatDateShort(date: Date | string): string {
 
 /**
  * Get day name
+ * @param dayIndex - Day index (1-7, where 1=Monday, 7=Sunday)
  */
 export function getDayName(dayIndex: number): string {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  return days[dayIndex] || 'Unknown';
+  // dayIndex is 1-7, array is 0-6
+  return days[dayIndex - 1] || 'Unknown';
 }
 
 /**
@@ -55,5 +57,29 @@ export function isToday(date: Date | string): boolean {
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear()
   );
+}
+
+/**
+ * Calculate date for a training day
+ * @param planStartDate - Start date of the training plan
+ * @param weekIndex - Week index (0-based)
+ * @param dayIndex - Day index (1-7, where 1=Monday, 7=Sunday)
+ * @returns Date for that specific day
+ */
+export function calculateTrainingDayDate(
+  planStartDate: Date,
+  weekIndex: number,
+  dayIndex: number
+): Date {
+  // dayIndex 1 = Monday, so we need to adjust
+  // If plan starts on Monday (day 1), then:
+  // weekIndex 0, dayIndex 1 = day 0
+  // weekIndex 0, dayIndex 2 = day 1
+  // weekIndex 1, dayIndex 1 = day 7
+  
+  const daysToAdd = (weekIndex * 7) + (dayIndex - 1);
+  const date = new Date(planStartDate);
+  date.setDate(date.getDate() + daysToAdd);
+  return date;
 }
 

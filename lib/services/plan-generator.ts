@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { prisma } from '../prisma';
+import { calculateTrainingDayDate } from '../utils/dates';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -7,17 +8,15 @@ const openai = new OpenAI({
 
 export interface TrainingInputs {
   raceName: string;
-  raceDate: string;
   raceDistance: string;
   goalTime: string;
-  baseline5k: string;
-  weeklyMileage: number;
-  preferredRunDays?: number[];
-  athleteAge?: number;
+  canonicalFiveKPace: string; // mm:ss format
+  preferredRunDays?: number[]; // 1-7 where 1=Monday, 7=Sunday
+  totalWeeks: number; // Calculated externally
 }
 
 export interface WeekDay {
-  dayIndex: number;
+  dayIndex: number; // 1-7 (1=Monday, 7=Sunday)
   plannedData: {
     type: string;
     mileage: number;
@@ -36,7 +35,7 @@ export interface WeekDay {
     description?: string;
     coachNotes?: string;
   };
-  date: string;
+  // NO date field - dates computed by backend
 }
 
 export interface Week {
@@ -47,14 +46,8 @@ export interface Week {
 
 export interface GeneratedPlan {
   totalWeeks: number;
-  phaseOverview: {
-    base: { startWeek: number; endWeek: number };
-    build: { startWeek: number; endWeek: number };
-    peak: { startWeek: number; endWeek: number };
-    taper: { startWeek: number; endWeek: number };
-  };
-  weeklyMileagePlan: number[];
   weeks: Week[];
+  // phaseOverview and weeklyMileagePlan removed - not needed
 }
 
 /**
@@ -79,35 +72,23 @@ Workout Types:
 - long_run: Long distance runs for endurance
 - rest: Recovery days
 
-Calculate weeks until race: ${Math.ceil(
-    (new Date(inputs.raceDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24 * 7)
-  )} weeks
-
 Inputs:
 - Race: ${inputs.raceName} (${inputs.raceDistance})
-- Race Date: ${inputs.raceDate}
 - Goal Time: ${inputs.goalTime}
-- Baseline 5K Pace: ${inputs.baseline5k} per mile
-- Current Weekly Mileage: ${inputs.weeklyMileage} miles
-- Preferred Run Days: ${inputs.preferredRunDays?.join(', ') || 'Not specified'}
+- Canonical 5K Pace: ${inputs.canonicalFiveKPace} per mile
+- Preferred Run Days: ${inputs.preferredRunDays?.join(', ') || 'Not specified'} (1=Monday, 7=Sunday)
+- Total Weeks: ${inputs.totalWeeks}
 
 You must return EXACT JSON ONLY (no markdown, no explanation):
 {
-  "totalWeeks": 18,
-  "phaseOverview": {
-    "base": { "startWeek": 0, "endWeek": 4 },
-    "build": { "startWeek": 5, "endWeek": 11 },
-    "peak": { "startWeek": 12, "endWeek": 15 },
-    "taper": { "startWeek": 16, "endWeek": 17 }
-  },
-  "weeklyMileagePlan": [20, 22, 24, ...],
+  "totalWeeks": ${inputs.totalWeeks},
   "weeks": [
     {
       "weekIndex": 0,
       "phase": "base",
       "days": [
         {
-          "dayIndex": 0,
+          "dayIndex": 1,
           "plannedData": {
             "type": "easy",
             "mileage": 4,
@@ -116,22 +97,23 @@ You must return EXACT JSON ONLY (no markdown, no explanation):
             "hrRange": "130-150",
             "label": "Easy Run",
             "description": "Comfortable pace, conversational"
-          },
-          "date": "2025-02-01"
+          }
         }
       ]
     }
   ]
 }
 
-Rules:
-- Generate ALL weeks from start date to race date
-- Each week has 7 days (dayIndex 0-6, Monday-Sunday)
-- Calculate dates starting from today or specified start date
+CRITICAL RULES:
+- DO NOT generate calendar dates. We will compute dates ourselves.
+- dayIndex MUST be 1-7 (1=Monday, 2=Tuesday, ..., 7=Sunday)
+- Each week MUST have exactly 7 days (dayIndex 1 through 7)
+- weekIndex starts at 0 (first week is 0, second week is 1, etc.)
+- Generate ALL weeks from weekIndex 0 to weekIndex ${inputs.totalWeeks - 1}
 - Include rest days appropriately
 - Progress mileage gradually
-- Match phases to weeks correctly
-- Return complete plan with all weeks and days
+- Match phases to weeks correctly (base ~25%, build ~35%, peak ~20%, taper remaining)
+- Return complete plan with all weeks and all days
 
 Return ONLY the JSON object, nothing else.`;
 
@@ -171,52 +153,77 @@ Return ONLY the JSON object, nothing else.`;
 
 /**
  * Save generated plan to database
- * Creates TrainingPlan and ALL TrainingDayPlanned records
+ * Creates TrainingPlan, snapshots, and ALL TrainingDayPlanned records
  */
 export async function saveTrainingPlanToDB(
   athleteId: string,
-  raceId: string,
+  raceRegistryId: string,
+  planStartDate: Date,
   plan: GeneratedPlan,
   inputs: TrainingInputs
 ): Promise<string> {
-  // Create TrainingPlan
-  const trainingPlan = await prisma.trainingPlan.create({
-    data: {
-      athleteId,
-      raceId,
-      trainingPlanName: `${inputs.raceName} Training Plan`,
-      trainingPlanGoalTime: inputs.goalTime,
-      trainingPlanBaseline5k: inputs.baseline5k,
-      trainingPlanBaselineWeeklyMileage: inputs.weeklyMileage,
-      trainingPlanStartDate: new Date(),
-      trainingPlanTotalWeeks: plan.totalWeeks,
-      status: 'active',
-    },
-  });
+  // Use transaction to ensure atomicity
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Create TrainingPlan
+    const trainingPlan = await tx.trainingPlan.create({
+      data: {
+        athleteId,
+        raceRegistryId,
+        trainingPlanName: `${inputs.raceName} Training Plan`,
+        trainingPlanGoalTime: inputs.goalTime,
+        trainingPlanStartDate: planStartDate,
+        trainingPlanTotalWeeks: plan.totalWeeks,
+        status: 'active',
+      },
+    });
 
-  // Create ALL TrainingDayPlanned records
-  const dayRecords = [];
-  for (const week of plan.weeks) {
-    for (const day of week.days) {
-      dayRecords.push({
+    // 2. Create snapshot: TrainingPlanFiveKPace
+    await tx.trainingPlanFiveKPace.create({
+      data: {
         trainingPlanId: trainingPlan.id,
         athleteId,
-        date: new Date(day.date),
-        weekIndex: week.weekIndex,
-        dayIndex: day.dayIndex,
-        dayName: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][
-          day.dayIndex
-        ],
-        phase: week.phase,
-        plannedData: day.plannedData,
+        fiveKPace: inputs.canonicalFiveKPace,
+      },
+    });
+
+    // 3. Create snapshot: TrainingPlanPreferredDays (if provided)
+    if (inputs.preferredRunDays && inputs.preferredRunDays.length > 0) {
+      await tx.trainingPlanPreferredDays.create({
+        data: {
+          trainingPlanId: trainingPlan.id,
+          athleteId,
+          preferredDays: inputs.preferredRunDays,
+        },
       });
     }
-  }
 
-  await prisma.trainingDayPlanned.createMany({
-    data: dayRecords,
+    // 4. Create ALL TrainingDayPlanned records with computed dates
+    const dayRecords = [];
+    for (const week of plan.weeks) {
+      for (const day of week.days) {
+        // Compute date: (weekIndex * 7) + (dayIndex - 1) days from planStartDate
+        const computedDate = calculateTrainingDayDate(planStartDate, week.weekIndex, day.dayIndex);
+
+        dayRecords.push({
+          trainingPlanId: trainingPlan.id,
+          athleteId,
+          weekIndex: week.weekIndex,
+          dayIndex: day.dayIndex, // 1-7
+          phase: week.phase,
+          date: computedDate,
+          plannedData: day.plannedData,
+        });
+      }
+    }
+
+    // Batch create all days
+    await tx.trainingDayPlanned.createMany({
+      data: dayRecords,
+    });
+
+    return trainingPlan.id;
   });
 
-  return trainingPlan.id;
+  return result;
 }
 
