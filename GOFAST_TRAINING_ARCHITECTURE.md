@@ -35,9 +35,8 @@ model Athlete {
   bio          String?
   instagram    String?
 
-  // Canonical Identity (can be updated)
-  canonicalFiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH
-  preferredRunDays    Int[]   // e.g. [1,3,5] where 1=Monday, 7=Sunday (empty array if not set)
+  // Profile Identity (can be updated)
+  fiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
 
   // Legacy training fields (deprecated, keep for migration)
   myCurrentPace       String?  // ⚠️ DEPRECATED - use canonicalFiveKPace
@@ -80,18 +79,17 @@ model Athlete {
   plannedDays                TrainingDayPlanned[]
   executedDays               TrainingDayExecuted[]
   activities                 AthleteActivity[]
-  trainingPlanFiveKPaces     TrainingPlanFiveKPace[]      // Junction table relation
-  trainingPlanPreferredDays  TrainingPlanPreferredDays[] // Junction table relation
+  trainingPlanFiveKPaces     TrainingPlanFiveKPace[]
 
   @@map("athletes")
 }
 ```
 
 **Key Points:**
-- ✅ `canonicalFiveKPace: String?` - **THE CANONICAL 5K PACE** (mm:ss format, e.g. "8:30")
-- ✅ `preferredRunDays: Int[]` - **THE CANONICAL PREFERRED DAYS** (1-7, where 1=Monday, 7=Sunday)
-- ⚠️ `myCurrentPace: String?` - **LEGACY FIELD** - kept for migration, should use `canonicalFiveKPace` instead
-- ✅ Relations to snapshot junction tables: `trainingPlanFiveKPaces` and `trainingPlanPreferredDays`
+- ✅ `fiveKPace: String?` - **THE SOURCE OF TRUTH FOR 5K PACE** (mm:ss format, e.g. "8:30")
+- ⚠️ `myCurrentPace: String?` - **LEGACY FIELD** - kept for migration, should use `fiveKPace` instead
+- ✅ Relations to snapshot junction table: `trainingPlanFiveKPaces`
+- ❌ **REMOVED:** `preferredRunDays` from Athlete (belongs to plan, not identity in MVP1)
 
 ---
 
@@ -119,11 +117,11 @@ model TrainingPlanFiveKPace {
 }
 ```
 
-**Purpose:** Captures the athlete's `canonicalFiveKPace` at the moment the plan was created. Prevents identity drift - if athlete updates their canonical pace later, old plans still reference the original pace.
+**Purpose:** Captures the athlete's `fiveKPace` at the moment the plan was created. Prevents identity drift - if athlete updates their pace later, old plans still reference the original pace.
 
 ---
 
-#### TrainingPlanPreferredDays (Snapshot Table)
+#### TrainingPlanPreferredDays (Snapshot Table - UNUSED IN MVP1)
 
 ```prisma
 model TrainingPlanPreferredDays {
@@ -145,7 +143,7 @@ model TrainingPlanPreferredDays {
 }
 ```
 
-**Purpose:** Captures the athlete's `preferredRunDays` at the moment the plan was created. Prevents identity drift - if athlete updates their preferred days later, old plans still reference the original days.
+**Status:** ⚠️ **UNUSED IN MVP1** - Table exists in schema but is not populated. MVP1 does not include preferred run days in training plan setup.
 
 ---
 
@@ -207,8 +205,8 @@ model TrainingPlan {
   athlete                Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   raceRegistry           RaceRegistry            @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
   plannedDays            TrainingDayPlanned[]
-  trainingPlanFiveKPace  TrainingPlanFiveKPace?  // Optional snapshot (one per plan)
-  trainingPlanPreferredDays TrainingPlanPreferredDays? // Optional snapshot (one per plan)
+  trainingPlanFiveKPace  TrainingPlanFiveKPace?  // Snapshot (one per plan)
+  trainingPlanPreferredDays TrainingPlanPreferredDays? // UNUSED IN MVP1
 
   @@map("training_plans")
 }
@@ -354,72 +352,53 @@ model Race {
 
 ---
 
-## 5K Pace Architecture - How It Works
+## 5K Pace Architecture - How It Works (MVP1)
 
-### Canonical vs Plan-Specific
+### Profile vs Plan-Specific
 
-**Canonical (Athlete Level):**
-- `Athlete.canonicalFiveKPace: String?` - **THE SOURCE OF TRUTH**
+**Profile (Athlete Level):**
+- `Athlete.fiveKPace: String?` - **THE SOURCE OF TRUTH**
 - Updated when athlete improves (via analysis service)
 - Used as input when creating NEW training plans
-- Can be manually updated by athlete in profile settings
+- Can be manually updated by athlete via `/api/athlete/profile` (PUT)
 
 **Plan-Specific (Snapshot):**
 - `TrainingPlanFiveKPace.fiveKPace: String` - **SNAPSHOT AT PLAN CREATION**
-- Captured when plan is created
+- Captured when plan is created via `/api/training-plan/generate`
 - Never changes after plan creation
 - Used for historical accuracy and race readiness calculations
 
 ### Flow Example
 
 1. **Athlete creates profile:**
-   - Sets `canonicalFiveKPace = "8:30"`
+   - Sets `fiveKPace = "8:30"` via `/api/athlete/profile` (PUT)
 
 2. **Athlete creates training plan:**
-   - System reads `canonicalFiveKPace = "8:30"`
+   - Calls `/api/training-plan/generate` with `raceRegistryId` and `goalTime`
+   - System reads `athlete.fiveKPace = "8:30"`
    - Creates `TrainingPlanFiveKPace` snapshot with `fiveKPace = "8:30"`
    - Plan is generated using this pace
 
 3. **Athlete completes workouts:**
-   - Analysis service updates `canonicalFiveKPace = "8:25"` (improved)
+   - Analysis service updates `athlete.fiveKPace = "8:25"` (improved)
    - **BUT** `TrainingPlanFiveKPace.fiveKPace` stays `"8:30"` (snapshot)
 
 4. **Athlete creates NEW plan:**
-   - System reads NEW `canonicalFiveKPace = "8:25"`
+   - System reads NEW `athlete.fiveKPace = "8:25"`
    - Creates NEW snapshot with `fiveKPace = "8:25"`
    - Old plan still references `"8:30"` (historical accuracy)
 
 ---
 
-## Preferred Run Days Architecture
-
-### Canonical vs Plan-Specific
-
-**Canonical (Athlete Level):**
-- `Athlete.preferredRunDays: Int[]` - **THE SOURCE OF TRUTH**
-- Example: `[1, 3, 5]` = Monday, Wednesday, Friday
-- Updated when athlete changes preferences
-- Used as input when creating NEW training plans
-
-**Plan-Specific (Snapshot):**
-- `TrainingPlanPreferredDays.preferredDays: Int[]` - **SNAPSHOT AT PLAN CREATION**
-- Captured when plan is created
-- Never changes after plan creation
-- Used to show what days the plan was originally designed for
-
----
-
-## Complete Model Relationships
+## Complete Model Relationships (MVP1)
 
 ```
-Athlete (canonical identity)
-  ├─ canonicalFiveKPace: "8:30"
-  ├─ preferredRunDays: [1,3,5]
+Athlete (profile identity)
+  ├─ fiveKPace: "8:30"
   │
   ├─→ TrainingPlan (plan container)
   │     ├─ raceRegistryId → RaceRegistry
   │     ├─→ TrainingPlanFiveKPace (snapshot: "8:30")
-  │     ├─→ TrainingPlanPreferredDays (snapshot: [1,3,5])
   │     └─→ TrainingDayPlanned[] (all planned workouts)
   │
   ├─→ TrainingDayExecuted[] (completed workouts)
@@ -456,44 +435,43 @@ Athlete (canonical identity)
 **Flow:**
 1. User signs in with Google/Email → Firebase auth
 2. Get Firebase token → call `/api/athlete/create` (upsert)
-3. Check if athlete has completed onboarding (`myTargetRace` field)
-4. Route to `/onboarding` if new, `/training` if completed
-5. Server-side: verify Firebase token → get athleteId from database
+3. Server-side: verify Firebase token → get athleteId from database
+4. Check if athlete has active training plan
+5. Route to training setup if no plan, `/training` if plan exists
 
-#### 2. **Training Plan Setup Status: ✅ IMPLEMENTED (as "onboarding")**
+#### 2. **Training Plan Setup Status: ✅ IMPLEMENTED (MVP1)**
 
 **Current Implementation:**
-- ✅ Multi-step setup flow (`/onboarding` - needs rename to `/training-setup`)
-- ✅ Collects race information (name, type, goal time, current 5K)
-- ✅ Calculates goal pace automatically
-- ✅ OpenAI-powered inference generation
-- ✅ Saves setup data to Athlete and Race tables
-- ⚠️ **TODO**: Create training plan automatically after setup
+- ✅ Race search/create via `/api/race/search` and `/api/race/create`
+- ✅ Profile management via `/api/athlete/profile` (GET, PUT)
+- ✅ Training plan generation via `/api/training-plan/generate`
+- ✅ MVP1: Race + Goal Time ONLY (no preferred days, no intensity tiers)
 
 **Code Locations:**
-- `app/onboarding/page.tsx` - 3-step setup UI (needs rename)
-- `app/api/onboarding/inference/route.ts` - OpenAI inference generation (needs move)
-- `app/api/onboarding/save/route.ts` - Save setup data (needs move)
-- `lib/utils/pace.ts` - Goal pace calculation utilities
+- `app/api/race/search/route.ts` - Search RaceRegistry
+- `app/api/race/create/route.ts` - Create RaceRegistry entry
+- `app/api/athlete/profile/route.ts` - Get/update athlete profile (including fiveKPace)
+- `app/api/training-plan/generate/route.ts` - Generate full training plan
+- `app/api/onboarding/save/route.ts` - Save race selection and goal time
+- `lib/training/plan-generator.ts` - OpenAI plan generation
+- `lib/training/save-plan.ts` - Save plan to database with snapshots
 
-**Setup Flow:**
-1. **Step 1 - Form**: Race name, race type, goal time, current 5K pace
-   - Goal pace automatically calculated from goal time and race distance
-2. **Step 2 - Dialogue**: 
-   - "How well do you feel you did your last race?"
-   - "Have you trained before?"
-3. **Step 3 - Review**: 
-   - Shows collected data
-   - Displays AI-generated inference
-   - Save button to persist to database
-   - **TODO**: Auto-create training plan after save
+**MVP1 Setup Flow:**
+1. **Profile Setup**: User sets `fiveKPace` via `/api/athlete/profile` (PUT)
+2. **Race Selection**: User searches/creates race via `/api/race/search` or `/api/race/create`
+3. **Goal Entry**: User enters goal time (saved via `/api/onboarding/save`)
+4. **Plan Generation**: User calls `/api/training-plan/generate` with `raceRegistryId` and `goalTime`
+   - System reads `athlete.fiveKPace`
+   - Generates complete plan via OpenAI
+   - Creates `TrainingPlan` with snapshot `TrainingPlanFiveKPace`
+   - Creates all `TrainingDayPlanned` records with computed dates
 
 **Data Saved:**
-- `Athlete.myTargetRace` - Race name
-- `Athlete.myTrainingGoal` - Goal time
-- `Athlete.myCurrentPace` - Current 5K pace per mile
-- `Race` record created/found in database
-- **Missing**: Auto-create `TrainingPlan` and `TrainingDayPlanned` records
+- `Athlete.fiveKPace` - 5K pace (via profile update)
+- `RaceRegistry` - Race entry (via race create)
+- `TrainingPlan` - Plan container with `raceRegistryId` and `goalTime`
+- `TrainingPlanFiveKPace` - Snapshot of `fiveKPace` at plan creation
+- `TrainingDayPlanned[]` - All planned workout days
 
 #### 3. **Local Storage: ✅ IMPLEMENTED**
 
@@ -809,24 +787,35 @@ The training system is organized into four distinct domains, each with its own U
 5. Training → Auth guard → Onboarding check → Load training data
 ```
 
-### Training Plan Creation Flow
+### Training Plan Creation Flow (MVP1)
 ```
-1. User completes onboarding
-   ├─ Athlete.myTargetRace = "Boston Marathon"
-   ├─ Athlete.myTrainingGoal = "3:30:00"
-   ├─ Athlete.myCurrentPace = "8:30"
-   └─ Race record created
+1. User sets profile
+   ├─ PUT /api/athlete/profile
+   └─ Athlete.fiveKPace = "8:30"
 
-2. User navigates to create plan OR auto-triggered
-   ├─ Gather inputs from Athlete + Race
-   ├─ Call generateTrainingPlanAI(inputs)
+2. User searches/creates race
+   ├─ POST /api/race/search OR /api/race/create
+   └─ RaceRegistry entry created/found
+
+3. User enters goal time
+   ├─ POST /api/onboarding/save
+   ├─ Body: { raceRegistryId, goalTime, fiveKPace? }
+   └─ Data saved (no plan created yet)
+
+4. User generates plan
+   ├─ POST /api/training-plan/generate
+   ├─ Body: { raceRegistryId, goalTime }
+   ├─ System reads athlete.fiveKPace
+   ├─ Call generateTrainingPlanAI()
    │   └─ OpenAI generates complete plan (all weeks/days)
-   ├─ Call saveTrainingPlanToDB(plan, inputs)
+   ├─ Call saveTrainingPlanToDB()
    │   ├─ Create TrainingPlan record
-   │   └─ Create all TrainingDayPlanned records
+   │   ├─ Create TrainingPlanFiveKPace snapshot
+   │   └─ Create all TrainingDayPlanned records with computed dates
    └─ Plan status = "active"
 
-3. User views training hub
+5. User views training hub
+   ├─ GET /api/training/hub
    ├─ Load active TrainingPlan
    ├─ Get today's workout (TrainingDayPlanned)
    ├─ Check if executed (TrainingDayExecuted)
