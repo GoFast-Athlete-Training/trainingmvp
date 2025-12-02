@@ -83,10 +83,10 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Calculate current week
+    // Calculate current week (1-based to match weekIndex in database)
     const planStart = new Date(activePlan.trainingPlanStartDate);
     const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
-    const currentWeek = Math.floor(daysSinceStart / 7);
+    const currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekIndex starts at 1
 
     // Get race readiness (using plan snapshot 5K pace)
     const plan5kPace = activePlan.trainingPlanFiveKPace?.fiveKPace || null;
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       planStatus: {
         hasPlan: true,
         totalWeeks: activePlan.trainingPlanTotalWeeks,
-        currentWeek: Math.min(currentWeek, activePlan.trainingPlanTotalWeeks - 1),
+        currentWeek: Math.min(currentWeek, activePlan.trainingPlanTotalWeeks),
         phase: todayPlanned?.phase || 'base',
       },
       raceReadiness,

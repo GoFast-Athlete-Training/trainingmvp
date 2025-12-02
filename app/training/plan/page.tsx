@@ -100,7 +100,7 @@ export default function PlanOverview() {
                     onClick={() => router.push(`/training/plan/${weekIndex}`)}
                     className="bg-gray-100 hover:bg-orange-100 rounded-lg p-3 text-center transition"
                   >
-                    <div className="font-semibold">W{weekIndex + 1}</div>
+                    <div className="font-semibold">W{weekIndex}</div>
                     {plan.weeklyMileage[weekIndex] && (
                       <div className="text-xs text-gray-600">
                         {plan.weeklyMileage[weekIndex]} mi

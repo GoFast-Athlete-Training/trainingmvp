@@ -42,26 +42,34 @@ export default function SignUpPage() {
       localStorage.setItem('firebaseId', user.uid);
       localStorage.setItem('athleteId', createResponse.data.athleteId);
       
-      // Check if athlete has onboarding data (has myTargetRace)
+      // Check if athlete has active training plan
       const athlete = createResponse.data.data;
-      if (athlete?.myTargetRace) {
-        // Athlete has onboarding data, go to training
-        console.log('✅ SIGNUP: Existing athlete with onboarding → Training');
-        // Hydrate to get full data
-        try {
-          const hydrateResponse = await api.post('/athlete/hydrate');
-          if (hydrateResponse.data.success) {
-            LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-            LocalStorageAPI.setHydrationTimestamp(Date.now());
+      try {
+        // Check for active plan
+        const hubResponse = await api.get('/training/hub');
+        if (hubResponse.data.planStatus?.hasPlan) {
+          // Athlete has active plan, go to training
+          console.log('✅ SIGNUP: Existing athlete with active plan → Training');
+          // Hydrate to get full data
+          try {
+            const hydrateResponse = await api.post('/athlete/hydrate');
+            if (hydrateResponse.data.success) {
+              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+              LocalStorageAPI.setHydrationTimestamp(Date.now());
+            }
+          } catch (err) {
+            console.warn('⚠️ Could not hydrate, continuing anyway');
           }
-        } catch (err) {
-          console.warn('⚠️ Could not hydrate, continuing anyway');
+          router.replace('/training');
+        } else {
+          // New athlete or no plan, go to training setup
+          console.log('✅ SIGNUP: New athlete or no plan → Training Setup');
+          router.replace('/training-setup');
         }
-        router.replace('/training');
-      } else {
-        // New athlete, go to onboarding
-        console.log('✅ SIGNUP: New athlete → Onboarding');
-        router.replace('/onboarding');
+      } catch (err) {
+        // If hub check fails, assume new athlete
+        console.log('✅ SIGNUP: Could not check plan status → Training Setup');
+        router.replace('/training-setup');
       }
       
     } catch (err: any) {

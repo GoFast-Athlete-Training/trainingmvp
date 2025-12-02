@@ -11,10 +11,10 @@ datasource db {
 }
 
 model Athlete {
-  id         String @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Auth
-  firebaseId String @unique
+  firebaseId String  @unique
   email      String?
 
   // Company Link (Single-tenant) - REQUIRED
@@ -24,7 +24,7 @@ model Athlete {
   // Universal profile
   firstName    String?
   lastName     String?
-  gofastHandle String?  @unique
+  gofastHandle String?   @unique
   photoURL     String?
   phoneNumber  String?
   birthday     DateTime?
@@ -36,7 +36,7 @@ model Athlete {
   instagram    String?
 
   // Profile Identity (can be updated)
-  fiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
+  fiveKPace String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
 
   // Legacy training fields (deprecated, keep for migration)
   myCurrentPace       String?
@@ -50,14 +50,14 @@ model Athlete {
   myRunningGoals      String?
 
   // Garmin PKCE Integration
-  garmin_user_id         String?  @unique
-  garmin_access_token    String?
-  garmin_refresh_token   String?
-  garmin_expires_in      Int?
-  garmin_scope           String?
+  garmin_user_id          String?   @unique
+  garmin_access_token     String?
+  garmin_refresh_token    String?
+  garmin_expires_in       Int?
+  garmin_scope            String?
   garmin_connected_at     DateTime?
-  garmin_last_sync_at    DateTime?
-  garmin_is_connected     Boolean  @default(false)
+  garmin_last_sync_at     DateTime?
+  garmin_is_connected     Boolean   @default(false)
   garmin_disconnected_at  DateTime?
   garmin_permissions      Json?
   garmin_user_profile     Json?
@@ -65,53 +65,54 @@ model Athlete {
   garmin_user_preferences Json?
 
   // Strava (future)
-  strava_id             Int?     @unique
-  strava_access_token   String?
-  strava_refresh_token  String?
-  strava_expires_at     Int?
+  strava_id            Int?    @unique
+  strava_access_token  String?
+  strava_refresh_token String?
+  strava_expires_at    Int?
 
   // System fields
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  trainingPlans              TrainingPlan[]
-  plannedDays                TrainingDayPlanned[]
-  executedDays               TrainingDayExecuted[]
-  activities                 AthleteActivity[]
-  trainingPlanFiveKPaces     TrainingPlanFiveKPace[]
+  trainingPlans             TrainingPlan[]
+  plannedDays               TrainingDayPlanned[]
+  executedDays              TrainingDayExecuted[]
+  activities                AthleteActivity[]
+  trainingPlanFiveKPaces    TrainingPlanFiveKPace[]
+  trainingPlanPreferredDays TrainingPlanPreferredDays[]
 
   @@map("athletes")
 }
 
 model AthleteActivity {
-  id              String   @id @default(cuid())
-  athleteId       String
-  sourceActivityId String  @unique
-  source          String   @default("garmin")
+  id               String @id @default(cuid())
+  athleteId        String
+  sourceActivityId String @unique
+  source           String @default("garmin")
 
-  activityType   String?
-  activityName   String?
-  startTime      DateTime?
-  duration       Int?
-  distance       Float?
-  calories       Int?
-  averageSpeed   Float?
+  activityType     String?
+  activityName     String?
+  startTime        DateTime?
+  duration         Int?
+  distance         Float?
+  calories         Int?
+  averageSpeed     Float?
   averageHeartRate Int?
-  maxHeartRate   Int?
-  elevationGain  Float?
-  steps          Int?
+  maxHeartRate     Int?
+  elevationGain    Float?
+  steps            Int?
 
   // Location + Polyline
-  startLatitude  Float?
-  startLongitude Float?
-  endLatitude    Float?
-  endLongitude   Float?
+  startLatitude   Float?
+  startLongitude  Float?
+  endLatitude     Float?
+  endLongitude    Float?
   summaryPolyline String?
 
-  summaryData    Json?
-  detailData     Json?
-  hydratedAt     DateTime?
+  summaryData Json?
+  detailData  Json?
+  hydratedAt  DateTime?
 
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
 
@@ -146,12 +147,12 @@ model Race {
 model RaceRegistry {
   id        String   @id @default(cuid())
   name      String
-  distance  String   // "marathon", "half", "5k", "10k", etc.
+  distance  String // "marathon", "half", "5k", "10k", etc.
   date      DateTime
   city      String?
   state     String?
   country   String?
-  createdBy String   // athleteId who created it
+  createdBy String // athleteId who created it
   isGlobal  Boolean  @default(false) // true = available to all users
 
   // Timestamps
@@ -165,8 +166,8 @@ model RaceRegistry {
 }
 
 model TrainingPlan {
-  id        String @id @default(cuid())
-  athleteId String
+  id             String @id @default(cuid())
+  athleteId      String
   raceRegistryId String // References RaceRegistry
 
   // PLAN IDENTITY
@@ -187,27 +188,27 @@ model TrainingPlan {
   updatedAt DateTime @updatedAt
 
   // Relations
-  athlete                Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  raceRegistry           RaceRegistry            @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
-  plannedDays            TrainingDayPlanned[]
-  trainingPlanFiveKPace  TrainingPlanFiveKPace?
+  athlete                   Athlete                    @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  raceRegistry              RaceRegistry               @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  plannedDays               TrainingDayPlanned[]
+  trainingPlanFiveKPace     TrainingPlanFiveKPace?
   trainingPlanPreferredDays TrainingPlanPreferredDays?
 
   @@map("training_plans")
 }
 
 model TrainingDayPlanned {
-  id             String  @id @default(cuid())
+  id             String @id @default(cuid())
   trainingPlanId String
   athleteId      String
 
   // Day Identification
   weekIndex Int
-  dayIndex  Int  // MUST be 1-7 (1=Monday, 7=Sunday)
+  dayIndex  Int // MUST be 1-7 (1=Monday, 7=Sunday)
   phase     String // "base", "build", "peak", "taper"
 
   // Computed date (calculated by backend, not from AI)
-  date      DateTime
+  date DateTime
 
   // PLANNED WORKOUT (atomic element)
   plannedData Json
@@ -226,7 +227,7 @@ model TrainingDayPlanned {
 
 // Plan-specific snapshot: 5K pace at time of plan creation
 model TrainingPlanFiveKPace {
-  id            String @id @default(cuid())
+  id             String @id @default(cuid())
   trainingPlanId String
   athleteId      String
   fiveKPace      String // mm:ss format
@@ -245,7 +246,7 @@ model TrainingPlanFiveKPace {
 
 // Plan-specific snapshot: Preferred run days at time of plan creation
 model TrainingPlanPreferredDays {
-  id            String @id @default(cuid())
+  id             String @id @default(cuid())
   trainingPlanId String
   athleteId      String
   preferredDays  Int[] // e.g. [1,3,5] where 1=Monday, 7=Sunday
@@ -294,19 +295,18 @@ model TrainingDayExecuted {
 //////////////////////////////////////////////////////////
 
 model GoFastCompany {
-  id           String      @id @default(cuid())
-  name         String
-  slug         String      @unique
-  address      String?
-  city         String?
-  state        String?
-  zip          String?
-  domain       String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  address   String?
+  city      String?
+  state     String?
+  zip       String?
+  domain    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  athletes     Athlete[]
+  athletes Athlete[]
 
   @@map("go_fast_companies")
 }
-

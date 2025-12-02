@@ -80,7 +80,7 @@ You must return EXACT JSON ONLY (no markdown, no explanation):
   "totalWeeks": ${inputs.totalWeeks},
   "weeks": [
     {
-      "weekIndex": 0,
+      "weekIndex": 1,
       "phase": "base",
       "days": [
         {
@@ -102,14 +102,16 @@ You must return EXACT JSON ONLY (no markdown, no explanation):
 
 CRITICAL RULES:
 - DO NOT generate calendar dates. We will compute dates ourselves.
+- DO NOT return anything except weekIndex, dayIndex, phase, and plannedData.
 - dayIndex MUST be 1-7 (1=Monday, 2=Tuesday, ..., 7=Sunday)
 - Each week MUST have exactly 7 days (dayIndex 1 through 7)
-- weekIndex starts at 0 (first week is 0, second week is 1, etc.)
-- Generate ALL weeks from weekIndex 0 to weekIndex ${inputs.totalWeeks - 1}
+- weekIndex starts at 1 (first week is 1, second week is 2, etc.)
+- Generate ALL weeks from weekIndex 1 to weekIndex ${inputs.totalWeeks}
 - Include rest days appropriately
 - Progress mileage gradually
 - Match phases to weeks correctly (base ~25%, build ~35%, peak ~20%, taper remaining)
 - Return complete plan with all weeks and all days
+- DO NOT create adaptive metrics, summaries, or preferred days
 
 Return ONLY the JSON object, nothing else.`;
 

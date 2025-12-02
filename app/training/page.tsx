@@ -69,14 +69,7 @@ export default function TrainingHub() {
         }
       }
 
-      // Check if athlete has completed onboarding
-      if (athlete && !athlete.myTargetRace) {
-        console.log('⚠️ Athlete has not completed onboarding → redirecting');
-        router.push('/onboarding');
-        return;
-      }
-
-      // Load hub data
+      // Load hub data (will check for active plan)
       loadHubData();
     });
 
@@ -187,7 +180,7 @@ export default function TrainingHub() {
           {planStatus?.hasPlan ? (
             <div>
               <p className="text-gray-600 mb-2">
-                Week {planStatus.currentWeek + 1} of {planStatus.totalWeeks} - {planStatus.phase} Phase
+                Week {planStatus.currentWeek} of {planStatus.totalWeeks} - {planStatus.phase} Phase
               </p>
               <button
                 onClick={() => router.push('/training/plan')}
@@ -257,7 +250,11 @@ export default function TrainingHub() {
             <div className="font-semibold">View Plan</div>
           </button>
           <button
-            onClick={() => router.push('/training/plan/0')}
+            onClick={() => {
+              if (planStatus?.hasPlan && planStatus.currentWeek > 0) {
+                router.push(`/training/plan/${planStatus.currentWeek}`);
+              }
+            }}
             className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition"
           >
             <div className="text-4xl mb-2">📊</div>

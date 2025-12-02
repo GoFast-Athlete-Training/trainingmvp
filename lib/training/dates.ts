@@ -62,7 +62,7 @@ export function isToday(date: Date | string): boolean {
 /**
  * Calculate date for a training day
  * @param planStartDate - Start date of the training plan
- * @param weekIndex - Week index (0-based)
+ * @param weekIndex - Week index (1-based: first week is 1, second week is 2, etc.)
  * @param dayIndex - Day index (1-7, where 1=Monday, 7=Sunday)
  * @returns Date for that specific day
  */
@@ -71,13 +71,14 @@ export function calculateTrainingDayDate(
   weekIndex: number,
   dayIndex: number
 ): Date {
-  // dayIndex 1 = Monday, so we need to adjust
-  // If plan starts on Monday (day 1), then:
-  // weekIndex 0, dayIndex 1 = day 0
-  // weekIndex 0, dayIndex 2 = day 1
-  // weekIndex 1, dayIndex 1 = day 7
+  // weekIndex starts at 1 (first week is 1, not 0)
+  // dayIndex is 1-7 (1=Monday, 7=Sunday)
+  // Formula: (weekIndex - 1) * 7 + (dayIndex - 1)
+  // Example: weekIndex 1, dayIndex 1 = day 0 (first day of first week)
+  //          weekIndex 1, dayIndex 2 = day 1
+  //          weekIndex 2, dayIndex 1 = day 7 (first day of second week)
   
-  const daysToAdd = (weekIndex * 7) + (dayIndex - 1);
+  const daysToAdd = ((weekIndex - 1) * 7) + (dayIndex - 1);
   const date = new Date(planStartDate);
   date.setDate(date.getDate() + daysToAdd);
   return date;

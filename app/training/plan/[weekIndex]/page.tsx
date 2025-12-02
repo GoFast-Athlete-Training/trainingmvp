@@ -84,7 +84,7 @@ export default function WeekView() {
             ← Back
           </button>
           <h1 className="text-3xl font-bold mb-2">
-            Week {week.weekIndex + 1} - {week.phase.charAt(0).toUpperCase() + week.phase.slice(1)} Phase
+            Week {week.weekIndex} - {week.phase.charAt(0).toUpperCase() + week.phase.slice(1)} Phase
           </h1>
         </div>
 

@@ -43,7 +43,8 @@ export async function saveTrainingPlanToDB(
     const dayRecords = [];
     for (const week of plan.weeks) {
       for (const day of week.days) {
-        // Compute date: (weekIndex * 7) + (dayIndex - 1) days from planStartDate
+        // Compute date: weekIndex starts at 1, dayIndex is 1-7
+        // Formula: ((weekIndex - 1) * 7) + (dayIndex - 1) days from planStartDate
         const computedDate = calculateTrainingDayDate(planStartDate, week.weekIndex, day.dayIndex);
 
         dayRecords.push({
