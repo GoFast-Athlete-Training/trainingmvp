@@ -39,7 +39,7 @@ model Athlete {
   fiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
 
   // Legacy training fields (deprecated, keep for migration)
-  myCurrentPace       String?  // ⚠️ DEPRECATED - use canonicalFiveKPace
+  myCurrentPace       String?  // ⚠️ DEPRECATED - use fiveKPace
   myWeeklyMileage     Int?
   myTrainingGoal      String?
   myTrainingStartDate DateTime?
@@ -444,6 +444,7 @@ Athlete (profile identity)
 **Current Implementation:**
 - ✅ Race search/create via `/api/race/search` and `/api/race/create`
 - ✅ Profile management via `/api/athlete/profile` (GET, PUT)
+- ✅ Training setup save via `/api/training-setup/save`
 - ✅ Training plan generation via `/api/training-plan/generate`
 - ✅ MVP1: Race + Goal Time ONLY (no preferred days, no intensity tiers)
 
@@ -451,20 +452,20 @@ Athlete (profile identity)
 - `app/api/race/search/route.ts` - Search RaceRegistry
 - `app/api/race/create/route.ts` - Create RaceRegistry entry
 - `app/api/athlete/profile/route.ts` - Get/update athlete profile (including fiveKPace)
+- `app/api/training-setup/save/route.ts` - Save raceRegistryId + goalTime
 - `app/api/training-plan/generate/route.ts` - Generate full training plan
-- `app/api/onboarding/save/route.ts` - Save race selection and goal time
-- `lib/training/plan-generator.ts` - OpenAI plan generation
+- `lib/training/plan-generator.ts` - OpenAI plan generation (weekIndex starts at 1, no dates)
 - `lib/training/save-plan.ts` - Save plan to database with snapshots
 
 **MVP1 Setup Flow:**
 1. **Profile Setup**: User sets `fiveKPace` via `/api/athlete/profile` (PUT)
 2. **Race Selection**: User searches/creates race via `/api/race/search` or `/api/race/create`
-3. **Goal Entry**: User enters goal time (saved via `/api/onboarding/save`)
+3. **Goal Entry**: User enters goal time (saved via `/api/training-setup/save`)
 4. **Plan Generation**: User calls `/api/training-plan/generate` with `raceRegistryId` and `goalTime`
    - System reads `athlete.fiveKPace`
-   - Generates complete plan via OpenAI
+   - Generates complete plan via OpenAI (weekIndex 1-based, no dates)
    - Creates `TrainingPlan` with snapshot `TrainingPlanFiveKPace`
-   - Creates all `TrainingDayPlanned` records with computed dates
+   - Creates all `TrainingDayPlanned` records with computed dates (weekIndex 1-7)
 
 **Data Saved:**
 - `Athlete.fiveKPace` - 5K pace (via profile update)
@@ -604,14 +605,14 @@ export async function getAthleteIdFromRequest(request: NextRequest) {
 
 **Current Flow:**
 1. `app/page.tsx` (splash) → checks Firebase auth state → routes to `/signup` or `/training`
-2. `app/signup/page.tsx` → Firebase Google/Email sign-in → creates/upserts athlete → routes based on onboarding status
-3. `app/onboarding/page.tsx` → collects race info → generates inference → saves data
-4. `app/training/page.tsx` → auth guard + onboarding check → redirects if needed → loads training data
+2. `app/signup/page.tsx` → Firebase Google/Email sign-in → creates/upserts athlete → routes based on active plan
+3. `app/training-setup/page.tsx` → collects race info → saves setup → generates plan
+4. `app/training/page.tsx` → auth guard → loads training data
 
 **Auth Guards:**
 - ✅ Firebase auth state checked on all protected routes
 - ✅ Redirects to `/signup` if not authenticated
-- ✅ Redirects to `/onboarding` if onboarding incomplete
+- ✅ Redirects to `/training-setup` if no active plan
 - ✅ Uses athleteId from authenticated user
 
 ## Architecture: Separated Concerns
@@ -637,18 +638,20 @@ The training system is organized into four distinct domains, each with its own U
 - OpenAI inference/insights
 
 **Database:**
-- `Athlete` fields: `myTargetRace`, `myTrainingGoal`, `myCurrentPace`
-- `Race` record
-- `TrainingPlan` record
-- `TrainingDayPlanned` records (all days)
+- `Athlete.fiveKPace` - 5K pace (canonical identity)
+- `RaceRegistry` record (global race catalog)
+- `TrainingPlan` record with `raceRegistryId` and `goalTime`
+- `TrainingPlanFiveKPace` snapshot (plan-specific pace at creation)
+- `TrainingDayPlanned` records (all days with computed dates)
 
 **Files:**
-- `app/training-setup/page.tsx` - Setup UI (formerly onboarding)
-- `app/api/training-setup/inference/route.ts` - OpenAI insights
-- `app/api/training-setup/save/route.ts` - Save setup data
-- `app/api/training-setup/create-plan/route.ts` - Generate & save plan
-- `lib/training-setup.ts` - Setup logic
-- `lib/services/plan-generator.ts` - OpenAI plan generation
+- `app/training-setup/page.tsx` - Setup UI (MVP1: Race + Goal Time only)
+- `app/api/training-setup/save/route.ts` - Save raceRegistryId + goalTime
+- `app/api/training-plan/generate/route.ts` - Generate full plan
+- `app/api/race/search/route.ts` - Search RaceRegistry
+- `app/api/race/create/route.ts` - Create RaceRegistry entry
+- `lib/training/plan-generator.ts` - OpenAI plan generation
+- `lib/training/save-plan.ts` - Save plan with snapshots
 
 ### 2. Training Plan Execution
 **Purpose**: Track daily workout completion and progress through the plan.
@@ -774,17 +777,17 @@ The training system is organized into four distinct domains, each with its own U
 
 ## Complete User Flow
 
-### Authentication & Onboarding Flow
+### Authentication & Training Setup Flow (MVP1)
 ```
 1. User visits app → Splash screen
 2. Check Firebase auth state
    ├─ Not authenticated → /signup
-   └─ Authenticated → Check onboarding
-       ├─ No myTargetRace → /onboarding
-       └─ Has myTargetRace → /training
+   └─ Authenticated → Check active plan
+       ├─ No active plan → /training-setup
+       └─ Has active plan → /training
 3. Signup → Firebase auth → /api/athlete/create (upsert)
-4. Onboarding → Collect race info → OpenAI inference → Save to DB
-5. Training → Auth guard → Onboarding check → Load training data
+4. Training Setup → Select/Create race → Enter goal time → Generate plan
+5. Training → Auth guard → Load training data
 ```
 
 ### Training Plan Creation Flow (MVP1)
@@ -798,8 +801,8 @@ The training system is organized into four distinct domains, each with its own U
    └─ RaceRegistry entry created/found
 
 3. User enters goal time
-   ├─ POST /api/onboarding/save
-   ├─ Body: { raceRegistryId, goalTime, fiveKPace? }
+   ├─ POST /api/training-setup/save
+   ├─ Body: { raceRegistryId, goalTime }
    └─ Data saved (no plan created yet)
 
 4. User generates plan
@@ -852,19 +855,13 @@ The training system is organized into four distinct domains, each with its own U
 
 ### Phase 1: Refactor Training Plan Setup Domain
 
-**Rename & Reorganize:**
-- `app/onboarding/` → `app/training-setup/`
-- `app/api/onboarding/` → `app/api/training-setup/`
-- Move `lib/services/plan-generator.ts` → `lib/training-setup/create-plan.ts`
-
-**Create New Files:**
-```
-lib/training-setup/
-  index.ts              - Main exports
-  validate.ts           - Validate setup completeness
-  create-plan.ts        - Create plan from setup data (from plan-generator.ts)
-  inference.ts          - OpenAI insights (from onboarding/inference)
-```
+**Current Structure (MVP1):**
+- `app/training-setup/` - Setup UI (MVP1: Race + Goal Time only)
+- `app/api/training-setup/save/route.ts` - Save setup data
+- `app/api/training-plan/generate/route.ts` - Generate plan
+- `lib/training/plan-generator.ts` - AI plan generation
+- `lib/training/save-plan.ts` - Save plan with snapshots
+- `lib/training/dates.ts` - Date utilities
 
 **Key Functions:**
 ```typescript
@@ -1057,48 +1054,44 @@ OPENAI_API_KEY=
 7. ✅ Add goal pace calculation
 
 #### Next Steps 🔄
-1. **HIGH**: Refactor "onboarding" → "training-setup" (rename folders/files)
-2. **HIGH**: Create `lib/training-setup/` domain with auto plan creation
-3. **HIGH**: Create `lib/training-execution/` domain (separate from matching)
-4. **HIGH**: Create `lib/activity-matching/` domain (separate UX/process)
-5. **MEDIUM**: Create `lib/training-review/` domain for weekly feedback
-6. **MEDIUM**: Reorganize API routes by domain
-7. **LOW**: Add ability to edit setup data
-8. **LOW**: Add race date picker to setup
+1. **HIGH**: Update frontend `/onboarding` page to use `/training-setup` routes
+2. **MEDIUM**: Create `lib/training-execution/` domain (separate from matching)
+3. **MEDIUM**: Create `lib/activity-matching/` domain (separate UX/process)
+4. **MEDIUM**: Create `lib/training-review/` domain for weekly feedback
+5. **LOW**: Add ability to edit setup data
+6. **LOW**: Add race date picker to setup
 
 ### Architecture Status
 
-**Authentication & Setup: ✅ COMPLETE (needs rename)**
+**Authentication & Setup: ✅ COMPLETE (MVP1)**
 - Firebase auth working
-- Setup flow complete (currently called "onboarding")
+- Setup flow complete (training-setup routes)
 - Data saved to database
 - Auth guards in place
-- ⚠️ Needs: Auto-create plan after setup
+- Plan generation via `/api/training-plan/generate`
+- Snapshot tables implemented
 
-**Domain Separation: ⚠️ NEEDS REFACTORING**
-- **Training Setup**: ✅ Exists but needs rename and auto-plan creation
+**Domain Separation: ✅ MVP1 COMPLETE**
+- **Training Setup**: ✅ Complete - `/api/training-setup/save` + `/api/training-plan/generate`
 - **Training Execution**: ⚠️ Exists but mixed with matching - needs separation
 - **Activity Matching**: ⚠️ Exists but mixed with execution - needs separate domain
 - **Training Review**: ❌ Not yet implemented - needs creation
 
-**Recommended Folder Structure:**
+**Current Folder Structure (MVP1):**
 ```
 app/
-  training-setup/          (rename from onboarding)
-  training-execution/
-  activity-matching/
-  training-review/
+  training-setup/          ✅ MVP1 complete
+  training/                ✅ Execution views
+  training/plan/           ✅ Plan viewing
 
 app/api/
-  training-setup/          (rename from onboarding)
-  training-execution/
-  activity-matching/
-  training-review/
+  training-setup/          ✅ MVP1 complete
+  training-plan/           ✅ MVP1 complete
+  race/                    ✅ MVP1 complete
+  athlete/profile/         ✅ MVP1 complete
 
 lib/
-  training-setup/
-  training-execution/
-  activity-matching/
-  training-review/
+  training/                ✅ MVP1 complete (plan-generator, save-plan, dates)
+  athlete/profile.ts       ✅ MVP1 complete
 ```
 
