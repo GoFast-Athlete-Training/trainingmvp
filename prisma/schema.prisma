@@ -12,18 +12,63 @@ datasource db {
 
 model Athlete {
   id         String @id @default(cuid())
+  
+  // Auth
   firebaseId String @unique
+  email      String?
 
-  // Canonical Identity (can be updated)
-  canonicalFiveKPace  String? // mm:ss format
-  preferredRunDays    Int[]   // e.g. [1,3,5] where 1=Monday, 7=Sunday (empty array if not set)
+  // Company Link (Single-tenant) - REQUIRED
+  companyId String
+  company   GoFastCompany @relation(fields: [companyId], references: [id])
 
-  // Legacy fields (deprecated, keep for migration)
+  // Universal profile
+  firstName    String?
+  lastName     String?
+  gofastHandle String?  @unique
+  photoURL     String?
+  phoneNumber  String?
+  birthday     DateTime?
+  gender       String?
+  city         String?
+  state        String?
+  primarySport String?
+  bio          String?
+  instagram    String?
+
+  // Profile Identity (can be updated)
+  fiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
+
+  // Legacy training fields (deprecated, keep for migration)
   myCurrentPace       String?
   myWeeklyMileage     Int?
   myTrainingGoal      String?
-  myTargetRace        String?
   myTrainingStartDate DateTime?
+  myTargetRace        String?
+  preferredDistance   String?
+  myPaceRange         String?
+  timePreference      String?
+  myRunningGoals      String?
+
+  // Garmin PKCE Integration
+  garmin_user_id         String?  @unique
+  garmin_access_token    String?
+  garmin_refresh_token   String?
+  garmin_expires_in      Int?
+  garmin_scope           String?
+  garmin_connected_at     DateTime?
+  garmin_last_sync_at    DateTime?
+  garmin_is_connected     Boolean  @default(false)
+  garmin_disconnected_at  DateTime?
+  garmin_permissions      Json?
+  garmin_user_profile     Json?
+  garmin_user_sleep       Json?
+  garmin_user_preferences Json?
+
+  // Strava (future)
+  strava_id             Int?     @unique
+  strava_access_token   String?
+  strava_refresh_token  String?
+  strava_expires_at     Int?
 
   // System fields
   createdAt DateTime @default(now())
@@ -35,41 +80,43 @@ model Athlete {
   executedDays               TrainingDayExecuted[]
   activities                 AthleteActivity[]
   trainingPlanFiveKPaces     TrainingPlanFiveKPace[]
-  trainingPlanPreferredDays  TrainingPlanPreferredDays[]
 
   @@map("athletes")
 }
 
 model AthleteActivity {
-  id        String @id @default(cuid())
-  athleteId String
+  id              String   @id @default(cuid())
+  athleteId       String
+  sourceActivityId String  @unique
+  source          String   @default("garmin")
 
-  // Source Information
-  sourceActivityId String @unique
-  source           String @default("garmin")
-
-  // Core Activity Data
-  activityType String?
-  activityName String?
-  startTime    DateTime?
-  duration     Int?
-  distance     Float?
-  averageSpeed Float?
-  calories     Int?
-
-  // Performance Metrics
+  activityType   String?
+  activityName   String?
+  startTime      DateTime?
+  duration       Int?
+  distance       Float?
+  calories       Int?
+  averageSpeed   Float?
   averageHeartRate Int?
-  maxHeartRate     Int?
-  elevationGain    Float?
+  maxHeartRate   Int?
+  elevationGain  Float?
+  steps          Int?
 
-  // Timestamps
-  syncedAt      DateTime @default(now())
-  lastUpdatedAt DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // Location + Polyline
+  startLatitude  Float?
+  startLongitude Float?
+  endLatitude    Float?
+  endLongitude   Float?
+  summaryPolyline String?
 
-  // Relations
+  summaryData    Json?
+  detailData     Json?
+  hydratedAt     DateTime?
+
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("athlete_activities")
 }
@@ -240,5 +287,26 @@ model TrainingDayExecuted {
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
 
   @@map("training_days_executed")
+}
+
+//////////////////////////////////////////////////////////
+//  GOFAST COMPANY (SINGLE-TENANT CONTAINER)
+//////////////////////////////////////////////////////////
+
+model GoFastCompany {
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  address      String?
+  city         String?
+  state        String?
+  zip          String?
+  domain       String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  athletes     Athlete[]
+
+  @@map("go_fast_companies")
 }
 

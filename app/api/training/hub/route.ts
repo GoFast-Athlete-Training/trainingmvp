@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getStartOfDay, getEndOfDay } from '@/lib/utils/dates';
+import { getStartOfDay, getEndOfDay } from '@/lib/training/dates';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 
 export async function GET(request: NextRequest) {

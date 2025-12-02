@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/lib/api';
-import { formatDate } from '@/lib/utils/dates';
+import { formatDate } from '@/lib/training/dates';
 import { mpsToPaceString } from '@/lib/utils/pace';
 
 interface Activity {

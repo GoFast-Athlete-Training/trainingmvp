@@ -6,7 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { LocalStorageAPI } from '@/lib/localstorage';
 import api from '@/lib/api';
-import { formatDate, isToday } from '@/lib/utils/dates';
+import { formatDate, isToday } from '@/lib/training/dates';
 import { formatPace } from '@/lib/utils/pace';
 
 interface TodayWorkout {

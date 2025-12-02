@@ -1,6 +1,4 @@
 import OpenAI from 'openai';
-import { prisma } from '../prisma';
-import { calculateTrainingDayDate } from '../utils/dates';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -10,8 +8,7 @@ export interface TrainingInputs {
   raceName: string;
   raceDistance: string;
   goalTime: string;
-  canonicalFiveKPace: string; // mm:ss format
-  preferredRunDays?: number[]; // 1-7 where 1=Monday, 7=Sunday
+  fiveKPace: string; // mm:ss format - from athlete.fiveKPace
   totalWeeks: number; // Calculated externally
 }
 
@@ -75,8 +72,7 @@ Workout Types:
 Inputs:
 - Race: ${inputs.raceName} (${inputs.raceDistance})
 - Goal Time: ${inputs.goalTime}
-- Canonical 5K Pace: ${inputs.canonicalFiveKPace} per mile
-- Preferred Run Days: ${inputs.preferredRunDays?.join(', ') || 'Not specified'} (1=Monday, 7=Sunday)
+- 5K Pace: ${inputs.fiveKPace} per mile
 - Total Weeks: ${inputs.totalWeeks}
 
 You must return EXACT JSON ONLY (no markdown, no explanation):
@@ -151,79 +147,4 @@ Return ONLY the JSON object, nothing else.`;
   }
 }
 
-/**
- * Save generated plan to database
- * Creates TrainingPlan, snapshots, and ALL TrainingDayPlanned records
- */
-export async function saveTrainingPlanToDB(
-  athleteId: string,
-  raceRegistryId: string,
-  planStartDate: Date,
-  plan: GeneratedPlan,
-  inputs: TrainingInputs
-): Promise<string> {
-  // Use transaction to ensure atomicity
-  const result = await prisma.$transaction(async (tx) => {
-    // 1. Create TrainingPlan
-    const trainingPlan = await tx.trainingPlan.create({
-      data: {
-        athleteId,
-        raceRegistryId,
-        trainingPlanName: `${inputs.raceName} Training Plan`,
-        trainingPlanGoalTime: inputs.goalTime,
-        trainingPlanStartDate: planStartDate,
-        trainingPlanTotalWeeks: plan.totalWeeks,
-        status: 'active',
-      },
-    });
-
-    // 2. Create snapshot: TrainingPlanFiveKPace
-    await tx.trainingPlanFiveKPace.create({
-      data: {
-        trainingPlanId: trainingPlan.id,
-        athleteId,
-        fiveKPace: inputs.canonicalFiveKPace,
-      },
-    });
-
-    // 3. Create snapshot: TrainingPlanPreferredDays (if provided)
-    if (inputs.preferredRunDays && inputs.preferredRunDays.length > 0) {
-      await tx.trainingPlanPreferredDays.create({
-        data: {
-          trainingPlanId: trainingPlan.id,
-          athleteId,
-          preferredDays: inputs.preferredRunDays,
-        },
-      });
-    }
-
-    // 4. Create ALL TrainingDayPlanned records with computed dates
-    const dayRecords = [];
-    for (const week of plan.weeks) {
-      for (const day of week.days) {
-        // Compute date: (weekIndex * 7) + (dayIndex - 1) days from planStartDate
-        const computedDate = calculateTrainingDayDate(planStartDate, week.weekIndex, day.dayIndex);
-
-        dayRecords.push({
-          trainingPlanId: trainingPlan.id,
-          athleteId,
-          weekIndex: week.weekIndex,
-          dayIndex: day.dayIndex, // 1-7
-          phase: week.phase,
-          date: computedDate,
-          plannedData: day.plannedData,
-        });
-      }
-    }
-
-    // Batch create all days
-    await tx.trainingDayPlanned.createMany({
-      data: dayRecords,
-    });
-
-    return trainingPlan.id;
-  });
-
-  return result;
-}
 

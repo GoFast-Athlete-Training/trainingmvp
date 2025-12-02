@@ -49,20 +49,43 @@ export async function POST(request: Request) {
     const firstName = displayName?.split(' ')[0] || null;
     const lastName = displayName?.split(' ').slice(1).join(' ') || null;
 
-    // Upsert athlete (create or update)
+    // Ensure GoFast company exists (self-healing)
+    const gofastCompany = await prisma.goFastCompany.upsert({
+      where: { slug: "gofast" },
+      update: {},
+      create: {
+        name: "GoFast",
+        slug: "gofast",
+        address: "2604 N. George Mason Dr.",
+        city: "Arlington",
+        state: "VA",
+        zip: "22207",
+        domain: "gofastcrushgoals.com",
+      },
+    });
+
+    // Upsert athlete with dynamic company association
     const athlete = await prisma.athlete.upsert({
       where: { firebaseId },
       update: {
         // Sync Firebase data on update
         email: email || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        photoURL: picture || undefined,
+        companyId: gofastCompany.id,
       },
       create: {
         firebaseId,
         email: email || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        photoURL: picture || undefined,
+        companyId: gofastCompany.id,
       },
     });
 
-    // Format response
+    // Format response like gofastapp-mvp
     return NextResponse.json({
       success: true,
       message: 'Athlete found or created',
@@ -71,11 +94,18 @@ export async function POST(request: Request) {
         id: athlete.id,
         firebaseId: athlete.firebaseId,
         email: athlete.email,
-        myCurrentPace: athlete.myCurrentPace,
-        myWeeklyMileage: athlete.myWeeklyMileage,
-        myTrainingGoal: athlete.myTrainingGoal,
-        myTargetRace: athlete.myTargetRace,
-        myTrainingStartDate: athlete.myTrainingStartDate,
+        firstName: athlete.firstName,
+        lastName: athlete.lastName,
+        gofastHandle: athlete.gofastHandle,
+        birthday: athlete.birthday,
+        gender: athlete.gender,
+        city: athlete.city,
+        state: athlete.state,
+        primarySport: athlete.primarySport,
+        photoURL: athlete.photoURL,
+        bio: athlete.bio,
+        instagram: athlete.instagram,
+        fiveKPace: athlete.fiveKPace,
         createdAt: athlete.createdAt,
         updatedAt: athlete.updatedAt,
       },

@@ -5,6 +5,433 @@
 ### Overview
 The `trainingmvp` repository is a self-contained Next.js 14 training module that provides a complete training plan management system. Authentication and onboarding are now implemented, mirroring the `gofastapp-mvp` pattern.
 
+## Database Schema - ACTUAL MODELS
+
+### Athlete Model (Complete Structure)
+
+```prisma
+model Athlete {
+  id         String @id @default(cuid())
+  
+  // Auth
+  firebaseId String @unique
+  email      String?
+
+  // Company Link (Single-tenant) - REQUIRED
+  companyId String
+  company   GoFastCompany @relation(fields: [companyId], references: [id])
+
+  // Universal profile
+  firstName    String?
+  lastName     String?
+  gofastHandle String?  @unique
+  photoURL     String?
+  phoneNumber  String?
+  birthday     DateTime?
+  gender       String?
+  city         String?
+  state        String?
+  primarySport String?
+  bio          String?
+  instagram    String?
+
+  // Canonical Identity (can be updated)
+  canonicalFiveKPace  String? // mm:ss format - THE SOURCE OF TRUTH
+  preferredRunDays    Int[]   // e.g. [1,3,5] where 1=Monday, 7=Sunday (empty array if not set)
+
+  // Legacy training fields (deprecated, keep for migration)
+  myCurrentPace       String?  // ⚠️ DEPRECATED - use canonicalFiveKPace
+  myWeeklyMileage     Int?
+  myTrainingGoal      String?
+  myTrainingStartDate DateTime?
+  myTargetRace        String?
+  preferredDistance   String?
+  myPaceRange         String?
+  timePreference      String?
+  myRunningGoals      String?
+
+  // Garmin PKCE Integration
+  garmin_user_id         String?  @unique
+  garmin_access_token    String?
+  garmin_refresh_token   String?
+  garmin_expires_in      Int?
+  garmin_scope           String?
+  garmin_connected_at     DateTime?
+  garmin_last_sync_at    DateTime?
+  garmin_is_connected     Boolean  @default(false)
+  garmin_disconnected_at  DateTime?
+  garmin_permissions      Json?
+  garmin_user_profile     Json?
+  garmin_user_sleep       Json?
+  garmin_user_preferences Json?
+
+  // Strava (future)
+  strava_id             Int?     @unique
+  strava_access_token   String?
+  strava_refresh_token  String?
+  strava_expires_at     Int?
+
+  // System fields
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlans              TrainingPlan[]
+  plannedDays                TrainingDayPlanned[]
+  executedDays               TrainingDayExecuted[]
+  activities                 AthleteActivity[]
+  trainingPlanFiveKPaces     TrainingPlanFiveKPace[]      // Junction table relation
+  trainingPlanPreferredDays  TrainingPlanPreferredDays[] // Junction table relation
+
+  @@map("athletes")
+}
+```
+
+**Key Points:**
+- ✅ `canonicalFiveKPace: String?` - **THE CANONICAL 5K PACE** (mm:ss format, e.g. "8:30")
+- ✅ `preferredRunDays: Int[]` - **THE CANONICAL PREFERRED DAYS** (1-7, where 1=Monday, 7=Sunday)
+- ⚠️ `myCurrentPace: String?` - **LEGACY FIELD** - kept for migration, should use `canonicalFiveKPace` instead
+- ✅ Relations to snapshot junction tables: `trainingPlanFiveKPaces` and `trainingPlanPreferredDays`
+
+---
+
+### Snapshot Junction Tables (Plan-Specific Identity)
+
+#### TrainingPlanFiveKPace (Snapshot Table)
+
+```prisma
+model TrainingPlanFiveKPace {
+  id            String @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+  fiveKPace      String // mm:ss format - SNAPSHOT at plan creation time
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId])  // One snapshot per plan
+  @@map("training_plan_five_k_pace")
+}
+```
+
+**Purpose:** Captures the athlete's `canonicalFiveKPace` at the moment the plan was created. Prevents identity drift - if athlete updates their canonical pace later, old plans still reference the original pace.
+
+---
+
+#### TrainingPlanPreferredDays (Snapshot Table)
+
+```prisma
+model TrainingPlanPreferredDays {
+  id            String @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+  preferredDays  Int[] // e.g. [1,3,5] where 1=Monday, 7=Sunday - SNAPSHOT at plan creation
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId])  // One snapshot per plan
+  @@map("training_plan_preferred_days")
+}
+```
+
+**Purpose:** Captures the athlete's `preferredRunDays` at the moment the plan was created. Prevents identity drift - if athlete updates their preferred days later, old plans still reference the original days.
+
+---
+
+### RaceRegistry Model (Global Race Catalog)
+
+```prisma
+model RaceRegistry {
+  id        String   @id @default(cuid())
+  name      String
+  distance  String   // "marathon", "half", "5k", "10k", etc.
+  date      DateTime
+  city      String?
+  state     String?
+  country   String?
+  createdBy String   // athleteId who created it
+  isGlobal  Boolean  @default(false) // true = available to all users
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlans TrainingPlan[]
+
+  @@map("race_registry")
+}
+```
+
+**Purpose:** Global catalog of races. Users can create their own races, and future global races can be added. Replaces the deprecated `Race` model.
+
+---
+
+### TrainingPlan Model (Master Container)
+
+```prisma
+model TrainingPlan {
+  id        String @id @default(cuid())
+  athleteId String
+  raceRegistryId String // References RaceRegistry (NOT Race)
+
+  // PLAN IDENTITY
+  trainingPlanName String
+
+  // CYCLE-LEVEL GOALS
+  trainingPlanGoalTime String?
+
+  // PLAN STRUCTURE
+  trainingPlanStartDate  DateTime
+  trainingPlanTotalWeeks Int
+
+  // STATUS
+  status String @default("draft")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  athlete                Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  raceRegistry           RaceRegistry            @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  plannedDays            TrainingDayPlanned[]
+  trainingPlanFiveKPace  TrainingPlanFiveKPace?  // Optional snapshot (one per plan)
+  trainingPlanPreferredDays TrainingPlanPreferredDays? // Optional snapshot (one per plan)
+
+  @@map("training_plans")
+}
+```
+
+**Key Points:**
+- ✅ Uses `raceRegistryId` (NOT `raceId`)
+- ✅ Has optional relations to snapshot tables
+- ❌ **REMOVED:** `trainingPlanBaseline5k`, `trainingPlanBaselineWeeklyMileage`, `trainingPlanAdaptive5kTime` - these live in snapshot tables or canonical fields
+
+---
+
+### TrainingDayPlanned Model (Atomic Workout Elements)
+
+```prisma
+model TrainingDayPlanned {
+  id             String  @id @default(cuid())
+  trainingPlanId String
+  athleteId      String
+
+  // Day Identification
+  weekIndex Int
+  dayIndex  Int  // MUST be 1-7 (1=Monday, 7=Sunday) - NOT 0-6
+  phase     String // "base", "build", "peak", "taper"
+
+  // Computed date (calculated by backend, not from AI)
+  date      DateTime
+
+  // PLANNED WORKOUT (atomic element)
+  plannedData Json  // Contains: type, mileage, paceRange, targetPace, hrZone, segments, etc.
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanId, weekIndex, dayIndex])
+  @@map("training_days_planned")
+}
+```
+
+**Key Points:**
+- ✅ `dayIndex` is **1-7** (1=Monday, 7=Sunday) - **NOT 0-6**
+- ✅ `date` is **computed by backend** using `calculateTrainingDayDate()` - NOT from AI
+- ❌ **REMOVED:** `dayName` field - use `getDayName(dayIndex)` utility instead
+- ✅ `plannedData` is JSON containing workout details
+
+---
+
+### TrainingDayExecuted Model (Execution Records)
+
+```prisma
+model TrainingDayExecuted {
+  id        String @id @default(cuid())
+  athleteId String
+
+  // THE LINK - shell container for AthleteActivity
+  activityId String? @unique  // Links to AthleteActivity if matched
+
+  // Optional metadata
+  weekIndex Int
+  dayIndex  Int
+  date      DateTime
+
+  // Snapshot/computed fields
+  plannedData Json?  // Snapshot of planned workout
+  analysis    Json?  // GoFastScore and analysis
+  feedback    Json?  // User feedback
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@map("training_days_executed")
+}
+```
+
+**Key Points:**
+- ✅ Links to `AthleteActivity` via `activityId` (optional - can be manual entry)
+- ✅ Contains snapshot of `plannedData` at execution time
+- ✅ Stores analysis results (GoFastScore) in `analysis` JSON field
+- ❌ **NO relation to TrainingPlan** - standalone execution record
+
+---
+
+### GoFastCompany Model (Single-Tenant Container)
+
+```prisma
+model GoFastCompany {
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  address      String?
+  city         String?
+  state        String?
+  zip          String?
+  domain       String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  athletes     Athlete[]
+
+  @@map("go_fast_companies")
+}
+```
+
+**Purpose:** Single-tenant architecture. All athletes belong to a company (default: "gofast").
+
+---
+
+### Legacy Race Model (Deprecated)
+
+```prisma
+// Legacy Race model - deprecated, use RaceRegistry instead
+model Race {
+  id String @id @default(cuid())
+
+  // Race Event Details
+  raceName      String
+  raceType      String
+  raceDate      DateTime
+  location      String?
+  distanceMiles Float
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations (deprecated - no new plans should use this)
+  // trainingPlans TrainingPlan[] // Removed - use RaceRegistry instead
+
+  @@map("races")
+}
+```
+
+**Status:** ⚠️ **DEPRECATED** - Still exists in schema but should not be used. Use `RaceRegistry` instead.
+
+---
+
+## 5K Pace Architecture - How It Works
+
+### Canonical vs Plan-Specific
+
+**Canonical (Athlete Level):**
+- `Athlete.canonicalFiveKPace: String?` - **THE SOURCE OF TRUTH**
+- Updated when athlete improves (via analysis service)
+- Used as input when creating NEW training plans
+- Can be manually updated by athlete in profile settings
+
+**Plan-Specific (Snapshot):**
+- `TrainingPlanFiveKPace.fiveKPace: String` - **SNAPSHOT AT PLAN CREATION**
+- Captured when plan is created
+- Never changes after plan creation
+- Used for historical accuracy and race readiness calculations
+
+### Flow Example
+
+1. **Athlete creates profile:**
+   - Sets `canonicalFiveKPace = "8:30"`
+
+2. **Athlete creates training plan:**
+   - System reads `canonicalFiveKPace = "8:30"`
+   - Creates `TrainingPlanFiveKPace` snapshot with `fiveKPace = "8:30"`
+   - Plan is generated using this pace
+
+3. **Athlete completes workouts:**
+   - Analysis service updates `canonicalFiveKPace = "8:25"` (improved)
+   - **BUT** `TrainingPlanFiveKPace.fiveKPace` stays `"8:30"` (snapshot)
+
+4. **Athlete creates NEW plan:**
+   - System reads NEW `canonicalFiveKPace = "8:25"`
+   - Creates NEW snapshot with `fiveKPace = "8:25"`
+   - Old plan still references `"8:30"` (historical accuracy)
+
+---
+
+## Preferred Run Days Architecture
+
+### Canonical vs Plan-Specific
+
+**Canonical (Athlete Level):**
+- `Athlete.preferredRunDays: Int[]` - **THE SOURCE OF TRUTH**
+- Example: `[1, 3, 5]` = Monday, Wednesday, Friday
+- Updated when athlete changes preferences
+- Used as input when creating NEW training plans
+
+**Plan-Specific (Snapshot):**
+- `TrainingPlanPreferredDays.preferredDays: Int[]` - **SNAPSHOT AT PLAN CREATION**
+- Captured when plan is created
+- Never changes after plan creation
+- Used to show what days the plan was originally designed for
+
+---
+
+## Complete Model Relationships
+
+```
+Athlete (canonical identity)
+  ├─ canonicalFiveKPace: "8:30"
+  ├─ preferredRunDays: [1,3,5]
+  │
+  ├─→ TrainingPlan (plan container)
+  │     ├─ raceRegistryId → RaceRegistry
+  │     ├─→ TrainingPlanFiveKPace (snapshot: "8:30")
+  │     ├─→ TrainingPlanPreferredDays (snapshot: [1,3,5])
+  │     └─→ TrainingDayPlanned[] (all planned workouts)
+  │
+  ├─→ TrainingDayExecuted[] (completed workouts)
+  │     └─→ activityId → AthleteActivity (if matched)
+  │
+  └─→ AthleteActivity[] (Garmin activities)
+```
+
+---
+
+## Current State Analysis
+
 ### Current Architecture
 
 #### 1. **Authentication Status: ✅ IMPLEMENTED**

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/lib/api';
-import { formatDate, isToday } from '@/lib/utils/dates';
+import { formatDate, isToday } from '@/lib/training/dates';
 import { formatPace, mpsToPaceString } from '@/lib/utils/pace';
 
 interface DayData {

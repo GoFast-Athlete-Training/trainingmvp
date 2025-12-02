@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/lib/api';
-import { getDayName, formatDate, isToday } from '@/lib/utils/dates';
+import { getDayName, formatDate, isToday } from '@/lib/training/dates';
 import { formatPace } from '@/lib/utils/pace';
 
 interface Day {

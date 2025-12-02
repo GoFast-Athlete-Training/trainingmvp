@@ -2,10 +2,16 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebaseAdmin';
-import { getAthleteByFirebaseId, updateAthlete } from '@/lib/domain-athlete';
+import { getAthleteByFirebaseId } from '@/lib/domain-athlete';
+import { updateAthleteProfile } from '@/lib/athlete/profile';
 import { prisma } from '@/lib/prisma';
-import { getRaceDistanceMiles } from '@/lib/utils/pace';
 
+/**
+ * MVP1 Onboarding Save
+ * Saves race selection and goal time
+ * Updates athlete fiveKPace if provided
+ * Does NOT create training plan (that's done via /api/training-plan/generate)
+ */
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -32,87 +38,35 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const {
-      raceName,
-      raceType,
-      goalTime,
-      goalPace,
-      current5k,
-      lastRaceFeeling,
-      trainedBefore,
-      inference,
-    } = body;
+    const { raceRegistryId, goalTime, fiveKPace } = body;
 
-    if (!raceName || !goalTime || !current5k) {
+    if (!raceRegistryId || !goalTime) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
+        { success: false, error: 'raceRegistryId and goalTime are required' },
         { status: 400 }
       );
     }
 
-    // Calculate race distance in miles
-    const distanceMiles = getRaceDistanceMiles(raceType);
-
-    // Create or find race
-    let race = await prisma.race.findFirst({
-      where: {
-        raceName: {
-          equals: raceName,
-          mode: 'insensitive',
-        },
-        raceType: raceType.toLowerCase(),
-      },
+    // Verify race exists
+    const race = await prisma.raceRegistry.findUnique({
+      where: { id: raceRegistryId },
     });
 
     if (!race) {
-      // Create new race (use a future date as placeholder, user can update later)
-      const raceDate = new Date();
-      raceDate.setMonth(raceDate.getMonth() + 3); // Default to 3 months from now
-
-      race = await prisma.race.create({
-        data: {
-          raceName,
-          raceType: raceType.toLowerCase(),
-          raceDate,
-          distanceMiles,
-        },
-      });
+      return NextResponse.json({ success: false, error: 'Race not found' }, { status: 404 });
     }
 
-    // Update athlete with onboarding data
-    const updatedAthlete = await updateAthlete(athlete.id, {
-      myTargetRace: raceName,
-      myTrainingGoal: goalTime,
-      myCurrentPace: current5k,
-      // Store additional onboarding data in a JSON field if needed
-      // For now, we'll store the key fields
-    });
+    // Update athlete fiveKPace if provided
+    if (fiveKPace) {
+      await updateAthleteProfile(athlete.id, { fiveKPace });
+    }
 
-    // Store onboarding responses and inference (we can add a separate table later if needed)
-    // For now, we'll store inference in a note or we can add it to the athlete model
-    // Since the schema doesn't have an onboarding field, we'll store it in myTrainingGoal as JSON
-    // Actually, let's keep it simple and just store the key fields
-
-    // Return updated athlete data
+    // Return success (plan generation happens separately)
     return NextResponse.json({
       success: true,
       message: 'Onboarding data saved',
-      athlete: {
-        id: updatedAthlete.id,
-        firebaseId: updatedAthlete.firebaseId,
-        email: updatedAthlete.email,
-        myCurrentPace: updatedAthlete.myCurrentPace,
-        myWeeklyMileage: updatedAthlete.myWeeklyMileage,
-        myTrainingGoal: updatedAthlete.myTrainingGoal,
-        myTargetRace: updatedAthlete.myTargetRace,
-        myTrainingStartDate: updatedAthlete.myTrainingStartDate,
-      },
-      race: {
-        id: race.id,
-        raceName: race.raceName,
-        raceType: race.raceType,
-        raceDate: race.raceDate,
-      },
+      raceRegistryId,
+      goalTime,
     });
   } catch (err: any) {
     console.error('❌ ONBOARDING SAVE: Error:', err);
