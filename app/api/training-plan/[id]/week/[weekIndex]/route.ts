@@ -46,7 +46,7 @@ export async function GET(
     const weekStart = days.length > 0 ? getStartOfDay(days[0].date) : null;
     const weekEnd = days.length > 0 ? getEndOfDay(days[days.length - 1].date) : null;
 
-    let executedDays = [];
+    let executedDays: any[] = [];
     if (weekStart && weekEnd) {
       executedDays = await prisma.trainingDayExecuted.findMany({
         where: {
