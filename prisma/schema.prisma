@@ -307,4 +307,6 @@ model GoFastCompany {
   updatedAt DateTime @updatedAt
 
   athletes Athlete[]
+
+  @@map("go_fast_companies")
 }

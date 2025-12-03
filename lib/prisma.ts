@@ -4,7 +4,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const prismaClientSingleton = () => {
+function getPrismaClient(): PrismaClient {
   if (globalForPrisma.prisma) {
     return globalForPrisma.prisma;
   }
@@ -18,8 +18,14 @@ const prismaClientSingleton = () => {
   }
 
   return client;
-};
+}
 
-// Export the PrismaClient with explicit type to ensure TypeScript recognizes all models
-export const prisma = prismaClientSingleton();
+// Use Proxy to lazy-load PrismaClient - only creates instance when first accessed
+// This prevents PrismaClient from being instantiated during Next.js build-time static evaluation
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    return (client as any)[prop];
+  },
+});
 
