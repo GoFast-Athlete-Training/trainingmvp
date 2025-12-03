@@ -1,7 +1,7 @@
 'use client';
 
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCjpoH763y2GH4VDc181IUBaZHqE_ryZ1c",
@@ -14,7 +14,25 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
 export const auth = getAuth(app);
+
+// Set persistence to keep user logged in across page refreshes
+// This is critical for preventing logout on refresh
+// Only set persistence in browser, and only if auth is available
+if (typeof window !== "undefined") {
+  try {
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      // Silently fail during build - will work at runtime
+      if (process.env.NODE_ENV !== "production" || typeof window !== "undefined") {
+        console.error("Failed to set auth persistence:", error);
+      }
+    });
+  } catch (error) {
+    // Ignore errors during build
+  }
+}
+
 export default app;
 
