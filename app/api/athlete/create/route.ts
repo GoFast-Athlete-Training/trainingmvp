@@ -46,44 +46,63 @@ export async function POST(request: Request) {
     const picture = decodedToken.picture || undefined;
 
     // Parse displayName into firstName/lastName if available
-    const firstName = displayName?.split(' ')[0] || null;
-    const lastName = displayName?.split(' ').slice(1).join(' ') || null;
+    const nameParts = displayName?.split(' ') || [];
+    const firstName = nameParts[0] || undefined;
+    const lastName = nameParts.slice(1).join(' ').trim() || undefined;
 
     // Ensure GoFast company exists (self-healing)
-    const gofastCompany = await prisma.goFastCompany.upsert({
-      where: { slug: "gofast" },
-      update: {},
-      create: {
-        name: "GoFast",
-        slug: "gofast",
-        address: "2604 N. George Mason Dr.",
-        city: "Arlington",
-        state: "VA",
-        zip: "22207",
-        domain: "gofastcrushgoals.com",
-      },
-    });
+    console.log('🏢 ATHLETE CREATE: Ensuring GoFast company exists...');
+    let gofastCompany;
+    try {
+      gofastCompany = await prisma.goFastCompany.upsert({
+        where: { slug: "gofast" },
+        update: {},
+        create: {
+          name: "GoFast",
+          slug: "gofast",
+          address: "2604 N. George Mason Dr.",
+          city: "Arlington",
+          state: "VA",
+          zip: "22207",
+          domain: "gofastcrushgoals.com",
+        },
+      });
+      console.log('✅ ATHLETE CREATE: Company found/created:', gofastCompany.id);
+    } catch (err: any) {
+      console.error('❌ ATHLETE CREATE: Company upsert failed:', err);
+      throw new Error(`Company creation failed: ${err?.message || 'Unknown error'}`);
+    }
 
     // Upsert athlete with dynamic company association
-    const athlete = await prisma.athlete.upsert({
-      where: { firebaseId },
-      update: {
-        // Sync Firebase data on update
-        email: email || undefined,
-        firstName: firstName || undefined,
-        lastName: lastName || undefined,
-        photoURL: picture || undefined,
-        companyId: gofastCompany.id,
-      },
-      create: {
-        firebaseId,
-        email: email || undefined,
-        firstName: firstName || undefined,
-        lastName: lastName || undefined,
-        photoURL: picture || undefined,
-        companyId: gofastCompany.id,
-      },
-    });
+    console.log('👤 ATHLETE CREATE: Upserting athlete with firebaseId:', firebaseId);
+    let athlete;
+    try {
+      athlete = await prisma.athlete.upsert({
+        where: { firebaseId },
+        update: {
+          // Sync Firebase data on update
+          email: email || undefined,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          photoURL: picture || undefined,
+          companyId: gofastCompany.id,
+        },
+        create: {
+          firebaseId,
+          email: email || undefined,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          photoURL: picture || undefined,
+          companyId: gofastCompany.id,
+        },
+      });
+      console.log('✅ ATHLETE CREATE: Athlete found/created:', athlete.id);
+    } catch (err: any) {
+      console.error('❌ ATHLETE CREATE: Athlete upsert failed:', err);
+      console.error('❌ ATHLETE CREATE: Error code:', err?.code);
+      console.error('❌ ATHLETE CREATE: Error meta:', err?.meta);
+      throw new Error(`Athlete creation failed: ${err?.message || 'Unknown error'}`);
+    }
 
     // Format response like gofastapp-mvp
     return NextResponse.json({
@@ -112,10 +131,13 @@ export async function POST(request: Request) {
     });
   } catch (err: any) {
     console.error('❌ ATHLETE CREATE: Error:', err);
+    console.error('❌ ATHLETE CREATE: Error stack:', err?.stack);
+    console.error('❌ ATHLETE CREATE: Error name:', err?.name);
     return NextResponse.json({ 
       success: false, 
       error: 'Server error', 
-      details: err?.message 
+      details: err?.message || 'Unknown error',
+      code: err?.code,
     }, { status: 500 });
   }
 }
