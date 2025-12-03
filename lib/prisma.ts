@@ -4,7 +4,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function getPrismaClient(): PrismaClient {
+const prismaClientSingleton = () => {
   if (globalForPrisma.prisma) {
     return globalForPrisma.prisma;
   }
@@ -18,8 +18,8 @@ function getPrismaClient(): PrismaClient {
   }
 
   return client;
-}
+};
 
-// Export the actual PrismaClient instance with proper typing
-export const prisma: PrismaClient = getPrismaClient();
+// Export the PrismaClient with explicit type to ensure TypeScript recognizes all models
+export const prisma = prismaClientSingleton();
 
