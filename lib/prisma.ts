@@ -20,10 +20,6 @@ function getPrismaClient(): PrismaClient {
   return client;
 }
 
-export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
-    const client = getPrismaClient();
-    return (client as any)[prop];
-  },
-});
+// Export the actual PrismaClient instance with proper typing
+export const prisma: PrismaClient = getPrismaClient();
 
