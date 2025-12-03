@@ -2,9 +2,9 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import api from '@/lib/api';
 import { LocalStorageAPI } from '@/lib/localstorage';
@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [authMode, setAuthMode] = useState<'signup' | 'signin'>('signup');
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [emailData, setEmailData] = useState({
     firstName: '',
     lastName: '',
@@ -23,6 +24,104 @@ export default function SignupPage() {
     password: '',
     confirmPassword: '',
   });
+
+  // Check if user is already authenticated - if so, redirect to training
+  useEffect(() => {
+    // First check if we have a token in localStorage (from main app)
+    const storedToken = localStorage.getItem('firebaseToken');
+    
+    if (storedToken) {
+      console.log('🔑 SIGNUP PAGE: Found stored token, verifying...');
+      // Try to verify token by calling hydrate
+      api.post('/athlete/hydrate')
+        .then((response) => {
+          if (response.data.success) {
+            console.log('✅ SIGNUP PAGE: Token valid, redirecting to welcome');
+            LocalStorageAPI.setAthlete(response.data.athlete);
+            LocalStorageAPI.setHydrationTimestamp(Date.now());
+            router.replace('/welcome');
+            return;
+          }
+        })
+        .catch((err: any) => {
+          if (err.response?.status === 401) {
+            // Token invalid, clear it and check Firebase auth state
+            console.log('⚠️ SIGNUP PAGE: Stored token invalid, clearing and checking Firebase auth');
+            localStorage.removeItem('firebaseToken');
+            checkFirebaseAuth();
+          } else if (err.response?.status === 404) {
+            // Athlete doesn't exist - try to create it
+            console.log('ℹ️ SIGNUP PAGE: No athlete record, attempting to create...');
+            api.post('/athlete/create', {})
+              .then((createResponse) => {
+                if (createResponse.data.success) {
+                  // Created, now hydrate
+                  return api.post('/athlete/hydrate');
+                }
+              })
+              .then((hydrateResponse) => {
+                if (hydrateResponse?.data.success) {
+                  LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+                  LocalStorageAPI.setHydrationTimestamp(Date.now());
+                  router.replace('/welcome');
+                }
+              })
+              .catch(() => {
+                // If create fails, show signup form
+                setCheckingAuth(false);
+              });
+          } else {
+            // Other error - show signup form
+            setCheckingAuth(false);
+          }
+        });
+    } else {
+      // No stored token, check Firebase auth state
+      checkFirebaseAuth();
+    }
+
+    function checkFirebaseAuth() {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          console.log('✅ SIGNUP PAGE: Firebase user authenticated, redirecting to welcome');
+          try {
+            const token = await user.getIdToken();
+            localStorage.setItem('firebaseToken', token);
+            
+              // Try to hydrate - if successful, go to welcome
+              try {
+                const hydrateResponse = await api.post('/athlete/hydrate');
+                if (hydrateResponse.data.success) {
+                  LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+                  LocalStorageAPI.setHydrationTimestamp(Date.now());
+                  router.replace('/welcome');
+                  return;
+                }
+              } catch (err: any) {
+                // If 404, athlete doesn't exist yet - let them sign up
+                if (err.response?.status === 404) {
+                  console.log('ℹ️ SIGNUP PAGE: Authenticated but no athlete record - allowing signup');
+                  setCheckingAuth(false);
+                  return;
+                }
+                // Other errors - still redirect to welcome (they're authenticated)
+                console.log('⚠️ SIGNUP PAGE: Hydrate failed but user is authenticated, going to welcome');
+                router.replace('/welcome');
+                return;
+              }
+          } catch (err) {
+            console.error('❌ SIGNUP PAGE: Error checking auth:', err);
+            setCheckingAuth(false);
+          }
+        } else {
+          console.log('ℹ️ SIGNUP PAGE: No authenticated user - showing signup form');
+          setCheckingAuth(false);
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [router]);
 
   const handleGoogle = async () => {
     try {
@@ -68,33 +167,9 @@ export default function SignupPage() {
       localStorage.setItem('athleteId', athlete.athleteId);
       localStorage.setItem('email', athlete.data?.email || result.user.email || '');
 
-      // Check if athlete has active training plan
-      try {
-        const hubResponse = await api.get('/training/hub');
-        if (hubResponse.data.planStatus?.hasPlan) {
-          // Athlete has active plan, go to training
-          console.log('✅ SIGNUP: Existing athlete with active plan → Training');
-          // Hydrate to get full data
-          try {
-            const hydrateResponse = await api.post('/athlete/hydrate');
-            if (hydrateResponse.data.success) {
-              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-              LocalStorageAPI.setHydrationTimestamp(Date.now());
-            }
-          } catch (err) {
-            console.warn('⚠️ Could not hydrate, continuing anyway');
-          }
-          router.replace('/training');
-        } else {
-          // New athlete or no plan, go to training setup
-          console.log('✅ SIGNUP: New athlete or no plan → Training Setup');
-          router.replace('/training-setup');
-        }
-      } catch (err) {
-        // If hub check fails, assume new athlete
-        console.log('✅ SIGNUP: Could not check plan status → Training Setup');
-        router.replace('/training-setup');
-      }
+            // After creating athlete, go to welcome page
+            console.log('✅ SIGNUP: Athlete created → Welcome');
+            router.replace('/welcome');
     } catch (err: any) {
       console.error('❌ SIGNUP: Google signup error:', err);
       console.error('❌ SIGNUP: Error code:', err?.code);
@@ -199,29 +274,9 @@ export default function SignupPage() {
       localStorage.setItem('athleteId', athlete.athleteId);
       localStorage.setItem('email', athlete.data?.email || user.email || '');
 
-      // Check if athlete has active training plan
-      try {
-        const hubResponse = await api.get('/training/hub');
-        if (hubResponse.data.planStatus?.hasPlan) {
-          console.log('✅ SIGNUP: Existing athlete with active plan → Training');
-          try {
-            const hydrateResponse = await api.post('/athlete/hydrate');
-            if (hydrateResponse.data.success) {
-              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-              LocalStorageAPI.setHydrationTimestamp(Date.now());
-            }
-          } catch (err) {
-            console.warn('⚠️ Could not hydrate, continuing anyway');
-          }
-          router.replace('/training');
-        } else {
-          console.log('✅ SIGNUP: New athlete or no plan → Training Setup');
-          router.replace('/training-setup');
-        }
-      } catch (err) {
-        console.log('✅ SIGNUP: Could not check plan status → Training Setup');
-        router.replace('/training-setup');
-      }
+      // After creating athlete, go to welcome page
+      console.log('✅ SIGNUP: Athlete created → Welcome');
+      router.replace('/welcome');
     } catch (err: any) {
       console.error('❌ SIGNUP: Email signup error:', err);
       
@@ -287,29 +342,9 @@ export default function SignupPage() {
       localStorage.setItem('athleteId', athlete.athleteId);
       localStorage.setItem('email', athlete.data?.email || user.email || '');
 
-      // Check if athlete has active training plan
-      try {
-        const hubResponse = await api.get('/training/hub');
-        if (hubResponse.data.planStatus?.hasPlan) {
-          console.log('✅ SIGNIN: Existing athlete with active plan → Training');
-          try {
-            const hydrateResponse = await api.post('/athlete/hydrate');
-            if (hydrateResponse.data.success) {
-              LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-              LocalStorageAPI.setHydrationTimestamp(Date.now());
-            }
-          } catch (err) {
-            console.warn('⚠️ Could not hydrate, continuing anyway');
-          }
-          router.replace('/training');
-        } else {
-          console.log('✅ SIGNIN: New athlete or no plan → Training Setup');
-          router.replace('/training-setup');
-        }
-      } catch (err) {
-        console.log('✅ SIGNIN: Could not check plan status → Training Setup');
-        router.replace('/training-setup');
-      }
+      // After signin, go to welcome page
+      console.log('✅ SIGNIN: Athlete found → Welcome');
+      router.replace('/welcome');
     } catch (err: any) {
       console.error('❌ SIGNIN: Email sign-in error:', err);
       
@@ -328,6 +363,15 @@ export default function SignupPage() {
       setLoading(false);
     }
   };
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
+        <div className="text-white text-xl">Checking authentication...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">

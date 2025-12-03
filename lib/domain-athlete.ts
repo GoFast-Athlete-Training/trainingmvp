@@ -24,7 +24,7 @@ export async function createAthlete(data: {
   });
 }
 
-// Simplified hydrate for training MVP (no crews, just athlete + activities)
+// Hydrate athlete with training plans (foreign keys)
 export async function hydrateAthlete(athleteId: string) {
   const athlete = await prisma.athlete.findUnique({
     where: { id: athleteId },
@@ -38,6 +38,15 @@ export async function hydrateAthlete(athleteId: string) {
         },
         orderBy: {
           startTime: 'desc',
+        },
+      },
+      trainingPlans: {
+        include: {
+          raceRegistry: true,
+          trainingPlanFiveKPace: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
         },
       },
     },
@@ -67,9 +76,12 @@ export async function hydrateAthlete(athleteId: string) {
       id: athlete.id,
       firebaseId: athlete.firebaseId,
       email: athlete.email,
+      firstName: athlete.firstName,
+      lastName: athlete.lastName,
       fiveKPace: athlete.fiveKPace,
       weeklyActivities: athlete.activities,
       weeklyTotals,
+      trainingPlans: athlete.trainingPlans, // Include training plans (foreign keys)
     },
     weeklyActivities: athlete.activities,
     weeklyTotals,

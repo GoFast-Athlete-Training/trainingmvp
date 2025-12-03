@@ -10,10 +10,21 @@ const api = axios.create({
 // Add Firebase token to all requests
 api.interceptors.request.use(
   async (config) => {
+    // First check localStorage for token (from main app or previous session)
+    const storedToken = localStorage.getItem('firebaseToken');
+    
+    if (storedToken) {
+      config.headers.Authorization = `Bearer ${storedToken}`;
+      return config;
+    }
+    
+    // Fall back to Firebase auth currentUser
     const user = auth.currentUser;
     if (user) {
       try {
         const token = await user.getIdToken();
+        // Store token for future requests
+        localStorage.setItem('firebaseToken', token);
         config.headers.Authorization = `Bearer ${token}`;
       } catch (error) {
         console.error('Error getting Firebase token:', error);

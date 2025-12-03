@@ -10,19 +10,22 @@ export default function SplashPage() {
   const [hasRouted, setHasRouted] = useState(false);
 
   useEffect(() => {
-    // 1500ms splash delay - THEN check auth and route
+    // 1500ms splash delay - THEN check Firebase auth state
     const timeoutId = setTimeout(() => {
       if (!hasRouted) {
         setHasRouted(true);
         
-        // Check Firebase auth state
+        // Firebase handles auth state persistence automatically
+        // onAuthStateChanged will fire immediately if user is already authenticated
         const unsubscribe = onAuthStateChanged(auth, (user) => {
           if (user) {
-            router.replace('/training');
+            console.log('✅ SPLASH: User authenticated → /welcome');
+            router.replace('/welcome');
           } else {
+            console.log('ℹ️ SPLASH: No user → /signup');
             router.replace('/signup');
           }
-          unsubscribe();
+          unsubscribe(); // Only route once
         });
       }
     }, 1500);

@@ -35,6 +35,7 @@ export default function TrainingHub() {
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasPlan, setHasPlan] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -62,10 +63,36 @@ export default function TrainingHub() {
           }
         } catch (err: any) {
           console.error('❌ Failed to hydrate:', err);
-          if (err.response?.status === 401 || err.response?.status === 404) {
+          if (err.response?.status === 401) {
+            // Unauthorized - redirect to signup
             router.push('/signup');
             return;
           }
+          if (err.response?.status === 404) {
+            // Athlete doesn't exist - try to create it via /athlete/create
+            console.log('ℹ️ Athlete not found (404), attempting to create...');
+            try {
+              const createResponse = await api.post('/athlete/create', {});
+              if (createResponse.data.success) {
+                // Athlete created, hydrate again
+                const hydrateResponse = await api.post('/athlete/hydrate');
+                if (hydrateResponse.data.success) {
+                  LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+                  LocalStorageAPI.setHydrationTimestamp(Date.now());
+                  athlete = hydrateResponse.data.athlete;
+                  // Continue to load hub data
+                  loadHubData();
+                  return;
+                }
+              }
+            } catch (createErr: any) {
+              console.error('❌ Failed to create athlete:', createErr);
+              // If create fails, redirect to signup (might need to sign up properly)
+              router.push('/signup');
+              return;
+            }
+          }
+          // Other errors - still try to load hub data
         }
       }
 
@@ -84,11 +111,14 @@ export default function TrainingHub() {
       setTodayWorkout(data.todayWorkout);
       setPlanStatus(data.planStatus);
       setRaceReadiness(data.raceReadiness);
+      setHasPlan(data.planStatus?.hasPlan || false);
     } catch (error: any) {
       console.error('Error loading hub data:', error);
       if (error.response?.status === 401) {
         router.push('/signup');
       }
+      // If no plan, that's okay - show setup button
+      setHasPlan(false);
     } finally {
       setLoading(false);
     }
@@ -96,12 +126,69 @@ export default function TrainingHub() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-xl text-white">Loading your training...</p>
+        </div>
       </div>
     );
   }
 
+  // If no plan, show landing page with setup button
+  if (!hasPlan) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center p-4">
+        <div className="max-w-2xl mx-auto text-center space-y-8">
+          <div className="space-y-4">
+            <div className="text-9xl mb-4">
+              🏃‍♂️
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
+              Ready to Train?
+            </h1>
+            <p className="text-xl md:text-2xl text-white/90 font-medium">
+              Create your personalized training plan and start crushing your goals
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <button
+              onClick={() => router.push('/training-setup')}
+              className="w-full bg-white text-orange-600 py-6 px-8 rounded-2xl font-bold text-2xl hover:bg-orange-50 transition shadow-2xl transform hover:scale-105"
+            >
+              Set My Training Plan →
+            </button>
+
+            <div className="text-white/80 text-sm">
+              <p>Pick your race • Set your goals • Build your plan</p>
+            </div>
+          </div>
+
+          {/* Features */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-4xl mb-2">🎯</div>
+              <h3 className="font-semibold text-white mb-2">Personalized Plans</h3>
+              <p className="text-white/80 text-sm">AI-generated training plans tailored to your fitness level</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-4xl mb-2">📊</div>
+              <h3 className="font-semibold text-white mb-2">Track Progress</h3>
+              <p className="text-white/80 text-sm">Monitor your workouts and see your improvement over time</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-4xl mb-2">🏆</div>
+              <h3 className="font-semibold text-white mb-2">Race Ready</h3>
+              <p className="text-white/80 text-sm">Get race-ready with adaptive training and pace guidance</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Has plan - show training hub
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-4xl mx-auto">
@@ -175,9 +262,9 @@ export default function TrainingHub() {
         </div>
 
         {/* Plan Status */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">See My Plan</h2>
-          {planStatus?.hasPlan ? (
+        {planStatus?.hasPlan && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">See My Plan</h2>
             <div>
               <p className="text-gray-600 mb-2">
                 Week {planStatus.currentWeek} of {planStatus.totalWeeks} - {planStatus.phase} Phase
@@ -189,18 +276,8 @@ export default function TrainingHub() {
                 View Full Plan →
               </button>
             </div>
-          ) : (
-            <div className="text-center py-4">
-              <p className="text-gray-500 mb-4">No active training plan</p>
-              <button
-                onClick={() => router.push('/training/plan/create')}
-                className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
-              >
-                Create Training Plan
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Race Readiness */}
         {raceReadiness && (
