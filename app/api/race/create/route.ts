@@ -32,13 +32,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store body for use in catch block
-    const requestBody = { name, distance, date, city, state, country };
-
-    console.log('🔍 RACE CREATE: Checking if race already exists...');
+    console.log('🔍 RACE CREATE: Searching registry first (search-before-create pattern)...');
     const raceDate = new Date(date);
     
-    // Check if race already exists (registry should be unique!)
+    // REGISTRY PATTERN: Search first, if exists, return it. If not, create it.
     const existingRace = await prisma.raceRegistry.findFirst({
       where: {
         name: {
@@ -50,7 +47,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingRace) {
-      console.log('✅ RACE CREATE: Race already exists in registry:', existingRace.id);
+      console.log('✅ RACE CREATE: Race found in registry (reusing existing):', existingRace.id);
       return NextResponse.json({
         success: true,
         race: {
@@ -62,11 +59,11 @@ export async function POST(request: NextRequest) {
           state: existingRace.state,
           country: existingRace.country,
         },
-        message: 'Race already exists in registry',
+        message: 'Race found in registry',
       });
     }
 
-    console.log('💾 RACE CREATE: Creating new race in database...');
+    console.log('💾 RACE CREATE: Race not found in registry, creating new entry...');
     const race = await prisma.raceRegistry.create({
       data: {
         name,
@@ -75,8 +72,7 @@ export async function POST(request: NextRequest) {
         city: city || null,
         state: state || null,
         country: country || null,
-        createdBy: athleteId,
-        isGlobal: false,
+        createdBy: athleteId, // Optional tracking, not ownership
       },
     });
 
@@ -104,18 +100,35 @@ export async function POST(request: NextRequest) {
     if (error.code === 'P2002' || error.code === '23505') {
       console.log('⚠️ RACE CREATE: Duplicate race detected, attempting to find existing...');
       try {
-        // Use the variables from the request body (available in outer scope)
-        if (!name || !date) {
+        // Try to get body from request (may fail if already consumed)
+        let bodyData: any;
+        try {
+          bodyData = await request.json();
+        } catch {
+          // If body already consumed, we can't recover - return error
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Race already exists', 
+              details: 'A race with this name and date already exists in the registry',
+              code: error?.code,
+            },
+            { status: 409 }
+          );
+        }
+        
+        const { name: errorName, date: errorDate } = bodyData;
+        if (!errorName || !errorDate) {
           throw new Error('Missing race name or date in error handler');
         }
         
         const existingRace = await prisma.raceRegistry.findFirst({
           where: {
             name: {
-              equals: name,
+              equals: errorName,
               mode: 'insensitive',
             },
-            date: new Date(date),
+            date: new Date(errorDate),
           },
         });
         

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       where: {
         athleteId,
         status: 'draft',
-        raceRegistryId: null, // No race attached yet
+        raceRegistryId: undefined, // No race attached yet
       },
     });
 

@@ -83,7 +83,6 @@
 - `city` (String?)
 - `state` (String?)
 - `createdBy` (String) - athleteId who created it
-- `isGlobal` (Boolean, default: false)
 
 **Relations:**
 - `trainingPlans` → `TrainingPlan[]` (one-to-many)
@@ -118,8 +117,6 @@
 - `raceRegistry` → `RaceRegistry` (many-to-one, via `raceRegistryId`)
 - `athleteTrainingPlans` → `AthleteTrainingPlan[]` (junction table)
 - `plannedDays` → `TrainingDayPlanned[]`
-- `trainingPlanFiveKPace` → `TrainingPlanFiveKPace?` (one-to-one snapshot)
-- `trainingPlanPreferredDays` → `TrainingPlanPreferredDays?` (one-to-one snapshot)
 
 **Indexes:**
 - `@@index([athleteId, status])` - Fast lookup of active plans
@@ -141,11 +138,8 @@
 - `id` (String, cuid)
 - `athleteId` (String)
 - `trainingPlanId` (String)
-- `isPrimary` (Boolean, default: false) - Primary/active plan for this athlete
-- `isActive` (Boolean, default: true) - Whether assignment is active
-- `assignedAt` (DateTime, default: now())
-- `activatedAt` (DateTime?)
-- `deactivatedAt` (DateTime?)
+- `createdAt` (DateTime, default: now())
+- `updatedAt` (DateTime, updatedAt)
 
 **Relations:**
 - `athlete` → `Athlete` (many-to-one)
@@ -153,12 +147,12 @@
 
 **Constraints:**
 - `@@unique([athleteId, trainingPlanId])` - One assignment per athlete-plan pair
-- `@@index([athleteId, isPrimary, isActive])` - Fast lookup of primary active plan
-- `@@index([athleteId, isActive])` - Fast lookup of all active plans
+- `@@index([athleteId])` - Fast lookup of all plans for athlete
 
 **Critical Notes:**
+- **NO BOOLEAN FLAGS** - Assignment = active plan. No assignment = no active plan. Simple.
 - **USE THIS for finding active plans** - Don't query `TrainingPlan` directly by `athleteId` and `status`
-- Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId, isActive: true, isPrimary: true } })`
+- Query pattern: `AthleteTrainingPlan.findMany({ where: { athleteId } })` - All assignments are active
 - Fallback: If no junction entry, check `TrainingPlan` directly (for legacy plans)
 
 ---
@@ -218,52 +212,11 @@
 
 ---
 
-#### `TrainingPlanFiveKPace`
-**Table:** `training_plan_five_k_pace` (snake_case via @@map)
-
-**Purpose:** Snapshot of athlete's 5K pace at time of plan creation
-
-**Key Fields:**
-- `id` (String, cuid)
-- `trainingPlanId` (String)
-- `athleteId` (String)
-- `fiveKPace` (String) - mm:ss format
-
-**Relations:**
-- `trainingPlan` → `TrainingPlan` (one-to-one)
-- `athlete` → `Athlete` (many-to-one)
-
-**Constraints:**
-- `@@unique([trainingPlanId])` - One snapshot per plan
-
 **Critical Notes:**
-- Created during plan generation
-- Used for race readiness calculations
-- Source: `Athlete.fiveKPace` at time of generation
-
----
-
-#### `TrainingPlanPreferredDays`
-**Table:** `training_plan_preferred_days` (snake_case via @@map)
-
-**Purpose:** Snapshot of athlete's preferred training days at time of plan creation
-
-**Key Fields:**
-- `id` (String, cuid)
-- `trainingPlanId` (String)
-- `athleteId` (String)
-- `preferredDays` (Int[]) - e.g., [1,3,5] where 1=Monday, 7=Sunday
-
-**Relations:**
-- `trainingPlan` → `TrainingPlan` (one-to-one)
-- `athlete` → `Athlete` (many-to-one)
-
-**Constraints:**
-- `@@unique([trainingPlanId])` - One snapshot per plan
-
-**Critical Notes:**
-- Currently unused in MVP1
-- Reserved for future plan customization
+- **NO SNAPSHOT TABLES** - All data lives on the main models (`TrainingPlan`, `Athlete`)
+- `Athlete.fiveKPace` is the source of truth for 5K pace
+- Use `TrainingPlan.trainingPlanGoalTime` for goal time (stored directly on plan)
+- Preferred days can be added as a field on `TrainingPlan` if needed in the future
 
 ---
 
@@ -317,8 +270,6 @@ Athlete (1) ──< (many) TrainingPlan (via athleteId)
 Athlete (many) ──< (many) TrainingPlan (via AthleteTrainingPlan junction)
 RaceRegistry (1) ──< (many) TrainingPlan (via raceRegistryId)
 TrainingPlan (1) ──< (many) TrainingDayPlanned
-TrainingPlan (1) ──< (1) TrainingPlanFiveKPace
-TrainingPlan (1) ──< (1) TrainingPlanPreferredDays
 Athlete (1) ──< (many) TrainingDayExecuted
 Athlete (1) ──< (many) AthleteActivity
 TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
@@ -333,7 +284,7 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 
 2. **Athlete → TrainingPlan: MANY-TO-MANY via Junction**
    - Use `AthleteTrainingPlan` to find active plans
-   - Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId, isActive: true, isPrimary: true } })`
+   - Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId } })` - All assignments are active
    - Fallback: `TrainingPlan.findFirst({ where: { athleteId, status: 'active' } })`
 
 3. **TrainingPlan → TrainingDayPlanned: ONE-TO-MANY**
@@ -399,7 +350,7 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 
 **Business Logic:**
 - Finds athlete by Firebase token
-- Queries `AthleteTrainingPlan` for active plan (`isActive: true, isPrimary: true`)
+- Queries `AthleteTrainingPlan` for active plan (any assignment = active)
 - Bolts `trainingPlanId` onto athlete object
 - Returns full athlete object
 
@@ -490,10 +441,9 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 - Loads draft plan
 - Validates required fields (`trainingPlanGoalTime`, `trainingPlanStartDate`, etc.)
 - Calls AI generation service
-- Creates `TrainingPlanFiveKPace` snapshot
 - Creates all `TrainingDayPlanned` records
 - Updates plan `status: "active"`
-- Creates `AthleteTrainingPlan` junction entry (`isPrimary: true, isActive: true`)
+- Creates `AthleteTrainingPlan` junction entry (assignment = active)
 - All within transaction
 
 ---
@@ -508,7 +458,6 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
   "trainingPlan": {
     "id": "...",
     "raceRegistry": { ... },
-    "trainingPlanFiveKPace": { ... },
     ...
   }
 }
@@ -551,8 +500,8 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 - **CRITICAL:** Query `AthleteTrainingPlan` first for active plan
   ```typescript
   const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
-    where: { athleteId, isActive: true, isPrimary: true },
-    include: { trainingPlan: { include: { raceRegistry: true, trainingPlanFiveKPace: true } } }
+    where: { athleteId },
+    include: { trainingPlan: { include: { raceRegistry: true } } }
   });
   ```
 - Fallback: `TrainingPlan.findFirst({ where: { athleteId, status: 'active' } })`
@@ -665,14 +614,11 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
   where: {
     athleteId,
-    isActive: true,
-    isPrimary: true,
   },
   include: {
     trainingPlan: {
       include: {
         raceRegistry: true,
-        trainingPlanFiveKPace: true,
       },
     },
   },
@@ -786,13 +732,11 @@ const newRace = await prisma.raceRegistry.create({ ... });
 - `RaceRegistry`: `@@unique([name, date])` - Prevents duplicates
 - `AthleteTrainingPlan`: `@@unique([athleteId, trainingPlanId])` - One assignment per pair
 - `TrainingDayPlanned`: `@@unique([trainingPlanId, weekIndex, dayIndex])` - One day per plan/week/day
-- `TrainingPlanFiveKPace`: `@@unique([trainingPlanId])` - One snapshot per plan
 
 ### Status Lifecycle
 
 - `TrainingPlan.status`: `"draft"` → `"active"` → `"completed"` | `"archived"`
-- `AthleteTrainingPlan.isActive`: `true` | `false`
-- `AthleteTrainingPlan.isPrimary`: `true` (only one per athlete)
+- `AthleteTrainingPlan`: Assignment = active plan. No assignment = no active plan. Simple.
 
 ---
 
