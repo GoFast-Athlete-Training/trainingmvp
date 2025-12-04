@@ -13,11 +13,16 @@ export async function GET(
     const athleteId = await getAthleteIdFromRequest(request);
     const dayId = params.dayId;
 
-    const plannedDay = await prisma.trainingDayPlanned.findUnique({
+    const plannedDay = await prisma.trainingPlanDay.findUnique({
       where: { id: dayId },
+      include: {
+        plan: true,
+        phase: true,
+        week: true,
+      },
     });
 
-    if (!plannedDay || plannedDay.athleteId !== athleteId) {
+    if (!plannedDay || plannedDay.plan.athleteId !== athleteId) {
       return NextResponse.json({ success: false, error: 'Day not found' }, { status: 404 });
     }
 
@@ -43,7 +48,6 @@ export async function GET(
       });
     }
 
-    const plannedData = plannedDay.plannedData as any;
     const analysis = executedDay?.analysis as any;
 
     return NextResponse.json({
@@ -51,10 +55,13 @@ export async function GET(
       day: {
         id: plannedDay.id,
         date: plannedDay.date,
-        weekIndex: plannedDay.weekIndex,
-        dayIndex: plannedDay.dayIndex,
-        phase: plannedDay.phase,
-        plannedData,
+        dayOfWeek: plannedDay.dayOfWeek,
+        weekNumber: plannedDay.week.weekNumber,
+        phase: plannedDay.phase.name,
+        warmup: plannedDay.warmup,
+        workout: plannedDay.workout,
+        cooldown: plannedDay.cooldown,
+        notes: plannedDay.notes,
         executed: executedDay
           ? {
               id: executedDay.id,

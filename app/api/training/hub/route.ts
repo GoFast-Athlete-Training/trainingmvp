@@ -100,14 +100,20 @@ export async function GET(request: NextRequest) {
     const startOfDay = getStartOfDay(today);
     const endOfDay = getEndOfDay(today);
 
-    const todayPlanned = await prisma.trainingDayPlanned.findFirst({
+    const todayPlanned = await prisma.trainingPlanDay.findFirst({
       where: {
-        athleteId,
-        trainingPlanId: activePlan.id,
+        planId: activePlan.id,
         date: {
           gte: startOfDay,
           lte: endOfDay,
         },
+        plan: {
+          athleteId,
+        },
+      },
+      include: {
+        phase: true,
+        week: true,
       },
     });
 
@@ -123,18 +129,25 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const plannedData = todayPlanned.plannedData as any;
-      const status =
-        plannedData.type === 'rest'
-          ? 'rest'
-          : todayExecuted
-          ? 'completed'
-          : 'pending';
+      // Check if it's a rest day
+      const workout = todayPlanned.workout as any[];
+      const isRestDay = !workout || workout.length === 0 || 
+        workout.every((lap: any) => lap.paceGoal === null && lap.distanceMiles < 2);
+      
+      const status = isRestDay
+        ? 'rest'
+        : todayExecuted
+        ? 'completed'
+        : 'pending';
 
       todayWorkout = {
         id: todayPlanned.id,
         date: todayPlanned.date,
-        plannedData,
+        dayOfWeek: todayPlanned.dayOfWeek,
+        warmup: todayPlanned.warmup,
+        workout: todayPlanned.workout,
+        cooldown: todayPlanned.cooldown,
+        notes: todayPlanned.notes,
         status,
       };
     }
@@ -167,7 +180,7 @@ export async function GET(request: NextRequest) {
         hasPlan: true,
         totalWeeks: activePlan.totalWeeks,
         currentWeek: Math.min(currentWeek, activePlan.totalWeeks),
-        phase: todayPlanned?.phase?.name || 'base', // TODO: Update when hub uses new cascade
+        phase: todayPlanned?.phase.name || 'base',
       },
       raceReadiness,
     });
