@@ -89,11 +89,68 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Handle raceId attachment via junction table
+    const raceId = updates.raceId;
+    if (raceId) {
+      // Verify race exists
+      const race = await prisma.race.findUnique({
+        where: { id: raceId },
+      });
+
+      if (!race) {
+        return NextResponse.json(
+          { success: false, error: 'Race not found' },
+          { status: 404 }
+        );
+      }
+
+      // Check if race is already attached
+      const raceAlreadyAttached = existingPlan.raceTrainingPlans.some(
+        rtp => rtp.raceRegistryId === raceId
+      );
+
+      if (!raceAlreadyAttached) {
+        // Attach race via junction table
+        await prisma.raceTrainingPlan.create({
+          data: {
+            raceRegistryId: raceId,
+            trainingPlanId: trainingPlanId,
+          },
+        });
+
+        // Calculate total weeks from race date if not already set
+        if (!updateData.totalWeeks) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const raceDate = new Date(race.date);
+          raceDate.setHours(0, 0, 0, 0);
+          const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          updateData.totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+        }
+
+        // Update plan name if not already set
+        if (!updateData.name) {
+          updateData.name = `${race.name} Training Plan`;
+        }
+      }
+    }
+
     // If goal time is being set, calculate goalPace5K
     const goalTimeValue = updates.goalTime || updates.trainingPlanGoalTime;
     if (goalTimeValue) {
-      // Get race from junction table
-      const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
+      // Get race from junction table (may have just been attached)
+      const planWithRace = await prisma.trainingPlan.findUnique({
+        where: { id: trainingPlanId },
+        include: {
+          raceTrainingPlans: {
+            include: {
+              race: true,
+            },
+          },
+        },
+      });
+
+      const raceTrainingPlan = planWithRace?.raceTrainingPlans[0];
       if (!raceTrainingPlan) {
         return NextResponse.json(
           { success: false, error: 'Race must be attached before setting goal time' },

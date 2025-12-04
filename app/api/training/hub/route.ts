@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
     }
 
-    // MVP1: Try AthleteTrainingPlan junction table first (ordered by assignedAt desc)
-    // Then fallback to latest active or draft plan
+    // NO STATUS LOGIC - Just find whatever plan exists
+    // Try AthleteTrainingPlan junction table first (ordered by assignedAt desc)
     const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
       where: {
         athleteId,
@@ -38,14 +38,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Fallback: if no junction entry, check for latest active or draft plan (MVP1)
+    // Fallback: if no junction entry, check for latest plan (any status)
     let activePlan = activeAssignment?.trainingPlan || undefined;
     if (!activePlan) {
-      // Try active first
-      let foundPlan = await prisma.trainingPlan.findFirst({
+      activePlan = await prisma.trainingPlan.findFirst({
         where: {
           athleteId,
-          status: 'active',
         },
         include: {
           raceTrainingPlans: {
@@ -57,29 +55,7 @@ export async function GET(request: NextRequest) {
         orderBy: {
           createdAt: 'desc',
         },
-      });
-
-      // If no active, try draft (MVP1: also show draft plans)
-      if (!foundPlan) {
-        foundPlan = await prisma.trainingPlan.findFirst({
-          where: {
-            athleteId,
-            status: 'draft',
-          },
-          include: {
-            raceTrainingPlans: {
-              include: {
-                race: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        });
-      }
-
-      activePlan = foundPlan || undefined;
+      }) || undefined;
     }
 
     if (!activePlan) {

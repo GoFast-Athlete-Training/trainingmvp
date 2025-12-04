@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -15,44 +15,37 @@ export default function TrainingSetupStartPage() {
   const [searching, setSearching] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
   const [trainingPlanId, setTrainingPlanId] = useState<string | null>(null);
+  const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
 
-  // Get trainingPlanId from URL params and auto-search for races
+  // Get trainingPlanId from URL params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const planId = urlParams.get('planId');
     if (planId) {
       setTrainingPlanId(planId);
       console.log('📋 Training plan ID from URL:', planId);
-      
-      // Auto-search for "Boston" to help user find existing races
-      setSearchQuery('Boston');
-      // Trigger search after a short delay to ensure component is ready
-      setTimeout(() => {
-        handleSearchForQuery('Boston');
-      }, 100);
     }
   }, []);
 
-  const handleSearchForQuery = async (query: string) => {
+  // Debounced search function
+  const handleSearchForQuery = useCallback(async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
-      setHasSearched(false);
       return;
     }
 
     setSearching(true);
     setError(null);
-    setHasSearched(true);
 
     try {
-      const response = await api.post('/race/search', { query });
+      const response = await api.post('/race/search', { query: query.trim() });
       if (response.data.success) {
         const races = response.data.races || [];
         setSearchResults(races);
       } else {
         setError(response.data.error || 'Failed to search races');
+        setSearchResults([]);
       }
     } catch (err: any) {
       console.error('Search error:', err);
@@ -62,12 +55,45 @@ export default function TrainingSetupStartPage() {
       if (errorStatus === 503) {
         setError('Race search is temporarily unavailable. Please create a new race instead.');
       } else {
-        setError(errorData?.error || errorData?.details || 'Failed to search races. You can still create a new race below.');
+        // Don't show error for empty results - just clear
+        if (errorStatus !== 404) {
+          setError(errorData?.error || errorData?.details || 'Failed to search races. You can still create a new race below.');
+        }
       }
+      setSearchResults([]);
     } finally {
       setSearching(false);
     }
-  };
+  }, []);
+
+  // Debounce search as user types
+  useEffect(() => {
+    // Clear previous timer
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    // If query is empty, clear results immediately
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    // Set new timer for debounced search (300ms delay)
+    const timer = setTimeout(() => {
+      handleSearchForQuery(searchQuery);
+    }, 300);
+
+    setDebounceTimer(timer);
+
+    // Cleanup
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [searchQuery, handleSearchForQuery]);
 
   // Create race form state
   const [raceName, setRaceName] = useState('');
@@ -76,10 +102,6 @@ export default function TrainingSetupStartPage() {
   const [raceCity, setRaceCity] = useState('');
   const [raceState, setRaceState] = useState('');
   const [raceCountry, setRaceCountry] = useState('USA');
-
-  const handleSearch = async () => {
-    await handleSearchForQuery(searchQuery);
-  };
 
   const handleSelectRace = async (race: any) => {
     setLoading(true);
@@ -104,9 +126,9 @@ export default function TrainingSetupStartPage() {
         const response = await api.post('/training-plan/update', {
           trainingPlanId: planId,
           updates: {
-            raceRegistryId: race.id,
-            trainingPlanName: `${race.name} Training Plan`,
-            trainingPlanTotalWeeks: totalWeeks,
+            raceId: race.id,
+            name: `${race.name} Training Plan`,
+            totalWeeks: totalWeeks,
           },
         });
 
@@ -122,7 +144,7 @@ export default function TrainingSetupStartPage() {
         // Create new plan with race (fallback for direct navigation)
         console.log('📋 Creating training plan for race:', race.id);
         const response = await api.post('/training-plan/create', {
-          raceRegistryId: race.id,
+          raceId: race.id,
         });
 
         if (response.data.success) {
@@ -190,9 +212,9 @@ export default function TrainingSetupStartPage() {
           const updatePlanResponse = await api.post('/training-plan/update', {
             trainingPlanId: planId,
             updates: {
-              raceRegistryId: raceId,
-              trainingPlanName: `${raceName} Training Plan`,
-              trainingPlanTotalWeeks: totalWeeks,
+              raceId: raceId,
+              name: `${raceName} Training Plan`,
+              totalWeeks: totalWeeks,
             },
           });
 
@@ -212,7 +234,7 @@ export default function TrainingSetupStartPage() {
         console.log('📋 STEP 2: Creating training plan...');
         try {
           const createPlanResponse = await api.post('/training-plan/create', {
-            raceRegistryId: raceId,
+            raceId: raceId,
           });
 
           if (createPlanResponse.data.success) {
@@ -256,47 +278,47 @@ export default function TrainingSetupStartPage() {
 
           {/* Search Section */}
           <div className="mb-8">
-            <div className="flex gap-2 mb-4">
+            <div className="relative">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search for a race (e.g., Boston Marathon)"
-                className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg"
+                placeholder="Type to search for a race (e.g., Boston Marathon)"
+                className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg"
               />
-              <button
-                onClick={handleSearch}
-                disabled={searching}
-                className="bg-orange-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-orange-600 transition disabled:opacity-50"
-              >
-                {searching ? 'Searching...' : 'Search'}
-              </button>
+              {searching && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-500"></div>
+                </div>
+              )}
             </div>
 
-            {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {searchResults.map((race) => (
-                  <button
-                    key={race.id}
-                    onClick={() => handleSelectRace(race)}
-                    disabled={loading}
-                    className="w-full text-left p-4 bg-gray-50 hover:bg-orange-50 rounded-xl border-2 border-transparent hover:border-orange-200 transition"
-                  >
-                    <div className="font-semibold text-lg">{race.name}</div>
-                    <div className="text-sm text-gray-600">
-                      {race.distance.toUpperCase()} • {new Date(race.date).toLocaleDateString()}
-                      {race.city && ` • ${race.city}, ${race.state || race.country}`}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {hasSearched && !searching && searchResults.length === 0 && !error && (
-              <div className="bg-blue-50 border-2 border-blue-200 text-blue-700 px-4 py-3 rounded-xl mb-4">
-                <p className="font-semibold">No races found</p>
-                <p className="text-sm mt-1">Please create a new race below to get started.</p>
+            {/* Dropdown results */}
+            {searchQuery.trim() && (
+              <div className="mt-2">
+                {searchResults.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto border-2 border-gray-200 rounded-xl p-2 bg-white">
+                    {searchResults.map((race) => (
+                      <button
+                        key={race.id}
+                        onClick={() => handleSelectRace(race)}
+                        disabled={loading}
+                        className="w-full text-left p-4 bg-gray-50 hover:bg-orange-50 rounded-xl border-2 border-transparent hover:border-orange-200 transition"
+                      >
+                        <div className="font-semibold text-lg">{race.name}</div>
+                        <div className="text-sm text-gray-600">
+                          {race.distance.toUpperCase()} • {new Date(race.date).toLocaleDateString()}
+                          {race.city && ` • ${race.city}, ${race.state || race.country}`}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : !searching && searchQuery.trim().length >= 2 ? (
+                  <div className="bg-blue-50 border-2 border-blue-200 text-blue-700 px-4 py-3 rounded-xl">
+                    <p className="font-semibold">No races found</p>
+                    <p className="text-sm mt-1">Please create a new race below to get started.</p>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

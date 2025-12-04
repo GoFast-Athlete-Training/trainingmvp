@@ -29,22 +29,28 @@ export async function POST(request: NextRequest) {
 
     const { raceId } = body; // Route param renamed from raceRegistryId → raceId
 
-    // Check if athlete already has a draft plan without a race
-    // Check via junction table - if no raceTrainingPlans, then no race attached
-    const existingDraftPlan = await prisma.trainingPlan.findFirst({
+    // UPSERT LOGIC: Find existing plan (any status) or create new one
+    // Check for any existing plan for this athlete
+    const existingPlan = await prisma.trainingPlan.findFirst({
       where: {
         athleteId,
-        status: 'draft',
+      },
+      include: {
         raceTrainingPlans: {
-          none: {}, // No race attached yet
+          include: {
+            race: true,
+          },
         },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
-    if (existingDraftPlan) {
-      console.log('✅ TRAINING PLAN CREATE: Found existing draft plan:', existingDraftPlan.id);
+    if (existingPlan) {
+      console.log('✅ TRAINING PLAN CREATE: Found existing plan:', existingPlan.id);
       
-      // If raceId provided, update the existing plan
+      // If raceId provided and not already attached, attach it
       if (raceId) {
         // Verify race exists
         const race = await prisma.race.findUnique({
@@ -58,58 +64,57 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Calculate total weeks from race date
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const raceDate = new Date(race.date);
-        raceDate.setHours(0, 0, 0, 0);
-        const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+        // Check if race is already attached
+        const raceAlreadyAttached = existingPlan.raceTrainingPlans.some(
+          rtp => rtp.raceRegistryId === raceId
+        );
 
-        // Update existing plan with race via junction table
-        await prisma.raceTrainingPlan.upsert({
-          where: {
-            raceRegistryId_trainingPlanId: {
-              raceRegistryId: raceId, // FK column name stays same
-              trainingPlanId: existingDraftPlan.id,
+        if (!raceAlreadyAttached) {
+          // Calculate total weeks from race date
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const raceDate = new Date(race.date);
+          raceDate.setHours(0, 0, 0, 0);
+          const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+
+          // Attach race via junction table
+          await prisma.raceTrainingPlan.create({
+            data: {
+              raceRegistryId: raceId,
+              trainingPlanId: existingPlan.id,
             },
-          },
-          create: {
-            raceRegistryId: raceId, // FK column name stays same
-            trainingPlanId: existingDraftPlan.id,
-          },
-          update: {},
-        });
+          });
 
-        const updatedPlan = await prisma.trainingPlan.update({
-          where: { id: existingDraftPlan.id },
-          data: {
-            name: `${race.name} Training Plan`,
-            totalWeeks: totalWeeks,
-          },
-        });
+          // Update plan name and weeks if needed
+          const updatedPlan = await prisma.trainingPlan.update({
+            where: { id: existingPlan.id },
+            data: {
+              name: `${race.name} Training Plan`,
+              totalWeeks: totalWeeks,
+            },
+          });
 
-        return NextResponse.json({
-          success: true,
-          trainingPlanId: updatedPlan.id,
-          trainingPlan: {
-            id: updatedPlan.id,
-            name: updatedPlan.name,
-            status: updatedPlan.status,
-            totalWeeks: updatedPlan.totalWeeks,
-          },
-        });
+          return NextResponse.json({
+            success: true,
+            trainingPlanId: updatedPlan.id,
+            trainingPlan: {
+              id: updatedPlan.id,
+              name: updatedPlan.name,
+              totalWeeks: updatedPlan.totalWeeks,
+            },
+          });
+        }
       }
 
-      // No race provided, return existing draft plan
+      // Return existing plan (race already attached or no race provided)
       return NextResponse.json({
         success: true,
-        trainingPlanId: existingDraftPlan.id,
+        trainingPlanId: existingPlan.id,
         trainingPlan: {
-          id: existingDraftPlan.id,
-          name: existingDraftPlan.name,
-          status: existingDraftPlan.status,
-          totalWeeks: existingDraftPlan.totalWeeks,
+          id: existingPlan.id,
+          name: existingPlan.name,
+          totalWeeks: existingPlan.totalWeeks,
         },
       });
     }

@@ -12,7 +12,11 @@ import { formatPace } from '@/lib/utils/pace';
 interface TodayWorkout {
   id: string;
   date: Date;
-  plannedData: any;
+  dayOfWeek: number;
+  warmup: any[];
+  workout: any[];
+  cooldown: any[];
+  notes: string | null;
   status: 'pending' | 'completed' | 'rest';
 }
 
@@ -31,9 +35,8 @@ interface RaceReadiness {
 
 interface DraftPlan {
   id: string;
-  trainingPlanName: string;
-  raceRegistryId: string | null;
-  trainingPlanGoalTime: string | null;
+  name: string;
+  goalTime: string | null;
   status: string;
   race: {
     id: string;
@@ -143,18 +146,7 @@ export default function TrainingHub() {
         planStatus: data.planStatus,
       });
 
-      // If no active plan, check for draft plan
-      if (!hasActivePlan) {
-        try {
-          const draftResponse = await api.get('/training-plan/draft');
-          if (draftResponse.data.success && draftResponse.data.hasDraftPlan) {
-            setDraftPlan(draftResponse.data.draftPlan);
-            console.log('📋 TRAINING PAGE: Found draft plan:', draftResponse.data.draftPlan);
-          }
-        } catch (draftErr: any) {
-          console.log('ℹ️ TRAINING PAGE: No draft plan found');
-        }
-      }
+      // No need to check for draft - if no plan exists, show create button
     } catch (error: any) {
       console.error('❌ TRAINING PAGE: Error loading hub data:', error);
       if (error.response?.status === 401) {
@@ -250,9 +242,9 @@ export default function TrainingHub() {
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-lg text-gray-900">Set Goal Time</div>
-                    {draftPlan.progress.hasGoalTime && draftPlan.trainingPlanGoalTime && (
+                    {draftPlan.progress.hasGoalTime && draftPlan.goalTime && (
                       <div className="text-sm text-gray-600 mt-1">
-                        Goal: {draftPlan.trainingPlanGoalTime}
+                        Goal: {draftPlan.goalTime}
                       </div>
                     )}
                   </div>
@@ -378,10 +370,17 @@ export default function TrainingHub() {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-lg font-semibold">
-                        {todayWorkout.plannedData?.label || 'Today\'s Workout'}
+                        {todayWorkout.notes || 'Today\'s Workout'}
                       </h3>
-                      <p className="text-gray-600 capitalize">
-                        {todayWorkout.plannedData?.type || 'workout'}
+                      <p className="text-gray-600">
+                        {(() => {
+                          const totalMiles = [
+                            ...(todayWorkout.warmup || []),
+                            ...(todayWorkout.workout || []),
+                            ...(todayWorkout.cooldown || [])
+                          ].reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0);
+                          return totalMiles > 0 ? `${totalMiles.toFixed(1)} miles` : 'Workout';
+                        })()}
                       </p>
                     </div>
                     <span
@@ -396,15 +395,22 @@ export default function TrainingHub() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <p className="text-sm text-gray-600">Distance</p>
+                      <p className="text-sm text-gray-600">Total Distance</p>
                       <p className="text-2xl font-bold">
-                        {todayWorkout.plannedData?.mileage || 'N/A'} mi
+                        {(() => {
+                          const totalMiles = [
+                            ...(todayWorkout.warmup || []),
+                            ...(todayWorkout.workout || []),
+                            ...(todayWorkout.cooldown || [])
+                          ].reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0);
+                          return totalMiles > 0 ? `${totalMiles.toFixed(1)}` : 'N/A';
+                        })()} mi
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Target Pace</p>
+                      <p className="text-sm text-gray-600">Workout Laps</p>
                       <p className="text-2xl font-bold">
-                        {formatPace(todayWorkout.plannedData?.paceRange || todayWorkout.plannedData?.targetPace)}
+                        {todayWorkout.workout?.length || 0}
                       </p>
                     </div>
                   </div>

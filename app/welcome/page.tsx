@@ -149,18 +149,9 @@ export default function WelcomePage() {
 
   const handleLetsTrain = async () => {
     console.log('🎯 WELCOME: User clicked "Let\'s Train!"');
-    
-    // Get trainingPlanId from localStorage (set during hydration)
-    const trainingPlanId = localStorage.getItem('trainingPlanId');
-    
-    if (trainingPlanId) {
-      console.log('✅ WELCOME: Active training plan found:', trainingPlanId);
-      console.log('🎯 WELCOME: Navigating to training hub');
-      router.push('/training');
-    } else {
-      console.log('ℹ️ WELCOME: No active training plan, redirecting to setup');
-      router.push('/training-setup');
-    }
+    console.log('🎯 WELCOME: Navigating to training hub');
+    // Always go to training hub - no auto-routing
+    router.push('/training');
   };
 
   if (!authInitialized) {
