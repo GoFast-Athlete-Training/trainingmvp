@@ -152,7 +152,6 @@ model RaceRegistry {
   state     String?
   country   String?
   createdBy String // athleteId who created it
-  isGlobal  Boolean  @default(false) // true = available to all users
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -221,12 +220,12 @@ model TrainingPlan {
   raceRegistry              RaceRegistry               @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
   athleteTrainingPlans      AthleteTrainingPlan[] // Junction table entries
   plannedDays               TrainingDayPlanned[]
+  // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
   trainingPlanFiveKPace     TrainingPlanFiveKPace?
   trainingPlanPreferredDays TrainingPlanPreferredDays?
 
   // Indexes for fast lookups
   @@index([athleteId, status]) // Fast lookup of active plans by athlete
-  // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
 }
 
 model TrainingDayPlanned {

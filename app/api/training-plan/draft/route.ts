@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         id: plan.id,
         trainingPlanName: plan.trainingPlanName,
         raceRegistryId: plan.raceRegistryId,
-        trainingPlanGoalTime: plan.trainingPlanGoalTime,
+        trainingPlanGoalTime: plan.trainingPlanGoal?.goalTime || null,
         status: plan.status, // Just metadata, not source of truth
         race: plan.raceRegistry
           ? {
