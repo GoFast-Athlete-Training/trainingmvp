@@ -72,12 +72,13 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    console.log('✅ HYDRATE API: Athlete found, loading active training plan...');
+    console.log('✅ HYDRATE API: Athlete found, loading latest training plan (active or draft)...');
     
-    // Get active training plan ID (bolted to athleteId)
+    // MVP1: Load latest active OR draft plan (do NOT require AthleteTrainingPlan junction table)
     let trainingPlanId = null;
     try {
-      const activePlan = await prisma.trainingPlan.findFirst({
+      // First try active plan
+      let plan = await prisma.trainingPlan.findFirst({
         where: { 
           athleteId: athlete.id,
           status: 'active'
@@ -87,11 +88,26 @@ export async function POST(request: Request) {
         },
         orderBy: { createdAt: 'desc' },
       });
-      if (activePlan) {
-        trainingPlanId = activePlan.id;
-        console.log('✅ HYDRATE API: Found active training plan ID:', trainingPlanId);
+
+      // If no active plan, try draft plan
+      if (!plan) {
+        plan = await prisma.trainingPlan.findFirst({
+          where: { 
+            athleteId: athlete.id,
+            status: 'draft'
+          },
+          select: {
+            id: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      if (plan) {
+        trainingPlanId = plan.id;
+        console.log('✅ HYDRATE API: Found training plan ID:', trainingPlanId);
       } else {
-        console.log('✅ HYDRATE API: No active training plan found');
+        console.log('✅ HYDRATE API: No training plan found (active or draft)');
       }
     } catch (err: any) {
       console.error('❌ HYDRATE API: Error loading training plan:', err?.message);

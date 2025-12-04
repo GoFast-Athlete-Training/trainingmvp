@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate required fields
     if (!existingPlan.trainingPlanGoalTime) {
       return NextResponse.json(
         { success: false, error: 'Goal time must be set before generating plan' },
@@ -65,7 +66,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get race from junction table
+    if (!existingPlan.trainingPlanStartDate) {
+      return NextResponse.json(
+        { success: false, error: 'Start date must be set before generating plan' },
+        { status: 400 }
+      );
+    }
+
+    // Get race from junction table (required)
     const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
     if (!raceTrainingPlan) {
       return NextResponse.json(
@@ -96,7 +104,7 @@ export async function POST(request: NextRequest) {
     const planStartDate = existingPlan.trainingPlanStartDate;
     const totalWeeks = existingPlan.trainingPlanTotalWeeks;
 
-    // Calculate goalFiveKPace if not already set
+    // Calculate goalFiveKPace if not already set (recompute from goal time + race distance)
     let goalFiveKPace = existingPlan.goalFiveKPace;
     if (!goalFiveKPace) {
       try {

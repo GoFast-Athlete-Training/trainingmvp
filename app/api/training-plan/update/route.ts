@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     const allowedFields = [
       'trainingPlanGoalTime',
       'trainingPlanName',
+      'trainingPlanStartDate',
       'trainingPlanTotalWeeks',
     ];
 
