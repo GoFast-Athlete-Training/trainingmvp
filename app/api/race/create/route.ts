@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Store body for use in catch block
+    const requestBody = { name, distance, date, city, state, country };
+
     console.log('🔍 RACE CREATE: Checking if race already exists...');
     const raceDate = new Date(date);
     
@@ -101,13 +104,18 @@ export async function POST(request: NextRequest) {
     if (error.code === 'P2002' || error.code === '23505') {
       console.log('⚠️ RACE CREATE: Duplicate race detected, attempting to find existing...');
       try {
+        // Use the variables from the request body (available in outer scope)
+        if (!name || !date) {
+          throw new Error('Missing race name or date in error handler');
+        }
+        
         const existingRace = await prisma.raceRegistry.findFirst({
           where: {
             name: {
-              equals: body.name,
+              equals: name,
               mode: 'insensitive',
             },
-            date: new Date(body.date),
+            date: new Date(date),
           },
         });
         
