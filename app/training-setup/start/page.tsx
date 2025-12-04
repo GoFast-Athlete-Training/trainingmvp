@@ -77,24 +77,33 @@ export default function TrainingSetupStartPage() {
     setError(null);
 
     try {
-      // Get trainingPlanId from URL params (if coming from training hub)
-      const urlParams = new URLSearchParams(window.location.search);
-      const trainingPlanId = urlParams.get('planId');
+      // Get trainingPlanId from URL params or state
+      const planId = trainingPlanId || new URLSearchParams(window.location.search).get('planId');
       
-      if (trainingPlanId) {
+      if (planId) {
         // Update existing draft plan with race
         console.log('📋 Updating training plan with race:', race.id);
+        
+        // Calculate total weeks from race date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const raceDate = new Date(race.date);
+        raceDate.setHours(0, 0, 0, 0);
+        const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+
         const response = await api.post('/training-plan/update', {
-          trainingPlanId,
+          trainingPlanId: planId,
           updates: {
             raceRegistryId: race.id,
             trainingPlanName: `${race.name} Training Plan`,
+            trainingPlanTotalWeeks: totalWeeks,
           },
         });
 
         if (response.data.success) {
-          console.log('✅ Training plan updated with race:', trainingPlanId);
-          router.push(`/training-setup/${trainingPlanId}`);
+          console.log('✅ Training plan updated with race:', planId);
+          router.push(`/training-setup/${planId}`);
         } else {
           const errorMsg = response.data.error || response.data.details || 'Failed to update training plan';
           console.error('❌ Training plan update failed:', errorMsg);
@@ -154,25 +163,60 @@ export default function TrainingSetupStartPage() {
       const raceId = createRaceResponse.data.race.id;
       console.log('✅ STEP 1: Race created/found:', raceId);
 
-      // Step 2: Create training plan (separate concern)
-      console.log('📋 STEP 2: Creating training plan...');
-      try {
-        const createPlanResponse = await api.post('/training-plan/create', {
-          raceRegistryId: raceId,
-        });
+      // Step 2: Update existing plan or create new one
+      const planId = trainingPlanId || new URLSearchParams(window.location.search).get('planId');
+      
+      if (planId) {
+        // Update existing draft plan with race
+        console.log('📋 STEP 2: Updating training plan with race...');
+        try {
+          // Calculate total weeks from race date
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const raceDate = new Date(raceDate);
+          raceDate.setHours(0, 0, 0, 0);
+          const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
 
-        if (createPlanResponse.data.success) {
-          console.log('✅ STEP 2: Training plan created:', createPlanResponse.data.trainingPlanId);
-          router.push(`/training-setup/${createPlanResponse.data.trainingPlanId}`);
-        } else {
-          // Race was created successfully, but training plan failed
-          setError(`Race saved successfully, but failed to create training plan: ${createPlanResponse.data.error || 'Unknown error'}`);
+          const updatePlanResponse = await api.post('/training-plan/update', {
+            trainingPlanId: planId,
+            updates: {
+              raceRegistryId: raceId,
+              trainingPlanName: `${raceName} Training Plan`,
+              trainingPlanTotalWeeks: totalWeeks,
+            },
+          });
+
+          if (updatePlanResponse.data.success) {
+            console.log('✅ STEP 2: Training plan updated:', planId);
+            router.push(`/training-setup/${planId}`);
+          } else {
+            setError(`Race saved successfully, but failed to update training plan: ${updatePlanResponse.data.error || 'Unknown error'}`);
+          }
+        } catch (planErr: any) {
+          console.error('❌ STEP 2: Training plan update failed:', planErr);
+          const planErrorMsg = planErr.response?.data?.error || planErr.response?.data?.details || planErr.message || 'Unknown error';
+          setError(`Race saved successfully, but failed to update training plan: ${planErrorMsg}`);
         }
-      } catch (planErr: any) {
-        // Race was created successfully, but training plan failed
-        console.error('❌ STEP 2: Training plan creation failed:', planErr);
-        const planErrorMsg = planErr.response?.data?.error || planErr.response?.data?.details || planErr.message || 'Unknown error';
-        setError(`Race saved successfully, but failed to create training plan: ${planErrorMsg}`);
+      } else {
+        // Create new plan with race
+        console.log('📋 STEP 2: Creating training plan...');
+        try {
+          const createPlanResponse = await api.post('/training-plan/create', {
+            raceRegistryId: raceId,
+          });
+
+          if (createPlanResponse.data.success) {
+            console.log('✅ STEP 2: Training plan created:', createPlanResponse.data.trainingPlanId);
+            router.push(`/training-setup/${createPlanResponse.data.trainingPlanId}`);
+          } else {
+            setError(`Race saved successfully, but failed to create training plan: ${createPlanResponse.data.error || 'Unknown error'}`);
+          }
+        } catch (planErr: any) {
+          console.error('❌ STEP 2: Training plan creation failed:', planErr);
+          const planErrorMsg = planErr.response?.data?.error || planErr.response?.data?.details || planErr.message || 'Unknown error';
+          setError(`Race saved successfully, but failed to create training plan: ${planErrorMsg}`);
+        }
       }
     } catch (err: any) {
       // Race creation failed
