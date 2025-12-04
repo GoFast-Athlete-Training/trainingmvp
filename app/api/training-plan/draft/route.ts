@@ -5,28 +5,48 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 
 /**
- * Get draft training plan(s) for the athlete
- * Returns the most recent draft plan with its current state
+ * Get training plan(s) assigned to the athlete via junction table
+ * Returns the most recent plan with its current state (what's bolted on)
+ * Architecture: TrainingPlan is master container, we check what's assigned/bolted on
  */
 export async function GET(request: NextRequest) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
 
-    // Get most recent draft plan
-    const draftPlan = await prisma.trainingPlan.findFirst({
+    // Get most recent plan assigned to this athlete via junction table
+    // Don't filter by status - just look at what's assigned
+    const assignment = await prisma.athleteTrainingPlan.findFirst({
       where: {
         athleteId,
-        status: 'draft',
+        // Don't filter by isActive - just get the most recent assignment
       },
       include: {
-        raceRegistry: true,
+        trainingPlan: {
+          raceRegistry: true,
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    if (!draftPlan) {
+    // If no assignment, check for plans directly owned by athlete (legacy)
+    let plan = assignment?.trainingPlan;
+    if (!plan) {
+      plan = await prisma.trainingPlan.findFirst({
+        where: {
+          athleteId,
+        },
+        include: {
+          raceRegistry: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    }
+
+    if (!plan) {
       return NextResponse.json({
         success: true,
         hasDraftPlan: false,
@@ -34,9 +54,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Determine what's missing
-    const hasRace = !!draftPlan.raceRegistryId;
-    const hasGoalTime = !!draftPlan.trainingPlanGoalTime;
+    // Determine what's bolted on (what's missing)
+    const hasRace = !!plan.raceRegistryId;
+    const hasGoalTime = !!plan.trainingPlanGoalTime;
 
     // Determine next step
     let nextStep: string | null = null;
@@ -44,30 +64,30 @@ export async function GET(request: NextRequest) {
 
     if (!hasRace) {
       nextStep = 'Select Race';
-      nextStepUrl = `/training-setup/start?planId=${draftPlan.id}`;
+      nextStepUrl = `/training-setup/start?planId=${plan.id}`;
     } else if (!hasGoalTime) {
       nextStep = 'Set Goal Time';
-      nextStepUrl = `/training-setup/${draftPlan.id}`;
+      nextStepUrl = `/training-setup/${plan.id}`;
     } else {
       nextStep = 'Review & Generate';
-      nextStepUrl = `/training-setup/${draftPlan.id}/review`;
+      nextStepUrl = `/training-setup/${plan.id}/review`;
     }
 
     return NextResponse.json({
       success: true,
       hasDraftPlan: true,
       draftPlan: {
-        id: draftPlan.id,
-        trainingPlanName: draftPlan.trainingPlanName,
-        raceRegistryId: draftPlan.raceRegistryId,
-        trainingPlanGoalTime: draftPlan.trainingPlanGoalTime,
-        status: draftPlan.status,
-        race: draftPlan.raceRegistry
+        id: plan.id,
+        trainingPlanName: plan.trainingPlanName,
+        raceRegistryId: plan.raceRegistryId,
+        trainingPlanGoalTime: plan.trainingPlanGoalTime,
+        status: plan.status, // Just metadata, not source of truth
+        race: plan.raceRegistry
           ? {
-              id: draftPlan.raceRegistry.id,
-              name: draftPlan.raceRegistry.name,
-              distance: draftPlan.raceRegistry.distance,
-              date: draftPlan.raceRegistry.date,
+              id: plan.raceRegistry.id,
+              name: plan.raceRegistry.name,
+              distance: plan.raceRegistry.distance,
+              date: plan.raceRegistry.date,
             }
           : null,
         nextStep,
