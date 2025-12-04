@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         name: true,
-        distance: true,
+        raceType: true,
+        miles: true,
         date: true,
         city: true,
         state: true,

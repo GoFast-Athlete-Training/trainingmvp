@@ -209,7 +209,7 @@ export default function TrainingSetupStartPage() {
       console.log('🏁 STEP 1: Creating/finding race...');
       const createRaceResponse = await api.post('/race/create', {
         name: raceName,
-        distance: raceDistance,
+        raceType: raceDistance, // Send as raceType (API accepts both for backward compat)
         date: raceDate,
         city: raceCity || null,
         state: raceState || null,
@@ -337,7 +337,7 @@ export default function TrainingSetupStartPage() {
                       >
                         <div className="font-semibold text-lg">{race.name}</div>
                         <div className="text-sm text-gray-600">
-                          {race.distance.toUpperCase()} • {formatRaceDate(race.date)}
+                          {race.raceType?.toUpperCase() || race.distance?.toUpperCase()} {race.miles ? `(${race.miles} miles)` : ''} • {formatRaceDate(race.date)}
                           {race.city && ` • ${race.city}, ${race.state || race.country}`}
                         </div>
                         {loading && (

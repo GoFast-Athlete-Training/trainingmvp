@@ -123,7 +123,8 @@ model AthleteActivity {
 model Race {
   id        String   @id @default(cuid())
   name      String
-  distance  String // "marathon", "half", "5k", "10k", etc.
+  raceType  String   // "marathon", "half", "5k", "10k", "10m" - enum from config
+  miles     Float    // Derived from raceType using config/race-types.ts
   date      DateTime
   city      String?
   state     String?

@@ -97,7 +97,8 @@ export async function GET(request: NextRequest) {
           ? {
               id: plan.raceTrainingPlans[0].race.id,
               name: plan.raceTrainingPlans[0].race.name,
-              distance: plan.raceTrainingPlans[0].race.distance,
+              raceType: plan.raceTrainingPlans[0].race.raceType,
+              miles: plan.raceTrainingPlans[0].race.miles,
               date: plan.raceTrainingPlans[0].race.date,
             }
           : null,

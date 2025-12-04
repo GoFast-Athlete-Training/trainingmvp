@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
+import { getRaceMiles, isValidRaceType } from '@/config/race-types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,14 +24,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📝 RACE CREATE: Request body:', body);
 
-    const { name, distance, date, city, state, country } = body;
+    const { name, distance, raceType, date, city, state, country } = body;
 
-    if (!name || !distance || !date) {
+    // Support both old 'distance' field and new 'raceType' field for backward compatibility
+    const finalRaceType = raceType || distance;
+    
+    if (!name || !finalRaceType || !date) {
       return NextResponse.json(
-        { success: false, error: 'Name, distance, and date are required' },
+        { success: false, error: 'Name, raceType, and date are required' },
         { status: 400 }
       );
     }
+
+    // Validate race type and get miles
+    if (!isValidRaceType(finalRaceType)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid race type: ${finalRaceType}. Supported: marathon, half, 10k, 5k, 10m` },
+        { status: 400 }
+      );
+    }
+
+    const miles = getRaceMiles(finalRaceType);
+    console.log('📊 RACE CREATE: Race type:', finalRaceType, 'Miles:', miles);
 
     console.log('🔍 RACE CREATE: Searching registry first (search-before-create pattern)...');
     // Normalize date to UTC midnight to prevent timezone issues
@@ -59,7 +74,8 @@ export async function POST(request: NextRequest) {
         race: {
           id: existingRace.id,
           name: existingRace.name,
-          distance: existingRace.distance,
+          raceType: existingRace.raceType,
+          miles: existingRace.miles,
           date: existingRace.date,
           city: existingRace.city,
           state: existingRace.state,
@@ -73,7 +89,8 @@ export async function POST(request: NextRequest) {
     const race = await prisma.race.create({
       data: {
         name,
-        distance,
+        raceType: finalRaceType,
+        miles: miles,
         date: raceDate,
         city: city || null,
         state: state || null,
@@ -89,7 +106,8 @@ export async function POST(request: NextRequest) {
       race: {
         id: race.id,
         name: race.name,
-        distance: race.distance,
+        raceType: race.raceType,
+        miles: race.miles,
         date: race.date,
         city: race.city,
         state: race.state,

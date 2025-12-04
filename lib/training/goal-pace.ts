@@ -3,17 +3,15 @@
  * 
  * Business rules:
  * - Convert race goal time → total seconds
- * - Get race distance from RaceRegistry.distance:
- *   - marathon = 26.2 miles
- *   - half = 13.1 miles
- *   - 10k = 6.21371 miles
- *   - 5k = 3.10686 miles
+ * - Get race distance in miles (either from raceType string or miles number)
  * - Compute average pace per mile: pacePerMileSec = raceGoalSeconds / raceMiles
  * - Convert to 5K target pace: goalFiveKSector = pacePerMileSec * 3.10686
  * - Convert to mm:ss string
  */
 
-export function calculateGoalFiveKPace(goalTime: string, raceDistance: string): string {
+import { getRaceMiles } from '@/config/race-types';
+
+export function calculateGoalFiveKPace(goalTime: string, raceTypeOrMiles: string | number): string {
   if (!goalTime || !goalTime.trim()) {
     throw new Error('Goal time is required');
   }
@@ -64,24 +62,20 @@ export function calculateGoalFiveKPace(goalTime: string, raceDistance: string): 
   }
 
   // Get race distance in miles
-  const distanceMap: Record<string, number> = {
-    marathon: 26.2,
-    half: 13.1,
-    '10k': 6.21371,
-    '5k': 3.10686,
-    '10m': 10.0, // 10 mile
-  };
-
-  const raceMiles = distanceMap[raceDistance.toLowerCase()];
-  if (!raceMiles) {
-    throw new Error(`Unknown race distance: ${raceDistance}. Supported: marathon, half, 10k, 5k, 10m`);
+  // Accept either raceType string (e.g., "marathon") or miles number
+  let raceMiles: number;
+  if (typeof raceTypeOrMiles === 'number') {
+    raceMiles = raceTypeOrMiles;
+  } else {
+    // It's a raceType string - get miles from config
+    raceMiles = getRaceMiles(raceTypeOrMiles);
   }
 
   // Compute average pace per mile (in seconds)
   const pacePerMileSec = totalSeconds / raceMiles;
 
-  // Convert to 5K target pace (5K = 3.10686 miles)
-  const goalFiveKSec = pacePerMileSec * 3.10686;
+  // Convert to 5K target pace (5K = 3.1 miles)
+  const goalFiveKSec = pacePerMileSec * 3.1;
 
   // Validate result is reasonable (should be between 2:00 and 30:00 per mile for 5K)
   if (goalFiveKSec < 120 || goalFiveKSec > 1800) {

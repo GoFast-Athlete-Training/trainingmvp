@@ -48,7 +48,8 @@ export async function GET(
           ? {
               id: race.id,
               name: race.name,
-              distance: race.distance,
+              raceType: race.raceType,
+              miles: race.miles,
               date: race.date,
               city: race.city,
               state: race.state,

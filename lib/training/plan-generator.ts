@@ -12,7 +12,8 @@ function getOpenAIClient() {
 
 export interface TrainingInputs {
   raceName: string;
-  raceDistance: string;
+  raceDistance: string; // raceType string (marathon, half, etc.) for display
+  raceMiles?: number; // Optional: miles for accurate calculations
   goalTime: string;
   fiveKPace: string; // mm:ss format - from athlete.fiveKPace
   totalWeeks: number; // Calculated externally

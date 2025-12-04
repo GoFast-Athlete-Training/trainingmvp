@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
     let goalPace5K = existingPlan.goalPace5K;
     if (!goalPace5K) {
       try {
-        goalPace5K = calculateGoalFiveKPace(goalTime, race.distance);
+        // Use miles directly (more accurate than deriving from raceType)
+        goalPace5K = calculateGoalFiveKPace(goalTime, race.miles);
       } catch (error: any) {
         return NextResponse.json(
           { success: false, error: `Failed to calculate goal pace: ${error.message}` },
@@ -120,7 +121,8 @@ export async function POST(request: NextRequest) {
     // Generate plan using new cascade structure
     const plan = await generateTrainingPlanAI({
       raceName: race.name,
-      raceDistance: race.distance,
+      raceDistance: race.raceType || race.distance, // Use raceType, fallback to distance for backward compat
+      raceMiles: race.miles, // Pass miles for accurate calculations
       goalTime,
       fiveKPace: athlete.fiveKPace,
       totalWeeks,

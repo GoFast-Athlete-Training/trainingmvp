@@ -239,7 +239,7 @@ export default function TrainingSetupReviewPage() {
                       {plan.race?.name || 'Not set'}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {plan.race?.distance?.toUpperCase()} • {plan.race?.date ? formatRaceDate(plan.race.date) : 'Unknown date'}
+                      {plan.race?.raceType?.toUpperCase() || plan.race?.distance?.toUpperCase()} {plan.race?.miles ? `(${plan.race.miles} miles)` : ''} • {plan.race?.date ? formatRaceDate(plan.race.date) : 'Unknown date'}
                     </p>
                   </div>
                   <button
@@ -269,14 +269,15 @@ export default function TrainingSetupReviewPage() {
                 </div>
 
                 {/* Target 5K Pace (calculated, read-only) */}
-                {plan.goalTime && plan.race?.distance && (
+                {plan.goalTime && plan.race?.miles && (
                   <div>
                     <p className="text-sm font-semibold text-gray-600">Target 5K Pace</p>
                     <p className="text-lg font-bold text-orange-600">
                       {(() => {
                         try {
                           // Calculate if not stored, otherwise use stored value
-                          return plan.goalPace5K || calculateGoalFiveKPace(plan.goalTime, plan.race.distance);
+                          // Use miles directly (more accurate)
+                          return plan.goalPace5K || calculateGoalFiveKPace(plan.goalTime, plan.race.miles);
                         } catch (error) {
                           return 'Unable to calculate';
                         }

@@ -167,11 +167,13 @@ export async function POST(request: NextRequest) {
       const race = raceTrainingPlan.race;
       console.log('📊 UPDATE: Calculating goal pace');
       console.log('  Goal time:', goalTimeValue);
-      console.log('  Race distance:', race.distance);
+      console.log('  Race type:', race.raceType);
+      console.log('  Race miles:', race.miles);
       try {
+        // Use miles directly (more accurate than deriving from raceType)
         const calculatedPace = calculateGoalFiveKPace(
           goalTimeValue,
-          race.distance
+          race.miles
         );
         console.log('  Calculated 5K pace:', calculatedPace);
         updateData.goalPace5K = calculatedPace;
@@ -217,7 +219,8 @@ export async function POST(request: NextRequest) {
           ? {
               id: race.id,
               name: race.name,
-              distance: race.distance,
+              raceType: race.raceType,
+              miles: race.miles,
               date: race.date,
             }
           : null,

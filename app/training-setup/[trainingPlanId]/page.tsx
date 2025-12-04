@@ -47,6 +47,16 @@ export default function TrainingSetupGoalTimePage() {
               setSeconds(parts[1]);
             }
           }
+          
+          // Set race type for validation
+          const raceType = response.data.trainingPlan.race?.raceType || response.data.trainingPlan.race?.distance;
+          setPlan((prev: any) => ({
+            ...prev,
+            race: {
+              ...prev?.race,
+              raceType: raceType,
+            }
+          }));
         } else {
           setError(response.data.error || 'Failed to load plan');
         }
@@ -63,8 +73,8 @@ export default function TrainingSetupGoalTimePage() {
 
   // Update goalTime string when components change
   useEffect(() => {
-    const raceDistance = plan?.race?.distance?.toLowerCase();
-    const isLongRace = raceDistance === 'marathon' || raceDistance === 'half';
+    const raceType = plan?.race?.raceType?.toLowerCase() || plan?.race?.distance?.toLowerCase();
+    const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     if (isLongRace) {
       // For long races, always use HH:MM:SS
@@ -88,8 +98,8 @@ export default function TrainingSetupGoalTimePage() {
   }, [hours, minutes, seconds, plan?.race?.distance]);
 
   const handleSave = async () => {
-    const raceDistance = plan?.race?.distance?.toLowerCase();
-    const isLongRace = raceDistance === 'marathon' || raceDistance === 'half';
+    const raceType = plan?.race?.raceType?.toLowerCase() || plan?.race?.distance?.toLowerCase();
+    const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     // Validate inputs
     if (isLongRace) {
@@ -192,7 +202,7 @@ export default function TrainingSetupGoalTimePage() {
                 Goal Time *
               </label>
               
-              {(plan?.race?.distance?.toLowerCase() === 'marathon' || plan?.race?.distance?.toLowerCase() === 'half') ? (
+              {(raceType === 'marathon' || raceType === 'half') ? (
                 // Long race: HH:MM:SS format
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
