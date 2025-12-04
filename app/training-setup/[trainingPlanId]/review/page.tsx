@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import api from '@/lib/api';
-import { calculateGoalFiveKPace } from '@/lib/training/goal-pace';
+import { paceToString } from '@/lib/training/pace-prediction';
 
 // Format race date properly (handle timezone issues)
 // Race dates are date-only values, so we use UTC to prevent timezone shifts
@@ -268,24 +268,47 @@ export default function TrainingSetupReviewPage() {
                   )}
                 </div>
 
-                {/* Target 5K Pace (calculated, read-only) */}
-                {plan.goalTime && plan.race?.miles && (
-                  <div>
-                    <p className="text-sm font-semibold text-gray-600">Target 5K Pace</p>
-                    <p className="text-lg font-bold text-orange-600">
-                      {(() => {
-                        try {
-                          // Calculate if not stored, otherwise use stored value
-                          // Use miles directly (more accurate)
-                          return plan.goalPace5K || calculateGoalFiveKPace(plan.goalTime, plan.race.miles);
-                        } catch (error) {
-                          return 'Unable to calculate';
-                        }
-                      })()} /mile
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Calculated from your goal time
-                    </p>
+                {/* Three Paces Display */}
+                {plan.goalTime && plan.race && (
+                  <div className="space-y-3">
+                    {/* Current 5K Pace */}
+                    {plan.athlete?.fiveKPace && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-blue-700 mb-1">Current 5K Pace</p>
+                        <p className="text-lg font-bold text-blue-900">
+                          {plan.athlete.fiveKPace} /mile
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Your current fitness level
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Predicted Race Pace */}
+                    {plan.predictedRacePace && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-green-700 mb-1">Predicted Race Pace</p>
+                        <p className="text-lg font-bold text-green-900">
+                          {paceToString(plan.predictedRacePace)} /mile
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          Based on your current 5K pace
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Goal Race Pace */}
+                    {plan.goalRacePace && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-orange-700 mb-1">Goal Race Pace</p>
+                        <p className="text-lg font-bold text-orange-900">
+                          {paceToString(plan.goalRacePace)} /mile
+                        </p>
+                        <p className="text-xs text-orange-600 mt-1">
+                          Target pace for race day
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 

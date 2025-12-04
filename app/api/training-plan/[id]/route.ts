@@ -19,6 +19,12 @@ export async function GET(
       },
       include: {
         race: true, // Direct relation
+        athlete: {
+          select: {
+            id: true,
+            fiveKPace: true,
+          },
+        },
       },
     });
 
@@ -34,7 +40,9 @@ export async function GET(
         id: plan.id,
         name: plan.name,
         goalTime: plan.goalTime,
-        goalPace5K: plan.goalPace5K,
+        goalPace5K: plan.goalPace5K, // Deprecated, kept for backward compatibility
+        goalRacePace: plan.goalRacePace,
+        predictedRacePace: plan.predictedRacePace,
         startDate: plan.startDate,
         totalWeeks: plan.totalWeeks,
         status: plan.status,
@@ -48,6 +56,12 @@ export async function GET(
               city: race.city,
               state: race.state,
               country: race.country,
+            }
+          : null,
+        athlete: plan.athlete
+          ? {
+              id: plan.athlete.id,
+              fiveKPace: plan.athlete.fiveKPace,
             }
           : null,
       },

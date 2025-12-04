@@ -1,23 +1,27 @@
 /**
- * Calculate target pace per mile from race goal time and race distance
+ * Calculate goal race pace per mile from race goal time and race distance
  * 
- * This calculates the PACE PER MILE needed to achieve the goal time for the race.
- * This is NOT the 5K pace (which would be faster, for a sprint effort).
+ * This calculates the PACE PER MILE (in seconds) needed to achieve the goal time for the race.
  * 
  * Business rules:
  * - Convert race goal time → total seconds
  * - Get race distance in miles (either from raceType string or miles number)
  * - Compute average pace per mile: pacePerMileSec = raceGoalSeconds / raceMiles
- * - Return pace per mile in mm:ss format
+ * - Return pace per mile in SECONDS (not mm:ss string)
  * 
  * Example: 3:05:00 marathon (11,100 seconds) / 26.2 miles = 423.66 sec/mile = 7:03/mile
- * 
- * NOTE: This is the GOAL PACE for the race, not the 5K sprint pace.
  */
 
 import { getRaceMiles } from '@/config/race-types';
 
-export function calculateGoalPace(goalTime: string, raceTypeOrMiles: string | number): string {
+/**
+ * Calculate goal race pace in seconds per mile
+ * 
+ * @param goalTime - Goal time in format "HH:MM:SS", "HH:MM", or "MM:SS"
+ * @param raceTypeOrMiles - Race type string (e.g., "marathon") or miles number
+ * @returns Pace per mile in seconds (e.g., 423 for 7:03/mile)
+ */
+export function calculateGoalRacePace(goalTime: string, raceTypeOrMiles: string | number): number {
   if (!goalTime || !goalTime.trim()) {
     throw new Error('Goal time is required');
   }
@@ -94,10 +98,7 @@ export function calculateGoalPace(goalTime: string, raceTypeOrMiles: string | nu
     console.warn(`Warning: Calculated pace per mile seems unusual: ${pacePerMileSec} seconds. Goal time: ${goalTime}, Race distance: ${raceMiles} miles`);
   }
 
-  // Return pace per mile in mm:ss format
-  const minutes = Math.floor(pacePerMileSec / 60);
-  const seconds = Math.floor(pacePerMileSec % 60);
-  
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  // Return pace per mile in seconds (not formatted string)
+  return Math.round(pacePerMileSec);
 }
 

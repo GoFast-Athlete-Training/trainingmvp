@@ -169,7 +169,9 @@ model TrainingPlan {
 
   // CYCLE-LEVEL GOALS
   goalTime String? // Renamed from trainingPlanGoalTime, e.g., "3:30:00" for marathon
-  goalPace5K String? // Renamed from goalFiveKPace, mm:ss format - TARGET 5K pace derived from goal time + race distance
+  goalPace5K String? // DEPRECATED: Keep for backward compatibility, use goalRacePace instead
+  goalRacePace Int? // Goal race pace in seconds per mile (derived from goalTime + race.miles)
+  predictedRacePace Int? // Predicted race pace in seconds per mile (derived from athlete.fiveKPace + race adjustments)
 
   // PLAN STRUCTURE
   startDate DateTime // Renamed from trainingPlanStartDate

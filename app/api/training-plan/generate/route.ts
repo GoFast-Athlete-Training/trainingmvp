@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
-import { calculateGoalFiveKPace } from '@/lib/training/goal-pace';
+import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
+import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToString } from '@/lib/training/pace-prediction';
 import { calculateTrainingDayDateFromWeek, getDayOfWeek } from '@/lib/training/dates';
 
 /**
@@ -99,19 +100,42 @@ export async function POST(request: NextRequest) {
     const planStartDate = existingPlan.startDate;
     const totalWeeks = existingPlan.totalWeeks;
 
-    // Calculate goalPace5K if not already set (recompute from goal time + race distance)
-    let goalPace5K = existingPlan.goalPace5K;
-    if (!goalPace5K) {
+    // Calculate goalRacePace and predictedRacePace if not already set
+    let goalRacePaceSec = existingPlan.goalRacePace;
+    let predictedRacePaceSec = existingPlan.predictedRacePace;
+    
+    if (!goalRacePaceSec) {
       try {
-        // Use miles directly (more accurate than deriving from raceType)
-        goalPace5K = calculateGoalFiveKPace(goalTime, race.miles);
+        goalRacePaceSec = calculateGoalRacePace(goalTime, race.miles);
+        console.log('📊 GENERATE: Calculated goal race pace:', goalRacePaceSec, 'seconds/mile');
       } catch (error: any) {
         return NextResponse.json(
-          { success: false, error: `Failed to calculate goal pace: ${error.message}` },
+          { success: false, error: `Failed to calculate goal race pace: ${error.message}` },
           { status: 400 }
         );
       }
     }
+
+    if (!predictedRacePaceSec && athlete.fiveKPace) {
+      try {
+        const fiveKPaceSec = parsePaceToSeconds(athlete.fiveKPace);
+        const raceType = normalizeRaceType(race.raceType);
+        predictedRacePaceSec = predictedRacePaceFrom5K(fiveKPaceSec, raceType);
+        console.log('📊 GENERATE: Calculated predicted race pace:', predictedRacePaceSec, 'seconds/mile');
+      } catch (error: any) {
+        console.warn('⚠️ GENERATE: Failed to calculate predicted race pace:', error.message);
+        // Don't fail generation if predicted pace can't be calculated
+      }
+    }
+
+    // Format paces for AI prompt
+    const fiveKPaceString = athlete.fiveKPace || '7:00'; // Fallback if missing
+    const predictedRacePaceString = predictedRacePaceSec 
+      ? paceToString(predictedRacePaceSec) 
+      : '7:30'; // Fallback
+    const goalRacePaceString = goalRacePaceSec 
+      ? paceToString(goalRacePaceSec) 
+      : '7:30'; // Fallback
 
     // Generate plan using new cascade structure
     const plan = await generateTrainingPlanAI({
@@ -119,7 +143,9 @@ export async function POST(request: NextRequest) {
       raceDistance: race.raceType, // Use raceType (migration should have populated this)
       raceMiles: race.miles, // Pass miles for accurate calculations
       goalTime,
-      fiveKPace: athlete.fiveKPace,
+      fiveKPace: fiveKPaceString,
+      predictedRacePace: predictedRacePaceString,
+      goalRacePace: goalRacePaceString,
       totalWeeks,
       planStartDate: planStartDate, // Pass actual start date so AI knows day of week patterns
     });
@@ -129,12 +155,13 @@ export async function POST(request: NextRequest) {
     // So we'll delete the old plan and create a new one, OR update the existing one
     // For now, let's update the existing plan and create the cascade
     const result = await prisma.$transaction(async (tx) => {
-      // Update plan status to active and set goalPace5K
+      // Update plan status to active and set pace fields
       const updatedPlan = await tx.trainingPlan.update({
         where: { id: trainingPlanId },
         data: {
           status: 'active',
-          goalPace5K: goalPace5K,
+          goalRacePace: goalRacePaceSec,
+          predictedRacePace: predictedRacePaceSec,
         },
       });
 

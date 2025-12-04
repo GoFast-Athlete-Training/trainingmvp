@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
-import { calculateGoalFiveKPace } from '@/lib/training/goal-pace';
+import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
+import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType } from '@/lib/training/pace-prediction';
 
 /**
  * Update TrainingPlan fields
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If goal time is being set, calculate goalPace5K
+    // If goal time is being set, calculate goalRacePace and predictedRacePace
     const goalTimeValue = updates.goalTime || updates.trainingPlanGoalTime;
     if (goalTimeValue) {
       // Get race from direct relation (may have just been attached or already exists)
@@ -142,22 +143,35 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log('📊 UPDATE: Calculating goal pace');
+      console.log('📊 UPDATE: Calculating goal race pace');
       console.log('  Goal time:', goalTimeValue);
       console.log('  Race type:', race.raceType);
       console.log('  Race miles:', race.miles);
+      
       try {
-        // Use miles directly (more accurate than deriving from raceType)
-        const calculatedPace = calculateGoalFiveKPace(
-          goalTimeValue,
-          race.miles
-        );
-        console.log('  Calculated 5K pace:', calculatedPace);
-        updateData.goalPace5K = calculatedPace;
+        // Calculate goal race pace (from goal time)
+        const goalRacePaceSec = calculateGoalRacePace(goalTimeValue, race.miles);
+        updateData.goalRacePace = goalRacePaceSec;
+        console.log('  Calculated goal race pace:', goalRacePaceSec, 'seconds/mile');
+
+        // Calculate predicted race pace (from athlete's 5K pace)
+        const athlete = await prisma.athlete.findUnique({
+          where: { id: athleteId },
+        });
+
+        if (athlete?.fiveKPace) {
+          const fiveKPaceSec = parsePaceToSeconds(athlete.fiveKPace);
+          const raceType = normalizeRaceType(race.raceType);
+          const predictedRacePaceSec = predictedRacePaceFrom5K(fiveKPaceSec, raceType);
+          updateData.predictedRacePace = predictedRacePaceSec;
+          console.log('  Calculated predicted race pace:', predictedRacePaceSec, 'seconds/mile');
+        } else {
+          console.warn('⚠️ UPDATE: Athlete has no 5K pace, skipping predicted race pace calculation');
+        }
       } catch (error: any) {
-        console.error('❌ UPDATE: Goal pace calculation failed:', error.message);
+        console.error('❌ UPDATE: Pace calculation failed:', error.message);
         return NextResponse.json(
-          { success: false, error: `Failed to calculate goal pace: ${error.message}` },
+          { success: false, error: `Failed to calculate pace: ${error.message}` },
           { status: 400 }
         );
       }

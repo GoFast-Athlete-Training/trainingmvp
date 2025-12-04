@@ -15,7 +15,9 @@ export interface TrainingInputs {
   raceDistance: string; // raceType string (marathon, half, etc.) for display
   raceMiles?: number; // Optional: miles for accurate calculations
   goalTime: string;
-  fiveKPace: string; // mm:ss format - from athlete.fiveKPace
+  fiveKPace: string; // mm:ss format - from athlete.fiveKPace (current fitness)
+  predictedRacePace: string; // mm:ss format - predicted race pace based on 5K fitness
+  goalRacePace: string; // mm:ss format - goal race pace from goal time
   totalWeeks: number; // Calculated externally
   planStartDate: Date; // Actual start date - used to determine day of week patterns
 }
@@ -90,9 +92,25 @@ Workout Types:
 Inputs:
 - Race: ${inputs.raceName} (${inputs.raceDistance})
 - Goal Time: ${inputs.goalTime}
-- 5K Pace: ${inputs.fiveKPace} per mile
+- Athlete current 5K pace: ${inputs.fiveKPace} per mile (current fitness)
+- Predicted race pace (based on fitness): ${inputs.predictedRacePace} per mile (realistic pace today)
+- Goal race pace (target for race day): ${inputs.goalRacePace} per mile (training target)
 - Total Weeks: ${inputs.totalWeeks}
 - Plan Start Date: ${startDayName} (dayNumber ${startDayNumber})
+
+Pace Usage Guidelines:
+- Use predictedRacePace (${inputs.predictedRacePace}/mile) for:
+  * Sustainable weekly mileage planning
+  * Default "easy" run pacing
+  * Base phase workouts
+- Use goalRacePace (${inputs.goalRacePace}/mile) for:
+  * Late-phase tempo workouts
+  * Race-specific pace work
+  * Long run pacing in peak phase
+- Use 5K pace (${inputs.fiveKPace}/mile) for:
+  * Interval workouts (VO2 max)
+  * Speed work
+  * High-intensity training
 
 You must return EXACT JSON ONLY (no markdown, no explanation):
 {
