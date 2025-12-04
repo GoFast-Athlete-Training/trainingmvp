@@ -76,6 +76,7 @@ model Athlete {
 
   // Relations
   trainingPlans             TrainingPlan[]
+  athleteTrainingPlans      AthleteTrainingPlan[] // Junction table for multiple plans
   plannedDays               TrainingDayPlanned[]
   executedDays              TrainingDayExecuted[]
   activities                AthleteActivity[]
@@ -165,9 +166,37 @@ model RaceRegistry {
   @@map("race_registry")
 }
 
-model TrainingPlan {
+// Junction table: Athlete <-> TrainingPlan (many-to-many)
+// Allows athletes to have multiple training plans with metadata
+model AthleteTrainingPlan {
   id             String @id @default(cuid())
   athleteId      String
+  trainingPlanId String
+
+  // Plan assignment metadata
+  isPrimary     Boolean   @default(false) // Primary/active plan for this athlete
+  isActive      Boolean   @default(true) // Whether this assignment is active
+  assignedAt    DateTime  @default(now())
+  activatedAt   DateTime?
+  deactivatedAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([athleteId, trainingPlanId])
+  @@index([athleteId, isPrimary, isActive]) // Fast lookup of primary active plan
+  @@index([athleteId, isActive]) // Fast lookup of all active plans
+  @@map("athlete_training_plans")
+}
+
+model TrainingPlan {
+  id             String @id @default(cuid())
+  athleteId      String // Original creator/owner
   raceRegistryId String // References RaceRegistry
 
   // PLAN IDENTITY
@@ -190,6 +219,7 @@ model TrainingPlan {
   // Relations
   athlete                   Athlete                    @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   raceRegistry              RaceRegistry               @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  athleteTrainingPlans      AthleteTrainingPlan[] // Junction table entries
   plannedDays               TrainingDayPlanned[]
   trainingPlanFiveKPace     TrainingPlanFiveKPace?
   trainingPlanPreferredDays TrainingPlanPreferredDays?
