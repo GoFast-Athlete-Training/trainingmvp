@@ -89,9 +89,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Athlete not found' }, { status: 404 });
     }
 
-    if (!athlete.fiveKPace) {
+    // Use baseline metrics from plan (required), fallback to athlete profile
+    const current5KPace = existingPlan.current5KPace || athlete.fiveKPace;
+    const currentWeeklyMileage = existingPlan.currentWeeklyMileage;
+
+    if (!current5KPace) {
       return NextResponse.json(
-        { success: false, error: 'Athlete must have fiveKPace set in profile' },
+        { success: false, error: 'Current 5K pace must be set. Please complete baseline setup.' },
+        { status: 400 }
+      );
+    }
+
+    if (!currentWeeklyMileage) {
+      return NextResponse.json(
+        { success: false, error: 'Current weekly mileage must be set. Please complete baseline setup.' },
         { status: 400 }
       );
     }
@@ -116,9 +127,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!predictedRacePaceSec && athlete.fiveKPace) {
+    // Calculate predicted race pace from current 5K pace (use plan baseline)
+    if (!predictedRacePaceSec && current5KPace) {
       try {
-        const fiveKPaceSec = parsePaceToSeconds(athlete.fiveKPace);
+        const fiveKPaceSec = parsePaceToSeconds(current5KPace);
         const raceType = normalizeRaceType(race.raceType);
         predictedRacePaceSec = predictedRacePaceFrom5K(fiveKPaceSec, raceType);
         console.log('📊 GENERATE: Calculated predicted race pace:', predictedRacePaceSec, 'seconds/mile');
@@ -129,7 +141,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Format paces for AI prompt
-    const fiveKPaceString = athlete.fiveKPace || '7:00'; // Fallback if missing
+    const fiveKPaceString = current5KPace || '7:00'; // From plan baseline or athlete profile
     const predictedRacePaceString = predictedRacePaceSec 
       ? paceToString(predictedRacePaceSec) 
       : '7:30'; // Fallback
@@ -146,6 +158,7 @@ export async function POST(request: NextRequest) {
       fiveKPace: fiveKPaceString,
       predictedRacePace: predictedRacePaceString,
       goalRacePace: goalRacePaceString,
+      currentWeeklyMileage: currentWeeklyMileage, // Baseline weekly mileage for gradual build-up
       totalWeeks,
       planStartDate: planStartDate, // Pass actual start date so AI knows day of week patterns
     });

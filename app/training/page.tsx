@@ -66,6 +66,8 @@ interface DraftPlan {
   progress: {
     hasRace: boolean;
     hasGoalTime: boolean;
+    hasBaseline: boolean;
+    hasStartDate: boolean;
     isComplete: boolean;
   };
 }
@@ -174,16 +176,20 @@ export default function TrainingHub() {
             : null,
           nextStep: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
-              ? data.draftPlan.progress.hasStartDate
-                ? 'Review & Generate'
-                : 'Set Start Date'
+              ? data.draftPlan.progress.hasBaseline
+                ? data.draftPlan.progress.hasStartDate
+                  ? 'Review & Generate'
+                  : 'Set Start Date'
+                : 'Set Baseline'
               : 'Set Goal Time'
             : 'Select Race',
           nextStepUrl: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
-              ? data.draftPlan.progress.hasStartDate
-                ? `/training-setup/${data.draftPlan.id}/review`
-                : `/training-setup/${data.draftPlan.id}/review` // Start date is set on review page
+              ? data.draftPlan.progress.hasBaseline
+                ? data.draftPlan.progress.hasStartDate
+                  ? `/training-setup/${data.draftPlan.id}/review`
+                  : `/training-setup/${data.draftPlan.id}/review` // Start date is set on review page
+                : `/training-setup/${data.draftPlan.id}/baseline`
               : `/training-setup/${data.draftPlan.id}`
             : `/training-setup/start?planId=${data.draftPlan.id}`,
           progress: data.draftPlan.progress,
@@ -342,7 +348,51 @@ export default function TrainingHub() {
                   )}
                 </div>
 
-                {/* Step 3: Review & Generate */}
+                {/* Step 3: Set Baseline */}
+                <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
+                  draftPlan.progress.hasBaseline 
+                    ? 'bg-green-50 border-green-300' 
+                    : draftPlan.progress.hasGoalTime
+                    ? 'bg-orange-50 border-orange-300'
+                    : 'bg-gray-50 border-gray-200 opacity-50'
+                }`}>
+                  <div className={`text-3xl ${
+                    draftPlan.progress.hasBaseline 
+                      ? 'text-green-600' 
+                      : draftPlan.progress.hasGoalTime
+                      ? 'text-orange-600'
+                      : 'text-gray-400'
+                  }`}>
+                    {draftPlan.progress.hasBaseline ? '✅' : '3️⃣'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg text-gray-900">Set Baseline</div>
+                    {draftPlan.progress.hasBaseline ? (
+                      <div className="text-sm text-gray-600 mt-1">
+                        Baseline metrics set
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-600 mt-1">
+                        Current 5K pace & weekly mileage
+                      </div>
+                    )}
+                  </div>
+                  {draftPlan.progress.hasGoalTime && !draftPlan.progress.hasBaseline && (
+                    <button
+                      onClick={() => router.push(`/training-setup/${draftPlan.id}/baseline`)}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      Set Baseline →
+                    </button>
+                  )}
+                  {draftPlan.progress.hasBaseline && (
+                    <div className="text-sm text-green-600 font-semibold">
+                      Baseline set ✓
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 4: Review & Generate */}
                 <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
                   draftPlan.progress.isComplete 
                     ? 'bg-orange-50 border-orange-300' 
@@ -353,7 +403,7 @@ export default function TrainingHub() {
                       ? 'text-orange-600' 
                       : 'text-gray-400'
                   }`}>
-                    3️⃣
+                    4️⃣
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-lg text-gray-900">Review & Generate</div>

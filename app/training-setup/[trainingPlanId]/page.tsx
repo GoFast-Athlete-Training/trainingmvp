@@ -140,7 +140,7 @@ export default function TrainingSetupGoalTimePage() {
 
       if (response.data.success) {
         // For MVP1, skip preferred days and go to review
-        router.push(`/training-setup/${trainingPlanId}/review`);
+        router.push(`/training-setup/${trainingPlanId}/baseline`);
       } else {
         setError(response.data.error || 'Failed to save goal time');
       }

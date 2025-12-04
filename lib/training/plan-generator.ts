@@ -18,6 +18,7 @@ export interface TrainingInputs {
   fiveKPace: string; // mm:ss format - from athlete.fiveKPace (current fitness)
   predictedRacePace: string; // mm:ss format - predicted race pace based on 5K fitness
   goalRacePace: string; // mm:ss format - goal race pace from goal time
+  currentWeeklyMileage: number; // Baseline weekly mileage - start here and build up gradually
   totalWeeks: number; // Calculated externally
   planStartDate: Date; // Actual start date - used to determine day of week patterns
 }
@@ -74,6 +75,18 @@ export async function generateTrainingPlanAI(
   // Convert to our 1-7 system (1=Monday, 7=Sunday)
   const startDayNumber = startDayOfWeek === 0 ? 7 : startDayOfWeek;
   
+  // Format dates for AI context
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+  const todayDay = String(today.getDate()).padStart(2, '0');
+  const todayDateStr = `${todayMonth}/${todayDay}/${todayYear}`;
+  
+  const startYear = startDate.getFullYear();
+  const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
+  const startDay = String(startDate.getDate()).padStart(2, '0');
+  const startDateStr = `${startMonth}/${startDay}/${startYear}`;
+  
   const prompt = `You are a professional running coach creating a training plan using the GoFast Training Model.
 
 GoFast Training Model:
@@ -92,11 +105,12 @@ Workout Types:
 Inputs:
 - Race: ${inputs.raceName} (${inputs.raceDistance})
 - Goal Time: ${inputs.goalTime}
-- Athlete current 5K pace: ${inputs.fiveKPace} per mile (current fitness)
+- Athlete current 5K pace: ${inputs.fiveKPace} per mile (baseline fitness)
 - Predicted race pace (based on fitness): ${inputs.predictedRacePace} per mile (realistic pace today)
 - Goal race pace (target for race day): ${inputs.goalRacePace} per mile (training target)
+- Current Weekly Mileage: ${inputs.currentWeeklyMileage} miles/week (BASELINE - start here and build up gradually)
 - Total Weeks: ${inputs.totalWeeks}
-- Plan Start Date: ${startDayName} (dayNumber ${startDayNumber})
+- Plan Start Date: ${startDateStr} (${startDayName}, dayNumber ${startDayNumber})
 
 Pace Usage Guidelines:
 - Use predictedRacePace (${inputs.predictedRacePace}/mile) for:
@@ -167,6 +181,7 @@ A. PHASE ORDER (MANDATORY):
 - Order cannot be changed or rearranged
 
 B. START DATE RULE:
+- Today is ${todayDateStr}. The plan starts on ${startDateStr} (${startDayName}).
 - If the plan start date is mid-week (not Monday), the first week should be light:
   - Light easy running only
   - No structured workouts (intervals, tempo, etc.)
@@ -175,7 +190,18 @@ B. START DATE RULE:
 - Full structured training begins the following Monday
 - The backend will map days to actual calendar dates
 
-C. DAY BEFORE RACE RULE (CRITICAL):
+C. GRADUAL PROGRESSION RULE (CRITICAL):
+- Start at current baseline: ${inputs.currentWeeklyMileage} miles/week
+- Build up gradually week by week (increase by 5-10% per week)
+- Peak mileage should be appropriate for the race distance:
+  * Marathon: Peak at 40-60 miles/week
+  * Half Marathon: Peak at 30-45 miles/week
+  * 10K: Peak at 25-35 miles/week
+  * 5K: Peak at 20-30 miles/week
+- DO NOT jump from ${inputs.currentWeeklyMileage} miles to peak immediately - build gradually over the base/build phases
+- Weekly mileage should increase gradually in base phase, peak in build/peak phases, then taper down in taper phase
+
+D. DAY BEFORE RACE RULE (CRITICAL):
 - The day before the race MUST ALWAYS be:
   - Rest (empty workout array), OR
   - 1-2 mile shakeout run at very easy pace

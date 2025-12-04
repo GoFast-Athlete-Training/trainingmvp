@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       'totalWeeks': 'totalWeeks',
     };
 
-    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks', 'raceId'];
+    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks', 'raceId', 'current5KPace', 'currentWeeklyMileage'];
 
     const updateData: any = {};
     for (const [oldField, newField] of Object.entries(fieldMapping)) {
@@ -84,6 +84,14 @@ export async function POST(request: NextRequest) {
           updateData[newField] = value;
         }
       }
+    }
+
+    // Handle baseline fields directly (current5KPace, currentWeeklyMileage)
+    if ('current5KPace' in updates) {
+      updateData.current5KPace = updates.current5KPace;
+    }
+    if ('currentWeeklyMileage' in updates) {
+      updateData.currentWeeklyMileage = updates.currentWeeklyMileage;
     }
 
     // Handle raceId attachment - just set it directly (no junction table)

@@ -75,8 +75,9 @@ export async function GET(request: NextRequest) {
     // Check if plan is complete (has all required fields)
     const hasRace = !!activePlan.race;
     const hasGoalTime = !!activePlan.goalTime;
+    const hasBaseline = !!(activePlan.current5KPace && activePlan.currentWeeklyMileage);
     const hasStartDate = !!activePlan.startDate;
-    const isPlanComplete = hasRace && hasGoalTime && hasStartDate;
+    const isPlanComplete = hasRace && hasGoalTime && hasBaseline && hasStartDate;
 
     // STATE 2: Draft/Incomplete plan (exists but not fully set up or not generated)
     if (!isPlanComplete || planDayCount === 0 || activePlan.status === 'draft') {
@@ -108,6 +109,7 @@ export async function GET(request: NextRequest) {
           progress: {
             hasRace,
             hasGoalTime,
+            hasBaseline,
             hasStartDate,
             isComplete: isPlanComplete && planDayCount > 0,
           },

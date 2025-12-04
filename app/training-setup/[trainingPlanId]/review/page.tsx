@@ -6,6 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import api from '@/lib/api';
 import { paceToString } from '@/lib/training/pace-prediction';
+import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
 
 // Format race date properly (handle timezone issues)
 // Race dates are date-only values, so we use UTC to prevent timezone shifts
@@ -61,18 +62,22 @@ export default function TrainingSetupReviewPage() {
           
           // Set start date if already set, otherwise default to today
           if (loadedPlan.startDate) {
+            // Parse date and use UTC methods to prevent timezone shifts
+            // Dates stored in DB are date-only, so we use UTC to get the exact date
             const start = new Date(loadedPlan.startDate);
-            const year = start.getFullYear();
-            const month = String(start.getMonth() + 1).padStart(2, '0');
-            const day = String(start.getDate()).padStart(2, '0');
+            const year = start.getUTCFullYear();
+            const month = String(start.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(start.getUTCDate()).padStart(2, '0');
             setStartDate(`${year}-${month}-${day}`);
           } else {
-            // Default to today
+            // Default to today (use local date - user's actual today)
             const today = new Date();
             const year = today.getFullYear();
             const month = String(today.getMonth() + 1).padStart(2, '0');
             const day = String(today.getDate()).padStart(2, '0');
-            setStartDate(`${year}-${month}-${day}`);
+            const todayStr = `${year}-${month}-${day}`;
+            console.log('📅 REVIEW: Setting default start date to today:', todayStr, '(local date)');
+            setStartDate(todayStr);
           }
           
           // Calculate weeks until race if race date exists
@@ -257,6 +262,28 @@ export default function TrainingSetupReviewPage() {
                     <p className="text-lg font-bold text-gray-800">
                       {plan.goalTime || 'Not set'}
                     </p>
+                    {/* Goal Race Pace - Show right under goal time */}
+                    {plan.goalTime && plan.race?.miles && (
+                      <div className="mt-2">
+                        <p className="text-xs text-gray-500">Goal Pace:</p>
+                        <p className="text-lg font-bold text-orange-600">
+                          {(() => {
+                            try {
+                              // Use stored value if available, otherwise calculate on the fly
+                              if (plan.goalRacePace) {
+                                return paceToString(plan.goalRacePace);
+                              }
+                              // Fallback: calculate from goal time and race miles
+                              const goalPaceSec = calculateGoalRacePace(plan.goalTime, plan.race.miles);
+                              return paceToString(goalPaceSec);
+                            } catch (error) {
+                              console.error('Error calculating goal pace:', error);
+                              return 'Unable to calculate';
+                            }
+                          })()} /mile
+                        </p>
+                      </div>
+                    )}
                   </div>
                   {plan.goalTime && (
                     <button
@@ -268,49 +295,6 @@ export default function TrainingSetupReviewPage() {
                   )}
                 </div>
 
-                {/* Three Paces Display */}
-                {plan.goalTime && plan.race && (
-                  <div className="space-y-3">
-                    {/* Current 5K Pace */}
-                    {plan.athlete?.fiveKPace && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-blue-700 mb-1">Current 5K Pace</p>
-                        <p className="text-lg font-bold text-blue-900">
-                          {plan.athlete.fiveKPace} /mile
-                        </p>
-                        <p className="text-xs text-blue-600 mt-1">
-                          Your current fitness level
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Predicted Race Pace */}
-                    {plan.predictedRacePace && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-green-700 mb-1">Predicted Race Pace</p>
-                        <p className="text-lg font-bold text-green-900">
-                          {paceToString(plan.predictedRacePace)} /mile
-                        </p>
-                        <p className="text-xs text-green-600 mt-1">
-                          Based on your current 5K pace
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Goal Race Pace */}
-                    {plan.goalRacePace && (
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-orange-700 mb-1">Goal Race Pace</p>
-                        <p className="text-lg font-bold text-orange-900">
-                          {paceToString(plan.goalRacePace)} /mile
-                        </p>
-                        <p className="text-xs text-orange-600 mt-1">
-                          Target pace for race day
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Weeks Until Race (calculated, read-only) */}
                 {weeksUntilRace !== null && (
@@ -336,7 +320,14 @@ export default function TrainingSetupReviewPage() {
                 type="date"
                 value={startDate}
                 onChange={(e) => handleStartDateChange(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+                min={(() => {
+                  // Use local date (not UTC) for min to avoid timezone issues
+                  const today = new Date();
+                  const year = today.getFullYear();
+                  const month = String(today.getMonth() + 1).padStart(2, '0');
+                  const day = String(today.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                })()}
                 className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg"
               />
               {warning && (
@@ -349,7 +340,7 @@ export default function TrainingSetupReviewPage() {
 
           <div className="flex gap-4">
             <button
-              onClick={() => router.push(`/training-setup/${trainingPlanId}`)}
+              onClick={() => router.push(`/training-setup/${trainingPlanId}/baseline`)}
               className="flex-1 bg-gray-100 text-gray-700 py-4 px-6 rounded-xl font-semibold hover:bg-gray-200 transition"
             >
               ← Back

@@ -173,6 +173,10 @@ model TrainingPlan {
   goalRacePace Int? // Goal race pace in seconds per mile (derived from goalTime + race.miles)
   predictedRacePace Int? // Predicted race pace in seconds per mile (derived from athlete.fiveKPace + race adjustments)
 
+  // BASELINE METRICS (collected during setup, used for gradual progression)
+  current5KPace String? // Current 5K pace in mm:ss format (baseline fitness)
+  currentWeeklyMileage Int? // Current weekly mileage (baseline volume)
+
   // PLAN STRUCTURE
   startDate DateTime // Renamed from trainingPlanStartDate
   totalWeeks Int // Renamed from trainingPlanTotalWeeks
