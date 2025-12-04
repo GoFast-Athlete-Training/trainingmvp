@@ -50,7 +50,61 @@ export async function GET(request: NextRequest) {
       }) || undefined;
     }
 
+    // Check if plan exists (active or draft)
+    const hasPlan = !!activePlan;
+    
+    // If no plan exists, check for draft plan
     if (!activePlan) {
+      // Check for draft plan
+      const draftPlan = await prisma.trainingPlan.findFirst({
+        where: {
+          athleteId,
+          status: 'draft',
+        },
+        include: {
+          race: true, // Direct relation
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      if (draftPlan) {
+        // Return draft plan info so frontend can show checklist
+        return NextResponse.json({
+          todayWorkout: null,
+          planStatus: {
+            hasPlan: false, // Not an active plan yet
+            totalWeeks: 0,
+            currentWeek: 0,
+            phase: '',
+          },
+          raceReadiness: null,
+          draftPlan: {
+            id: draftPlan.id,
+            name: draftPlan.name,
+            goalTime: draftPlan.goalTime,
+            goalPace5K: draftPlan.goalPace5K,
+            status: draftPlan.status,
+            race: draftPlan.race
+              ? {
+                  id: draftPlan.race.id,
+                  name: draftPlan.race.name,
+                  raceType: draftPlan.race.raceType,
+                  miles: draftPlan.race.miles,
+                  date: draftPlan.race.date,
+                }
+              : null,
+            progress: {
+              hasRace: !!draftPlan.race,
+              hasGoalTime: !!draftPlan.goalTime,
+              isComplete: !!draftPlan.race && !!draftPlan.goalTime,
+            },
+          },
+        });
+      }
+
+      // No plan at all
       return NextResponse.json({
         todayWorkout: null,
         planStatus: {

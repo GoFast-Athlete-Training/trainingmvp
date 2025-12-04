@@ -154,16 +154,47 @@ export default function TrainingHub() {
       setPlanStatus(data.planStatus);
       setRaceReadiness(data.raceReadiness);
       
+      // Check for draft plan
+      if (data.draftPlan) {
+        setDraftPlan({
+          id: data.draftPlan.id,
+          name: data.draftPlan.name,
+          goalTime: data.draftPlan.goalTime,
+          status: data.draftPlan.status,
+          race: data.draftPlan.race
+            ? {
+                id: data.draftPlan.race.id,
+                name: data.draftPlan.race.name,
+                distance: data.draftPlan.race.raceType,
+                date: data.draftPlan.race.date,
+              }
+            : null,
+          nextStep: data.draftPlan.progress.hasRace
+            ? data.draftPlan.progress.hasGoalTime
+              ? 'Review & Generate'
+              : 'Set Goal Time'
+            : 'Select Race',
+          nextStepUrl: data.draftPlan.progress.hasRace
+            ? data.draftPlan.progress.hasGoalTime
+              ? `/training-setup/${data.draftPlan.id}/review`
+              : `/training-setup/${data.draftPlan.id}`
+            : `/training-setup/start?planId=${data.draftPlan.id}`,
+          progress: data.draftPlan.progress,
+        });
+        setHasPlan(false); // Draft plan is not an active plan
+      } else {
+        setDraftPlan(null);
+      }
+      
       // Only set hasPlan to true if we actually have an active plan
       const hasActivePlan = data.planStatus?.hasPlan === true;
       setHasPlan(hasActivePlan);
       
       console.log('📊 TRAINING PAGE: Plan status:', {
         hasPlan: hasActivePlan,
+        hasDraftPlan: !!data.draftPlan,
         planStatus: data.planStatus,
       });
-
-      // No need to check for draft - if no plan exists, show create button
     } catch (error: any) {
       console.error('❌ TRAINING PAGE: Error loading hub data:', error);
       if (error.response?.status === 401) {
@@ -172,6 +203,7 @@ export default function TrainingHub() {
       }
       // If error or no plan, show setup button
       setHasPlan(false);
+      setDraftPlan(null);
     } finally {
       setLoading(false);
     }
@@ -192,6 +224,34 @@ export default function TrainingHub() {
   if (!hasPlan) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center p-4">
+        {/* Top right "Start New Plan" button */}
+        {draftPlan && (
+          <div className="fixed top-4 right-4 z-10">
+            <button
+              onClick={async () => {
+                try {
+                  console.log('🚀 Creating new draft training plan...');
+                  const response = await api.post('/training-plan/create', {});
+                  if (response.data.success) {
+                    const trainingPlanId = response.data.trainingPlanId;
+                    console.log('✅ New draft plan created:', trainingPlanId);
+                    router.push(`/training-setup/start?planId=${trainingPlanId}`);
+                  } else {
+                    console.error('❌ Failed to create plan:', response.data.error);
+                    router.push('/training-setup/start');
+                  }
+                } catch (err: any) {
+                  console.error('❌ Error creating plan:', err);
+                  router.push('/training-setup/start');
+                }
+              }}
+              className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-semibold hover:bg-white/30 transition border border-white/30"
+            >
+              Start New Plan
+            </button>
+          </div>
+        )}
+        
         <div className="max-w-2xl mx-auto text-center space-y-8">
           <div className="space-y-4">
             <div className="text-9xl mb-4">
@@ -337,6 +397,23 @@ export default function TrainingHub() {
             </div>
           )}
 
+          {/* Finish Planning button if draft plan exists */}
+          {draftPlan && (
+            <div className="space-y-6">
+              <button
+                onClick={() => {
+                  router.push(draftPlan.nextStepUrl);
+                }}
+                className="w-full bg-white text-orange-600 py-6 px-8 rounded-2xl font-bold text-2xl hover:bg-orange-50 transition shadow-2xl transform hover:scale-105"
+              >
+                Finish Planning →
+              </button>
+              <div className="text-white/80 text-sm">
+                <p>Continue where you left off</p>
+              </div>
+            </div>
+          )}
+
           {/* Features */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
@@ -364,12 +441,36 @@ export default function TrainingHub() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Training Hub</h1>
-          <p className="text-gray-600">
-            Your central zone to track progress and stay on track
-          </p>
+        {/* Header with Start New Plan button */}
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Training Hub</h1>
+            <p className="text-gray-600">
+              Your central zone to track progress and stay on track
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              try {
+                console.log('🚀 Creating new draft training plan...');
+                const response = await api.post('/training-plan/create', {});
+                if (response.data.success) {
+                  const trainingPlanId = response.data.trainingPlanId;
+                  console.log('✅ New draft plan created:', trainingPlanId);
+                  router.push(`/training-setup/start?planId=${trainingPlanId}`);
+                } else {
+                  console.error('❌ Failed to create plan:', response.data.error);
+                  router.push('/training-setup/start');
+                }
+              } catch (err: any) {
+                console.error('❌ Error creating plan:', err);
+                router.push('/training-setup/start');
+              }
+            }}
+            className="bg-orange-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-600 transition shadow-md"
+          >
+            Start New Plan
+          </button>
         </div>
 
         {/* Today's Workout Card */}
