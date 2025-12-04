@@ -82,8 +82,6 @@ model Athlete {
   activities                AthleteActivity[]
   trainingPlanFiveKPaces    TrainingPlanFiveKPace[]
   trainingPlanPreferredDays TrainingPlanPreferredDays[]
-
-  @@map("athletes")
 }
 
 model AthleteActivity {
