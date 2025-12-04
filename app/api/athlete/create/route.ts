@@ -55,18 +55,18 @@ export async function POST(request: Request) {
     let gofastCompany;
     try {
       gofastCompany = await prisma.goFastCompany.upsert({
-        where: { slug: "gofast" },
-        update: {},
-        create: {
-          name: "GoFast",
-          slug: "gofast",
-          address: "2604 N. George Mason Dr.",
-          city: "Arlington",
-          state: "VA",
-          zip: "22207",
-          domain: "gofastcrushgoals.com",
-        },
-      });
+      where: { slug: "gofast" },
+      update: {},
+      create: {
+        name: "GoFast",
+        slug: "gofast",
+        address: "2604 N. George Mason Dr.",
+        city: "Arlington",
+        state: "VA",
+        zip: "22207",
+        domain: "gofastcrushgoals.com",
+      },
+    });
       console.log('✅ ATHLETE CREATE: Company found/created:', gofastCompany.id);
     } catch (err: any) {
       console.error('❌ ATHLETE CREATE: Company upsert failed:', err);
@@ -78,24 +78,24 @@ export async function POST(request: Request) {
     let athlete;
     try {
       athlete = await prisma.athlete.upsert({
-        where: { firebaseId },
-        update: {
-          // Sync Firebase data on update
-          email: email || undefined,
-          firstName: firstName || undefined,
-          lastName: lastName || undefined,
-          photoURL: picture || undefined,
-          companyId: gofastCompany.id,
-        },
-        create: {
-          firebaseId,
-          email: email || undefined,
-          firstName: firstName || undefined,
-          lastName: lastName || undefined,
-          photoURL: picture || undefined,
-          companyId: gofastCompany.id,
-        },
-      });
+      where: { firebaseId },
+      update: {
+        // Sync Firebase data on update
+        email: email || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        photoURL: picture || undefined,
+        companyId: gofastCompany.id,
+      },
+      create: {
+        firebaseId,
+        email: email || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        photoURL: picture || undefined,
+        companyId: gofastCompany.id,
+      },
+    });
       console.log('✅ ATHLETE CREATE: Athlete found/created:', athlete.id);
     } catch (err: any) {
       console.error('❌ ATHLETE CREATE: Athlete upsert failed:', err);

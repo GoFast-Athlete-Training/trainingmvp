@@ -42,8 +42,11 @@ export async function hydrateAthlete(athleteId: string) {
       },
       trainingPlans: {
         include: {
-          raceRegistry: true,
-          trainingPlanFiveKPace: true,
+          raceTrainingPlans: {
+            include: {
+              raceRegistry: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',

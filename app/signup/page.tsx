@@ -157,7 +157,7 @@ export default function SignupPage() {
       // Get Firebase ID token for backend verification
       const firebaseToken = await result.user.getIdToken();
       console.log('🔐 SIGNUP: Firebase token obtained');
-
+      
       // Store Firebase token for API calls (Axios interceptor will use it)
       localStorage.setItem('firebaseToken', firebaseToken);
 
@@ -260,14 +260,14 @@ export default function SignupPage() {
         await updateProfile(user, { displayName });
       }
       console.log('✅ SIGNUP: Email signup successful');
-
+      
       // Get Firebase ID token for backend verification
       const firebaseToken = await user.getIdToken();
       console.log('🔐 SIGNUP: Firebase token obtained');
 
       // Store Firebase token for API calls
       localStorage.setItem('firebaseToken', firebaseToken);
-
+      
       // Call backend create athlete - empty body, token auto-injected
       console.log('🌐 SIGNUP: Calling backend API: /athlete/create');
       const res = await api.post('/athlete/create', {});
@@ -275,7 +275,7 @@ export default function SignupPage() {
       console.log('✅ SIGNUP: Backend API response:', res.data);
       
       const athlete = res.data;
-
+      
       // CRITICAL: Validate backend response
       if (!athlete || !athlete.success) {
         throw new Error(`Backend API failed: ${athlete?.message || 'Invalid response'}`);
@@ -285,7 +285,7 @@ export default function SignupPage() {
       localStorage.setItem('firebaseId', user.uid);
       localStorage.setItem('athleteId', athlete.athleteId);
       localStorage.setItem('email', athlete.data?.email || user.email || '');
-
+      
       // After creating athlete, go to welcome page
       console.log('✅ SIGNUP: Athlete created → Welcome');
       router.replace('/welcome');
@@ -347,7 +347,7 @@ export default function SignupPage() {
       // CRITICAL: Validate backend response
       if (!athlete || !athlete.success) {
         throw new Error(`Backend API failed: ${athlete?.message || 'Invalid response'}`);
-      }
+        }
 
       // Store auth data
       localStorage.setItem('firebaseId', user.uid);
@@ -383,7 +383,7 @@ export default function SignupPage() {
         <div className="text-white text-xl">Checking authentication...</div>
       </div>
     );
-  }
+    }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-400 to-pink-500 flex items-center justify-center p-4">
@@ -401,8 +401,8 @@ export default function SignupPage() {
           <p className={`text-lg leading-relaxed font-medium ${authMode === 'signup' ? 'text-gray-700' : 'text-white/80'}`}>
             {authMode === 'signup' ? (
               <>
-                Train smarter. Race faster. <br/>
-                Your personalized running coach.
+            Train smarter. Race faster. <br/>
+            Your personalized running coach.
               </>
             ) : (
               'Sign in to continue'
@@ -424,24 +424,24 @@ export default function SignupPage() {
 
         {!showEmailForm ? (
           <>
-            {/* Sign Up Button */}
-            <div className="space-y-4">
-              <button
+        {/* Sign Up Button */}
+        <div className="space-y-4">
+          <button
                 onClick={handleGoogle}
                 disabled={loading}
                 className={`w-full ${authMode === 'signup' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 px-6 rounded-2xl font-bold text-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-lg hover:shadow-2xl transform hover:-translate-y-1' : 'flex items-center justify-center gap-3 py-3 px-6 border-2 border-white/30 rounded-lg shadow-lg text-base font-medium text-white bg-white/20 hover:bg-white/30'} disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none`}
-              >
+          >
                 {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                     {authMode === 'signup' ? 'Creating your account...' : 'Signing in...'}
-                  </span>
-                ) : (
+              </span>
+            ) : (
                   authMode === 'signup' ? (
-                    '🔥 Sign Up with Google'
+              '🔥 Sign Up with Google'
                   ) : (
                     <>
                       <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -453,9 +453,9 @@ export default function SignupPage() {
                       <span>Sign in with Google</span>
                     </>
                   )
-                )}
-              </button>
-              
+            )}
+          </button>
+          
               {/* Email Sign Up Option - Only show divider and email option for signup */}
               {authMode === 'signup' && (
                 <>
@@ -491,40 +491,40 @@ export default function SignupPage() {
                 ) : (
                   <>
                     Don't have an account?{' '}
-                    <button
+          <button
                       onClick={() => setAuthMode('signup')}
                       className="text-orange-200 font-semibold hover:underline"
-                    >
+          >
                       Sign Up
-                    </button>
+          </button>
                   </>
                 )}
               </p>
-            </div>
+        </div>
 
             {/* Features List - Only show for signup */}
             {authMode === 'signup' && (
-              <div className="text-sm text-gray-600 space-y-3 pt-4 border-t border-gray-200">
-                <p className="font-semibold text-gray-800">✨ What you'll get:</p>
-                <ul className="space-y-2 text-left">
-                  <li className="flex items-start">
-                    <span className="text-orange-500 mr-2">🎯</span>
-                    <span>Personalized training plans</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-orange-500 mr-2">📊</span>
-                    <span>Real-time progress tracking</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-orange-500 mr-2">⌚</span>
-                    <span>Garmin & Strava integration</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-orange-500 mr-2">🏆</span>
-                    <span>Race day predictions</span>
-                  </li>
-                </ul>
-              </div>
+        <div className="text-sm text-gray-600 space-y-3 pt-4 border-t border-gray-200">
+          <p className="font-semibold text-gray-800">✨ What you'll get:</p>
+          <ul className="space-y-2 text-left">
+            <li className="flex items-start">
+              <span className="text-orange-500 mr-2">🎯</span>
+              <span>Personalized training plans</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-orange-500 mr-2">📊</span>
+              <span>Real-time progress tracking</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-orange-500 mr-2">⌚</span>
+              <span>Garmin & Strava integration</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-orange-500 mr-2">🏆</span>
+              <span>Race day predictions</span>
+            </li>
+          </ul>
+        </div>
             )}
           </>
         ) : (

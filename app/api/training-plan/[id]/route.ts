@@ -18,8 +18,11 @@ export async function GET(
         athleteId,
       },
       include: {
-        raceRegistry: true,
-        trainingPlanFiveKPace: true,
+        raceTrainingPlans: {
+          include: {
+            raceRegistry: true,
+          },
+        },
       },
     });
 
@@ -27,26 +30,31 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Plan not found' }, { status: 404 });
     }
 
+    const race = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
+      ? plan.raceTrainingPlans[0].raceRegistry
+      : null;
+
     return NextResponse.json({
       success: true,
       trainingPlan: {
         id: plan.id,
         trainingPlanName: plan.trainingPlanName,
         trainingPlanGoalTime: plan.trainingPlanGoalTime,
+        goalFiveKPace: plan.goalFiveKPace,
         trainingPlanStartDate: plan.trainingPlanStartDate,
         trainingPlanTotalWeeks: plan.trainingPlanTotalWeeks,
         status: plan.status,
-        raceRegistryId: plan.raceRegistryId,
-        race: {
-          id: plan.raceRegistry.id,
-          name: plan.raceRegistry.name,
-          distance: plan.raceRegistry.distance,
-          date: plan.raceRegistry.date,
-          city: plan.raceRegistry.city,
-          state: plan.raceRegistry.state,
-          country: plan.raceRegistry.country,
-        },
-        fiveKPace: plan.trainingPlanFiveKPace?.fiveKPace || null,
+        race: race
+          ? {
+              id: race.id,
+              name: race.name,
+              distance: race.distance,
+              date: race.date,
+              city: race.city,
+              state: race.state,
+              country: race.country,
+            }
+          : null,
       },
     });
   } catch (error: any) {

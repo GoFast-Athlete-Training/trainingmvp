@@ -30,11 +30,14 @@ export async function POST(request: NextRequest) {
     const { raceRegistryId } = body;
 
     // Check if athlete already has a draft plan without a race
+    // Check via junction table - if no raceTrainingPlans, then no race attached
     const existingDraftPlan = await prisma.trainingPlan.findFirst({
       where: {
         athleteId,
         status: 'draft',
-        raceRegistryId: undefined, // No race attached yet
+        raceTrainingPlans: {
+          none: {}, // No race attached yet
+        },
       },
     });
 
@@ -63,11 +66,24 @@ export async function POST(request: NextRequest) {
         const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
 
-        // Update existing plan with race
+        // Update existing plan with race via junction table
+        await prisma.raceTrainingPlan.upsert({
+          where: {
+            raceRegistryId_trainingPlanId: {
+              raceRegistryId,
+              trainingPlanId: existingDraftPlan.id,
+            },
+          },
+          create: {
+            raceRegistryId,
+            trainingPlanId: existingDraftPlan.id,
+          },
+          update: {},
+        });
+
         const updatedPlan = await prisma.trainingPlan.update({
           where: { id: existingDraftPlan.id },
           data: {
-            raceRegistryId,
             trainingPlanName: `${race.name} Training Plan`,
             trainingPlanTotalWeeks: totalWeeks,
           },
@@ -78,7 +94,6 @@ export async function POST(request: NextRequest) {
           trainingPlanId: updatedPlan.id,
           trainingPlan: {
             id: updatedPlan.id,
-            raceRegistryId: updatedPlan.raceRegistryId,
             trainingPlanName: updatedPlan.trainingPlanName,
             status: updatedPlan.status,
             totalWeeks: updatedPlan.trainingPlanTotalWeeks,
@@ -92,7 +107,6 @@ export async function POST(request: NextRequest) {
         trainingPlanId: existingDraftPlan.id,
         trainingPlan: {
           id: existingDraftPlan.id,
-          raceRegistryId: existingDraftPlan.raceRegistryId,
           trainingPlanName: existingDraftPlan.trainingPlanName,
           status: existingDraftPlan.status,
           totalWeeks: existingDraftPlan.trainingPlanTotalWeeks,
@@ -126,12 +140,11 @@ export async function POST(request: NextRequest) {
       planName = `${race.name} Training Plan`;
     }
 
-    // Create draft TrainingPlan (with or without race)
+    // Create draft TrainingPlan
     console.log('💾 TRAINING PLAN CREATE: Creating training plan...');
     const trainingPlan = await prisma.trainingPlan.create({
       data: {
         athleteId,
-        raceRegistryId: raceRegistryId || null, // Can be null initially
         trainingPlanName: planName,
         trainingPlanGoalTime: null, // Will be set in next step
         trainingPlanStartDate: today,
@@ -140,6 +153,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // If raceRegistryId provided, create junction table entry
+    if (raceRegistryId) {
+      await prisma.raceTrainingPlan.create({
+        data: {
+          raceRegistryId,
+          trainingPlanId: trainingPlan.id,
+        },
+      });
+    }
+
     console.log('✅ TRAINING PLAN CREATE: Plan created successfully:', trainingPlan.id);
 
     return NextResponse.json({
@@ -147,7 +170,6 @@ export async function POST(request: NextRequest) {
       trainingPlanId: trainingPlan.id,
       trainingPlan: {
         id: trainingPlan.id,
-        raceRegistryId: trainingPlan.raceRegistryId,
         trainingPlanName: trainingPlan.trainingPlanName,
         status: trainingPlan.status,
         totalWeeks: trainingPlan.trainingPlanTotalWeeks,

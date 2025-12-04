@@ -23,29 +23,38 @@ export async function GET(request: NextRequest) {
       include: {
         trainingPlan: {
           include: {
-            raceRegistry: true,
+            raceTrainingPlans: {
+              include: {
+                raceRegistry: true,
+              },
+            },
           },
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        assignedAt: 'desc',
       },
     });
 
     // If no assignment, check for plans directly owned by athlete (legacy)
-    let plan = assignment?.trainingPlan;
+    let plan = assignment?.trainingPlan || undefined;
     if (!plan) {
-      plan = await prisma.trainingPlan.findFirst({
+      const foundPlan = await prisma.trainingPlan.findFirst({
         where: {
           athleteId,
         },
         include: {
-          raceRegistry: true,
+          raceTrainingPlans: {
+            include: {
+              raceRegistry: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
         },
       });
+      plan = foundPlan || undefined;
     }
 
     if (!plan) {
@@ -57,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Determine what's bolted on (what's missing)
-    const hasRace = !!plan.raceRegistryId;
+    const hasRace = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0;
     const hasGoalTime = !!plan.trainingPlanGoalTime;
 
     // Determine next step
@@ -81,15 +90,15 @@ export async function GET(request: NextRequest) {
       draftPlan: {
         id: plan.id,
         trainingPlanName: plan.trainingPlanName,
-        raceRegistryId: plan.raceRegistryId,
-        trainingPlanGoalTime: plan.trainingPlanGoal?.goalTime || null,
+        trainingPlanGoalTime: plan.trainingPlanGoalTime,
+        goalFiveKPace: plan.goalFiveKPace,
         status: plan.status, // Just metadata, not source of truth
-        race: plan.raceRegistry
+        race: plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
           ? {
-              id: plan.raceRegistry.id,
-              name: plan.raceRegistry.name,
-              distance: plan.raceRegistry.distance,
-              date: plan.raceRegistry.date,
+              id: plan.raceTrainingPlans[0].raceRegistry.id,
+              name: plan.raceTrainingPlans[0].raceRegistry.name,
+              distance: plan.raceTrainingPlans[0].raceRegistry.distance,
+              date: plan.raceTrainingPlans[0].raceRegistry.date,
             }
           : null,
         nextStep,

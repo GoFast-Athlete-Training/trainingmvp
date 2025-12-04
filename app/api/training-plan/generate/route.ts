@@ -5,6 +5,7 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
 import { calculateTrainingDayDate } from '@/lib/training/dates';
+import { calculateGoalFiveKPace } from '@/lib/training/goal-pace';
 
 /**
  * Generate training plan from existing draft TrainingPlan
@@ -28,7 +29,11 @@ export async function POST(request: NextRequest) {
     const existingPlan = await prisma.trainingPlan.findUnique({
       where: { id: trainingPlanId },
       include: {
-        raceRegistry: true,
+        raceTrainingPlans: {
+          include: {
+            raceRegistry: true,
+          },
+        },
       },
     });
 
@@ -60,6 +65,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get race from junction table
+    const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
+    if (!raceTrainingPlan) {
+      return NextResponse.json(
+        { success: false, error: 'Race must be attached before generating plan' },
+        { status: 400 }
+      );
+    }
+    const race = raceTrainingPlan.raceRegistry;
+
     // Load athlete
     const athlete = await prisma.athlete.findUnique({
       where: { id: athleteId },
@@ -77,10 +92,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const race = existingPlan.raceRegistry;
     const goalTime = existingPlan.trainingPlanGoalTime;
     const planStartDate = existingPlan.trainingPlanStartDate;
     const totalWeeks = existingPlan.trainingPlanTotalWeeks;
+
+    // Calculate goalFiveKPace if not already set
+    let goalFiveKPace = existingPlan.goalFiveKPace;
+    if (!goalFiveKPace) {
+      try {
+        goalFiveKPace = calculateGoalFiveKPace(goalTime, race.distance);
+      } catch (error: any) {
+        return NextResponse.json(
+          { success: false, error: `Failed to calculate goal pace: ${error.message}` },
+          { status: 400 }
+        );
+      }
+    }
 
     // Generate plan
     const plan = await generateTrainingPlanAI({
@@ -93,21 +120,21 @@ export async function POST(request: NextRequest) {
 
     // Update existing plan and create all days in transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Update plan status to active
+      // Update plan status to active and set goalFiveKPace if not already set
       const updatedPlan = await tx.trainingPlan.update({
         where: { id: trainingPlanId },
         data: {
           status: 'active',
+          goalFiveKPace: goalFiveKPace,
         },
       });
 
-      // Create snapshot: TrainingPlanFiveKPace
-      // athlete.fiveKPace is guaranteed to be non-null due to validation above
-      await tx.trainingPlanFiveKPace.create({
+      // Create AthleteTrainingPlan junction entry (MVP1: only created when plan is generated)
+      await tx.athleteTrainingPlan.create({
         data: {
-          trainingPlanId: trainingPlanId,
           athleteId,
-          fiveKPace: athlete.fiveKPace!, // Non-null assertion: validated above
+          trainingPlanId: trainingPlanId,
+          assignedAt: new Date(),
         },
       });
 
@@ -118,7 +145,7 @@ export async function POST(request: NextRequest) {
           const computedDate = calculateTrainingDayDate(planStartDate, week.weekIndex, day.dayIndex);
           dayRecords.push({
             trainingPlanId: trainingPlanId,
-            athleteId,
+      athleteId,
             weekIndex: week.weekIndex,
             dayIndex: day.dayIndex,
             phase: week.phase,

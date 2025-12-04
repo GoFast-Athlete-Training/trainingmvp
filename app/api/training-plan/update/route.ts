@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
+import { calculateGoalFiveKPace } from '@/lib/training/goal-pace';
 
 /**
  * Update TrainingPlan fields
@@ -32,6 +33,13 @@ export async function POST(request: NextRequest) {
     // Verify plan exists and belongs to athlete
     const existingPlan = await prisma.trainingPlan.findUnique({
       where: { id: trainingPlanId },
+      include: {
+        raceTrainingPlans: {
+          include: {
+            raceRegistry: true,
+          },
+        },
+      },
     });
 
     if (!existingPlan) {
@@ -60,10 +68,7 @@ export async function POST(request: NextRequest) {
     const allowedFields = [
       'trainingPlanGoalTime',
       'trainingPlanName',
-      'raceRegistryId', // Allow updating race (for attaching race to draft plan)
-      'trainingPlanTotalWeeks', // Allow updating weeks when race is attached
-      // Note: preferredDays would be handled via TrainingPlanPreferredDays snapshot
-      // For MVP1, we're not updating preferred days, but structure is ready
+      'trainingPlanTotalWeeks',
     ];
 
     const updateData: any = {};
@@ -73,29 +78,63 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If goal time is being set, calculate goalFiveKPace
+    if (updates.trainingPlanGoalTime) {
+      // Get race from junction table
+      const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
+      if (!raceTrainingPlan) {
+        return NextResponse.json(
+          { success: false, error: 'Race must be attached before setting goal time' },
+          { status: 400 }
+        );
+      }
+
+      const race = raceTrainingPlan.raceRegistry;
+      try {
+        updateData.goalFiveKPace = calculateGoalFiveKPace(
+          updates.trainingPlanGoalTime,
+          race.distance
+        );
+      } catch (error: any) {
+        return NextResponse.json(
+          { success: false, error: `Failed to calculate goal pace: ${error.message}` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Update plan
     const updatedPlan = await prisma.trainingPlan.update({
       where: { id: trainingPlanId },
       data: updateData,
       include: {
-        raceRegistry: true,
+        raceTrainingPlans: {
+          include: {
+            raceRegistry: true,
+          },
+        },
       },
     });
+
+    const race = updatedPlan.raceTrainingPlans[0]?.raceRegistry;
 
     return NextResponse.json({
       success: true,
       trainingPlan: {
         id: updatedPlan.id,
-        raceRegistryId: updatedPlan.raceRegistryId,
         trainingPlanName: updatedPlan.trainingPlanName,
         trainingPlanGoalTime: updatedPlan.trainingPlanGoalTime,
+        goalFiveKPace: updatedPlan.goalFiveKPace,
         status: updatedPlan.status,
         totalWeeks: updatedPlan.trainingPlanTotalWeeks,
-        race: {
-          name: updatedPlan.raceRegistry.name,
-          distance: updatedPlan.raceRegistry.distance,
-          date: updatedPlan.raceRegistry.date,
-        },
+        race: race
+          ? {
+              id: race.id,
+              name: race.name,
+              distance: race.distance,
+              date: race.date,
+            }
+          : null,
       },
     });
   } catch (error: any) {

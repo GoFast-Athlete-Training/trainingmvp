@@ -20,32 +20,37 @@ export async function GET(request: NextRequest) {
     const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
       where: {
         athleteId,
-        isActive: true,
-        isPrimary: true, // Get the primary active plan
       },
       include: {
         trainingPlan: {
           include: {
-            raceRegistry: true,
-            trainingPlanFiveKPace: true,
+            raceTrainingPlans: {
+              include: {
+                raceRegistry: true,
+              },
+            },
           },
         },
       },
     });
 
     // Fallback: if no primary plan, check for any active plan with status='active'
-    let activePlan = activeAssignment?.trainingPlan;
+    let activePlan = activeAssignment?.trainingPlan || undefined;
     if (!activePlan) {
-      activePlan = await prisma.trainingPlan.findFirst({
+      const foundPlan = await prisma.trainingPlan.findFirst({
         where: {
           athleteId,
           status: 'active',
         },
         include: {
-          raceRegistry: true,
-          trainingPlanFiveKPace: true,
+          raceTrainingPlans: {
+            include: {
+              raceRegistry: true,
+            },
+          },
         },
       });
+      activePlan = foundPlan || undefined;
     }
 
     if (!activePlan) {
@@ -110,28 +115,20 @@ export async function GET(request: NextRequest) {
     const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
     const currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekIndex starts at 1
 
-    // Get race readiness (using plan snapshot 5K pace)
-    const plan5kPace = activePlan.trainingPlanFiveKPace?.fiveKPace || null;
+    // Get race readiness (using goalFiveKPace from plan)
+    const goal5kPace = activePlan.goalFiveKPace || null;
+    const race = activePlan.raceTrainingPlans && activePlan.raceTrainingPlans.length > 0
+      ? activePlan.raceTrainingPlans[0].raceRegistry
+      : null;
     let raceReadiness = null;
 
-    if (plan5kPace && activePlan.raceRegistry) {
+    if (goal5kPace && race) {
       // Get goal pace from race registry or training plan goal time
       // For now, simplified - would need to calculate from goal time and race distance
-      const goalPace = parsePaceToSeconds('8:00'); // Placeholder
-      const currentPace = parsePaceToSeconds(plan5kPace);
-      const delta = currentPace - goalPace;
-
-      let status: 'on-track' | 'behind' | 'impossible' = 'on-track';
-      if (delta > 30) {
-        status = 'impossible';
-      } else if (delta > 10) {
-        status = 'behind';
-      }
-
+      // For MVP1, simplified race readiness - would need athlete's current 5K pace
       raceReadiness = {
-        current5kPace: plan5kPace,
-        goalDelta: formatDelta(delta),
-        status,
+        goal5kPace: goal5kPace,
+        status: 'on-track', // Placeholder for MVP1
       };
     }
 

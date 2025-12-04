@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     }
 
     console.log('✅ HYDRATE API: ===== REQUEST SUCCESS =====');
-    
+
     // Return full athlete object with trainingPlanId bolted on
     return NextResponse.json({ 
       success: true, 

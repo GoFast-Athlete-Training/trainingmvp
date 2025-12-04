@@ -73,7 +73,7 @@
 #### `RaceRegistry`
 **Table:** `race_registry` (snake_case via @@map)
 
-**Purpose:** Global catalogue of races (shared across all athletes)
+**Purpose:** Global catalogue of races (search-first registry pattern, shared across all users)
 
 **Key Fields:**
 - `id` (String, cuid)
@@ -82,18 +82,21 @@
 - `date` (DateTime)
 - `city` (String?)
 - `state` (String?)
-- `createdBy` (String) - athleteId who created it
+- `createdBy` (String?, optional) - athleteId who first created it (for tracking, not ownership)
 
 **Relations:**
-- `trainingPlans` → `TrainingPlan[]` (one-to-many)
+- `raceTrainingPlans` → `RaceTrainingPlan[]` (junction table - many-to-many with TrainingPlan)
 
 **Constraints:**
 - `@@unique([name, date])` - Prevents duplicate races
 
 **Critical Notes:**
-- **One-to-many relationship** with `TrainingPlan` (one race can have many plans)
+- **REGISTRY PATTERN:** Search first, if exists use it, if not create it
+- **NO direct ownership** - `createdBy` is optional tracking only
+- **Many-to-many relationship** with `TrainingPlan` via `RaceTrainingPlan` junction table
 - When creating a race, check for existing `(name, date)` before creating
 - If duplicate found, return existing race instead of creating new one
+- The "lock in" happens at the `RaceTrainingPlan` junction table level, not at the race level
 
 ---
 
@@ -105,21 +108,26 @@
 **Key Fields:**
 - `id` (String, cuid)
 - `athleteId` (String) - Original creator/owner
-- `raceRegistryId` (String) - **References RaceRegistry (one-to-many)**
 - `trainingPlanName` (String)
-- `trainingPlanGoalTime` (String?) - e.g., "3:30:00"
+- `trainingPlanGoalTime` (String?) - e.g., "3:30:00" for marathon
+- `goalFiveKPace` (String?) - mm:ss format - **TARGET 5K pace** derived from goal time + race distance
 - `trainingPlanStartDate` (DateTime)
 - `trainingPlanTotalWeeks` (Int)
 - `status` (String, default: "draft") - "draft", "active", "completed", "archived"
 
 **Relations:**
 - `athlete` → `Athlete` (many-to-one, via `athleteId`)
-- `raceRegistry` → `RaceRegistry` (many-to-one, via `raceRegistryId`)
+- `raceTrainingPlans` → `RaceTrainingPlan[]` (junction table - many-to-many with RaceRegistry)
 - `athleteTrainingPlans` → `AthleteTrainingPlan[]` (junction table)
 - `plannedDays` → `TrainingDayPlanned[]`
 
 **Indexes:**
 - `@@index([athleteId, status])` - Fast lookup of active plans
+
+**Critical Notes:**
+- **NO `raceRegistryId` field** - Use `RaceTrainingPlan` junction table instead
+- `goalFiveKPace` is calculated automatically when `trainingPlanGoalTime` is set
+- `goalFiveKPace` represents TARGET pace, NOT current fitness (that's `Athlete.fiveKPace`)
 
 **Critical Notes:**
 - **NO `@@map("training_plans")`** - Uses Prisma default PascalCase table name

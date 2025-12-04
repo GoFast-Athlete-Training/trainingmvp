@@ -36,7 +36,7 @@ model Athlete {
   instagram    String?
 
   // Profile Identity (can be updated)
-  fiveKPace String? // mm:ss format - THE SOURCE OF TRUTH for 5K pace
+  fiveKPace String? // mm:ss format - THE SOURCE OF TRUTH for CURRENT 5K pace
 
   // Legacy training fields (deprecated, keep for migration)
   myCurrentPace       String?
@@ -75,13 +75,11 @@ model Athlete {
   updatedAt DateTime @updatedAt
 
   // Relations
-  trainingPlans             TrainingPlan[]
-  athleteTrainingPlans      AthleteTrainingPlan[] // Junction table for multiple plans
-  plannedDays               TrainingDayPlanned[]
-  executedDays              TrainingDayExecuted[]
-  activities                AthleteActivity[]
-  trainingPlanFiveKPaces    TrainingPlanFiveKPace[]
-  trainingPlanPreferredDays TrainingPlanPreferredDays[]
+  trainingPlans        TrainingPlan[]
+  athleteTrainingPlans AthleteTrainingPlan[] // Junction table for multiple plans
+  plannedDays          TrainingDayPlanned[]
+  executedDays         TrainingDayExecuted[]
+  activities           AthleteActivity[]
 }
 
 model AthleteActivity {
@@ -142,7 +140,8 @@ model Race {
   @@map("races")
 }
 
-// Race Registry - Global catalogue of races
+// Race Registry - Global catalogue of races (search-first, shared across all users)
+// Registry pattern: Search first, if exists use it, if not create it
 model RaceRegistry {
   id        String   @id @default(cuid())
   name      String
@@ -151,58 +150,68 @@ model RaceRegistry {
   city      String?
   state     String?
   country   String?
-  createdBy String // athleteId who created it
+  createdBy String? // Optional: athleteId who first created it (for tracking, not ownership)
 
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  trainingPlans TrainingPlan[]
+  raceTrainingPlans RaceTrainingPlan[] // Junction table - many-to-many with TrainingPlan
 
   // Unique constraint: prevent duplicate races (same name + date)
   @@unique([name, date])
   @@map("race_registry")
 }
 
-// Junction table: Athlete <-> TrainingPlan (many-to-many)
-// Allows athletes to have multiple training plans with metadata
-model AthleteTrainingPlan {
+// Junction table: RaceRegistry <-> TrainingPlan (many-to-many)
+// This is where the "lock in" happens - a plan is linked to a race via this junction
+model RaceTrainingPlan {
   id             String @id @default(cuid())
-  athleteId      String
+  raceRegistryId String
   trainingPlanId String
-
-  // Plan assignment metadata
-  isPrimary     Boolean   @default(false) // Primary/active plan for this athlete
-  isActive      Boolean   @default(true) // Whether this assignment is active
-  assignedAt    DateTime  @default(now())
-  activatedAt   DateTime?
-  deactivatedAt DateTime?
 
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
+  raceRegistry RaceRegistry @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([raceRegistryId, trainingPlanId])
+  @@index([raceRegistryId]) // Fast lookup of all plans for a race
+  @@index([trainingPlanId]) // Fast lookup of race for a plan
+  @@map("race_training_plans")
+}
+
+// Junction table: Athlete <-> TrainingPlan (many-to-many)
+// For future "My Training Plans" selection screen. MVP1: only created when plan is generated.
+model AthleteTrainingPlan {
+  id             String   @id @default(cuid())
+  athleteId      String
+  trainingPlanId String
+  assignedAt     DateTime @default(now())
+
+  // Relations
   athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
 
   @@unique([athleteId, trainingPlanId])
-  @@index([athleteId, isPrimary, isActive]) // Fast lookup of primary active plan
-  @@index([athleteId, isActive]) // Fast lookup of all active plans
   @@map("athlete_training_plans")
 }
 
 model TrainingPlan {
-  id             String @id @default(cuid())
-  athleteId      String // Original creator/owner
-  raceRegistryId String // References RaceRegistry
+  id        String @id @default(cuid())
+  athleteId String // Original creator/owner
+  // NO raceRegistryId - use RaceTrainingPlan junction table instead
 
   // PLAN IDENTITY
   trainingPlanName String
 
   // CYCLE-LEVEL GOALS
-  trainingPlanGoalTime String?
+  trainingPlanGoalTime String? // e.g., "3:30:00" for marathon
+  goalFiveKPace        String? // mm:ss format - TARGET 5K pace derived from goal time + race distance
 
   // PLAN STRUCTURE
   trainingPlanStartDate  DateTime
@@ -216,13 +225,11 @@ model TrainingPlan {
   updatedAt DateTime @updatedAt
 
   // Relations
-  athlete                   Athlete                    @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  raceRegistry              RaceRegistry               @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
-  athleteTrainingPlans      AthleteTrainingPlan[] // Junction table entries
-  plannedDays               TrainingDayPlanned[]
+  athlete              Athlete               @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  raceTrainingPlans    RaceTrainingPlan[] // Junction table - many-to-many with RaceRegistry
+  athleteTrainingPlans AthleteTrainingPlan[] // Junction table entries
+  plannedDays          TrainingDayPlanned[]
   // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
-  trainingPlanFiveKPace     TrainingPlanFiveKPace?
-  trainingPlanPreferredDays TrainingPlanPreferredDays?
 
   // Indexes for fast lookups
   @@index([athleteId, status]) // Fast lookup of active plans by athlete
@@ -254,44 +261,6 @@ model TrainingDayPlanned {
 
   @@unique([trainingPlanId, weekIndex, dayIndex])
   @@map("training_days_planned")
-}
-
-// Plan-specific snapshot: 5K pace at time of plan creation
-model TrainingPlanFiveKPace {
-  id             String @id @default(cuid())
-  trainingPlanId String
-  athleteId      String
-  fiveKPace      String // mm:ss format
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-
-  @@unique([trainingPlanId])
-  @@map("training_plan_five_k_pace")
-}
-
-// Plan-specific snapshot: Preferred run days at time of plan creation
-model TrainingPlanPreferredDays {
-  id             String @id @default(cuid())
-  trainingPlanId String
-  athleteId      String
-  preferredDays  Int[] // e.g. [1,3,5] where 1=Monday, 7=Sunday
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-
-  @@unique([trainingPlanId])
-  @@map("training_plan_preferred_days")
 }
 
 model TrainingDayExecuted {

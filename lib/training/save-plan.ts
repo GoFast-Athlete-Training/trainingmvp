@@ -21,7 +21,6 @@ export async function saveTrainingPlanToDB(
     const trainingPlan = await tx.trainingPlan.create({
       data: {
         athleteId,
-        raceRegistryId,
         trainingPlanName: `${raceName} Training Plan`,
         trainingPlanGoalTime: goalTime,
         trainingPlanStartDate: planStartDate,
@@ -30,16 +29,24 @@ export async function saveTrainingPlanToDB(
       },
     });
 
-    // 2. Create snapshot: TrainingPlanFiveKPace
-    await tx.trainingPlanFiveKPace.create({
+    // 2. Create RaceTrainingPlan junction entry
+    await tx.raceTrainingPlan.create({
       data: {
+        raceRegistryId,
         trainingPlanId: trainingPlan.id,
-        athleteId,
-        fiveKPace: fiveKPace,
       },
     });
 
-    // 3. Create ALL TrainingDayPlanned records with computed dates
+    // 3. Create AthleteTrainingPlan junction entry (MVP1: only created when plan is generated)
+    await tx.athleteTrainingPlan.create({
+      data: {
+        athleteId,
+        trainingPlanId: trainingPlan.id,
+        assignedAt: new Date(),
+      },
+    });
+
+    // 4. Create ALL TrainingDayPlanned records with computed dates
     const dayRecords = [];
     for (const week of plan.weeks) {
       for (const day of week.days) {

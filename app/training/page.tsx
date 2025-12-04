@@ -426,8 +426,8 @@ export default function TrainingHub() {
 
         {/* Plan Status */}
         {planStatus?.hasPlan && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">See My Plan</h2>
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">See My Plan</h2>
             <div>
               <p className="text-gray-600 mb-2">
                 Week {planStatus.currentWeek} of {planStatus.totalWeeks} - {planStatus.phase} Phase
@@ -439,8 +439,8 @@ export default function TrainingHub() {
                 View Full Plan →
               </button>
             </div>
-          </div>
-        )}
+            </div>
+          )}
 
         {/* Race Readiness */}
         {raceReadiness && (
