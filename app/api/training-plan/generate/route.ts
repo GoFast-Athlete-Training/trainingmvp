@@ -102,11 +102,12 @@ export async function POST(request: NextRequest) {
       });
 
       // Create snapshot: TrainingPlanFiveKPace
+      // athlete.fiveKPace is guaranteed to be non-null due to validation above
       await tx.trainingPlanFiveKPace.create({
         data: {
           trainingPlanId: trainingPlanId,
           athleteId,
-          fiveKPace: athlete.fiveKPace,
+          fiveKPace: athlete.fiveKPace!, // Non-null assertion: validated above
         },
       });
 
