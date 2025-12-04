@@ -26,13 +26,48 @@ export default function TrainingSetupStartPage() {
       setTrainingPlanId(planId);
       console.log('📋 Training plan ID from URL:', planId);
       
-      // Auto-search for common races to help user find existing races
-      const commonQueries = ['Boston', 'Marathon', '5k', '10k', 'Half'];
-      // Try searching for "Boston" first (most common)
+      // Auto-search for "Boston" to help user find existing races
       setSearchQuery('Boston');
-      handleSearchForQuery('Boston');
+      // Trigger search after a short delay to ensure component is ready
+      setTimeout(() => {
+        handleSearchForQuery('Boston');
+      }, 100);
     }
   }, []);
+
+  const handleSearchForQuery = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setHasSearched(false);
+      return;
+    }
+
+    setSearching(true);
+    setError(null);
+    setHasSearched(true);
+
+    try {
+      const response = await api.post('/race/search', { query });
+      if (response.data.success) {
+        const races = response.data.races || [];
+        setSearchResults(races);
+      } else {
+        setError(response.data.error || 'Failed to search races');
+      }
+    } catch (err: any) {
+      console.error('Search error:', err);
+      const errorStatus = err.response?.status;
+      const errorData = err.response?.data;
+      
+      if (errorStatus === 503) {
+        setError('Race search is temporarily unavailable. Please create a new race instead.');
+      } else {
+        setError(errorData?.error || errorData?.details || 'Failed to search races. You can still create a new race below.');
+      }
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const handleSearchForQuery = async (query: string) => {
     if (!query.trim()) {
