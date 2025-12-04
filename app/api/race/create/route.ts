@@ -33,7 +33,13 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🔍 RACE CREATE: Searching registry first (search-before-create pattern)...');
-    const raceDate = new Date(date);
+    // Normalize date to UTC midnight to prevent timezone issues
+    // Parse date string and create UTC date (race dates are date-only)
+    const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const raceDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    
+    console.log('📅 RACE CREATE: Normalized date:', raceDate.toISOString());
     
     // REGISTRY PATTERN: Search first, if exists, return it. If not, create it.
     const existingRace = await prisma.race.findFirst({

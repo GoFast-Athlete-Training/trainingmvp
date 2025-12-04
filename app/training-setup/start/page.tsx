@@ -6,6 +6,31 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import api from '@/lib/api';
 
+// Format race date properly (handle timezone issues)
+// Race dates are date-only values, so we use UTC to prevent timezone shifts
+function formatRaceDate(dateString: string | Date): string {
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateString);
+      return 'Invalid date';
+    }
+    
+    // Use UTC methods to prevent timezone shifts (race dates are date-only)
+    // This ensures "2026-04-20" always displays as 4/20/2026 regardless of user's timezone
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1;
+    const day = date.getUTCDate();
+    
+    return `${month}/${day}/${year}`;
+  } catch (error) {
+    console.error('Error formatting date:', dateString, error);
+    return 'Invalid date';
+  }
+}
+
 export default function TrainingSetupStartPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -114,6 +139,7 @@ export default function TrainingSetupStartPage() {
       if (planId) {
         // Update existing draft plan with race
         console.log('📋 Updating training plan with race:', race.id);
+        console.log('⏳ Saving to database...');
         
         // Calculate total weeks from race date
         const today = new Date();
@@ -134,33 +160,37 @@ export default function TrainingSetupStartPage() {
 
         if (response.data.success) {
           console.log('✅ Training plan updated with race:', planId);
+          console.log('✅ Save complete, navigating...');
           router.push(`/training-setup/${planId}`);
         } else {
           const errorMsg = response.data.error || response.data.details || 'Failed to update training plan';
           console.error('❌ Training plan update failed:', errorMsg);
           setError(`Failed to update training plan: ${errorMsg}`);
+          setLoading(false);
         }
       } else {
         // Create new plan with race (fallback for direct navigation)
         console.log('📋 Creating training plan for race:', race.id);
+        console.log('⏳ Saving to database...');
         const response = await api.post('/training-plan/create', {
           raceId: race.id,
         });
 
         if (response.data.success) {
           console.log('✅ Training plan created:', response.data.trainingPlanId);
+          console.log('✅ Save complete, navigating...');
           router.push(`/training-setup/${response.data.trainingPlanId}`);
         } else {
           const errorMsg = response.data.error || response.data.details || 'Failed to create training plan';
           console.error('❌ Training plan creation failed:', errorMsg);
           setError(`Failed to create training plan: ${errorMsg}`);
+          setLoading(false);
         }
       }
     } catch (err: any) {
       console.error('❌ Error:', err);
       const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to process';
       setError(`Failed: ${errorMsg}`);
-    } finally {
       setLoading(false);
     }
   };
@@ -303,13 +333,18 @@ export default function TrainingSetupStartPage() {
                         key={race.id}
                         onClick={() => handleSelectRace(race)}
                         disabled={loading}
-                        className="w-full text-left p-4 bg-gray-50 hover:bg-orange-50 rounded-xl border-2 border-transparent hover:border-orange-200 transition"
+                        className="w-full text-left p-4 bg-gray-50 hover:bg-orange-50 rounded-xl border-2 border-transparent hover:border-orange-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="font-semibold text-lg">{race.name}</div>
                         <div className="text-sm text-gray-600">
-                          {race.distance.toUpperCase()} • {new Date(race.date).toLocaleDateString()}
+                          {race.distance.toUpperCase()} • {formatRaceDate(race.date)}
                           {race.city && ` • ${race.city}, ${race.state || race.country}`}
                         </div>
+                        {loading && (
+                          <div className="mt-2 text-xs text-orange-600">
+                            Saving...
+                          </div>
+                        )}
                       </button>
                     ))}
                   </div>

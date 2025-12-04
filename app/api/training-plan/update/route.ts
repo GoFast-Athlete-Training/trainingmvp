@@ -92,17 +92,21 @@ export async function POST(request: NextRequest) {
     // Handle raceId attachment via junction table
     const raceId = updates.raceId;
     if (raceId) {
+      console.log('📋 UPDATE: Attaching race:', raceId);
       // Verify race exists
       const race = await prisma.race.findUnique({
         where: { id: raceId },
       });
 
       if (!race) {
+        console.error('❌ UPDATE: Race not found:', raceId);
         return NextResponse.json(
           { success: false, error: 'Race not found' },
           { status: 404 }
         );
       }
+
+      console.log('✅ UPDATE: Race found:', race.name, 'Date:', race.date);
 
       // Check if race is already attached
       const raceAlreadyAttached = existingPlan.raceTrainingPlans.some(
@@ -110,6 +114,7 @@ export async function POST(request: NextRequest) {
       );
 
       if (!raceAlreadyAttached) {
+        console.log('📋 UPDATE: Creating junction table entry...');
         // Attach race via junction table
         await prisma.raceTrainingPlan.create({
           data: {
@@ -117,6 +122,7 @@ export async function POST(request: NextRequest) {
             trainingPlanId: trainingPlanId,
           },
         });
+        console.log('✅ UPDATE: Junction table entry created');
 
         // Calculate total weeks from race date if not already set
         if (!updateData.totalWeeks) {
@@ -159,12 +165,18 @@ export async function POST(request: NextRequest) {
       }
 
       const race = raceTrainingPlan.race;
+      console.log('📊 UPDATE: Calculating goal pace');
+      console.log('  Goal time:', goalTimeValue);
+      console.log('  Race distance:', race.distance);
       try {
-        updateData.goalPace5K = calculateGoalFiveKPace(
+        const calculatedPace = calculateGoalFiveKPace(
           goalTimeValue,
           race.distance
         );
+        console.log('  Calculated 5K pace:', calculatedPace);
+        updateData.goalPace5K = calculatedPace;
       } catch (error: any) {
+        console.error('❌ UPDATE: Goal pace calculation failed:', error.message);
         return NextResponse.json(
           { success: false, error: `Failed to calculate goal pace: ${error.message}` },
           { status: 400 }
@@ -173,6 +185,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update plan
+    console.log('📋 UPDATE: Updating plan with data:', updateData);
     const updatedPlan = await prisma.trainingPlan.update({
       where: { id: trainingPlanId },
       data: updateData,
@@ -185,7 +198,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log('✅ UPDATE: Plan updated successfully');
     const race = updatedPlan.raceTrainingPlans[0]?.race;
+    if (race) {
+      console.log('✅ UPDATE: Race attached:', race.name, 'Date:', race.date);
+    }
 
     return NextResponse.json({
       success: true,

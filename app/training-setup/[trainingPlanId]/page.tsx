@@ -16,6 +16,9 @@ export default function TrainingSetupGoalTimePage() {
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<any>(null);
   const [goalTime, setGoalTime] = useState('');
+  const [hours, setHours] = useState('');
+  const [minutes, setMinutes] = useState('');
+  const [seconds, setSeconds] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -29,8 +32,20 @@ export default function TrainingSetupGoalTimePage() {
         const response = await api.get(`/training-plan/${trainingPlanId}`);
         if (response.data.success) {
           setPlan(response.data.trainingPlan);
-          if (response.data.trainingPlan.trainingPlanGoalTime) {
-            setGoalTime(response.data.trainingPlan.trainingPlanGoalTime);
+          if (response.data.trainingPlan.goalTime) {
+            const timeStr = response.data.trainingPlan.goalTime;
+            setGoalTime(timeStr);
+            // Parse existing time into components
+            const parts = timeStr.split(':');
+            if (parts.length === 3) {
+              setHours(parts[0]);
+              setMinutes(parts[1]);
+              setSeconds(parts[2]);
+            } else if (parts.length === 2) {
+              setHours('');
+              setMinutes(parts[0]);
+              setSeconds(parts[1]);
+            }
           }
         } else {
           setError(response.data.error || 'Failed to load plan');
@@ -46,10 +61,60 @@ export default function TrainingSetupGoalTimePage() {
     return () => unsubscribe();
   }, [router, trainingPlanId]);
 
+  // Update goalTime string when components change
+  useEffect(() => {
+    const raceDistance = plan?.race?.distance?.toLowerCase();
+    const isLongRace = raceDistance === 'marathon' || raceDistance === 'half';
+    
+    if (isLongRace) {
+      // For long races, always use HH:MM:SS
+      const h = hours.padStart(2, '0') || '0';
+      const m = minutes.padStart(2, '0') || '0';
+      const s = seconds.padStart(2, '0') || '0';
+      setGoalTime(`${h}:${m}:${s}`);
+    } else {
+      // For short races, use MM:SS if hours is empty, otherwise HH:MM:SS
+      if (!hours || hours === '0') {
+        const m = minutes.padStart(2, '0') || '0';
+        const s = seconds.padStart(2, '0') || '0';
+        setGoalTime(`${m}:${s}`);
+      } else {
+        const h = hours.padStart(2, '0');
+        const m = minutes.padStart(2, '0') || '0';
+        const s = seconds.padStart(2, '0') || '0';
+        setGoalTime(`${h}:${m}:${s}`);
+      }
+    }
+  }, [hours, minutes, seconds, plan?.race?.distance]);
+
   const handleSave = async () => {
-    if (!goalTime.trim()) {
-      setError('Goal time is required');
-      return;
+    const raceDistance = plan?.race?.distance?.toLowerCase();
+    const isLongRace = raceDistance === 'marathon' || raceDistance === 'half';
+    
+    // Validate inputs
+    if (isLongRace) {
+      if (!hours || !minutes || !seconds) {
+        setError('Please enter hours, minutes, and seconds');
+        return;
+      }
+      const h = parseInt(hours);
+      const m = parseInt(minutes);
+      const s = parseInt(seconds);
+      if (isNaN(h) || isNaN(m) || isNaN(s) || m >= 60 || s >= 60) {
+        setError('Invalid time. Minutes and seconds must be less than 60.');
+        return;
+      }
+    } else {
+      if (!minutes || !seconds) {
+        setError('Please enter minutes and seconds');
+        return;
+      }
+      const m = parseInt(minutes);
+      const s = parseInt(seconds);
+      if (isNaN(m) || isNaN(s) || m >= 60 || s >= 60) {
+        setError('Invalid time. Minutes and seconds must be less than 60.');
+        return;
+      }
     }
 
     setSaving(true);
@@ -59,7 +124,7 @@ export default function TrainingSetupGoalTimePage() {
       const response = await api.post('/training-plan/update', {
         trainingPlanId,
         updates: {
-          trainingPlanGoalTime: goalTime,
+          goalTime: goalTime.trim(),
         },
       });
 
@@ -71,7 +136,7 @@ export default function TrainingSetupGoalTimePage() {
       }
     } catch (err: any) {
       console.error('Save error:', err);
-      setError(err.response?.data?.error || 'Failed to save goal time');
+      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to save goal time');
     } finally {
       setSaving(false);
     }
@@ -126,16 +191,131 @@ export default function TrainingSetupGoalTimePage() {
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Goal Time *
               </label>
-              <input
-                type="text"
-                value={goalTime}
-                onChange={(e) => setGoalTime(e.target.value)}
-                placeholder="e.g., 3:30:00 (HH:MM:SS) or 25:00 (MM:SS)"
-                className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Format: HH:MM:SS for longer races, MM:SS for shorter races
-              </p>
+              
+              {(plan?.race?.distance?.toLowerCase() === 'marathon' || plan?.race?.distance?.toLowerCase() === 'half') ? (
+                // Long race: HH:MM:SS format
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Hours</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={hours}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 23)) {
+                          setHours(val);
+                        }
+                      }}
+                      placeholder="3"
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                    />
+                  </div>
+                  <div className="pt-6 text-2xl font-bold text-gray-400">:</div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Minutes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={minutes}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
+                          setMinutes(val);
+                        }
+                      }}
+                      placeholder="30"
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                    />
+                  </div>
+                  <div className="pt-6 text-2xl font-bold text-gray-400">:</div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Seconds</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={seconds}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
+                          setSeconds(val);
+                        }
+                      }}
+                      placeholder="00"
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                    />
+                  </div>
+                </div>
+              ) : (
+                // Short race: MM:SS format (with optional hours)
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">Hours (optional)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={hours}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 23)) {
+                            setHours(val);
+                          }
+                        }}
+                        placeholder="0"
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                      />
+                    </div>
+                    <div className="pt-6 text-2xl font-bold text-gray-400">:</div>
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">Minutes</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={minutes}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
+                            setMinutes(val);
+                          }
+                        }}
+                        placeholder="25"
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                      />
+                    </div>
+                    <div className="pt-6 text-2xl font-bold text-gray-400">:</div>
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">Seconds</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={seconds}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
+                            setSeconds(val);
+                          }
+                        }}
+                        placeholder="00"
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="mt-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                <p className="text-sm font-semibold text-orange-800 mb-1">Preview:</p>
+                <p className="text-lg font-bold text-orange-900">
+                  {goalTime || 'Enter time above'}
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-4">
@@ -147,7 +327,7 @@ export default function TrainingSetupGoalTimePage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !goalTime.trim()}
+                disabled={saving || !goalTime.trim() || (!minutes || !seconds)}
                 className="flex-1 bg-orange-500 text-white py-4 px-6 rounded-xl font-semibold hover:bg-orange-600 transition disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Continue →'}

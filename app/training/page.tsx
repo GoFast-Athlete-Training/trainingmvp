@@ -9,6 +9,23 @@ import api from '@/lib/api';
 import { formatDate, isToday } from '@/lib/training/dates';
 import { formatPace } from '@/lib/utils/pace';
 
+// Format race date properly (handle timezone issues)
+// Race dates are date-only values, so we use UTC to prevent timezone shifts
+function formatRaceDate(dateString: string | Date): string {
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    if (isNaN(date.getTime())) {
+      return 'Invalid date';
+    }
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1;
+    const day = date.getUTCDate();
+    return `${month}/${day}/${year}`;
+  } catch (error) {
+    return 'Invalid date';
+  }
+}
+
 interface TodayWorkout {
   id: string;
   date: Date;
@@ -209,7 +226,7 @@ export default function TrainingHub() {
                     <div className="font-semibold text-lg text-gray-900">Select Race</div>
                     {draftPlan.progress.hasRace && draftPlan.race && (
                       <div className="text-sm text-gray-600 mt-1">
-                        {draftPlan.race.name} • {new Date(draftPlan.race.date).toLocaleDateString()}
+                        {draftPlan.race.name} • {formatRaceDate(draftPlan.race.date)}
                       </div>
                     )}
                   </div>
