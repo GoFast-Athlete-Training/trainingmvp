@@ -1,0 +1,849 @@
+# GoFast Training System - Complete Architecture
+
+**⚠️ THIS IS THE SINGLE SOURCE OF TRUTH ⚠️**
+
+**Last Updated:** 2024-12-03  
+**Schema Version:** Current Prisma schema  
+**Status:** Active Development
+
+---
+
+## Table of Contents
+
+1. [Database Schema](#database-schema)
+2. [Model Relationships](#model-relationships)
+3. [API Endpoints](#api-endpoints)
+4. [Business Logic Rules](#business-logic-rules)
+5. [Data Flow Patterns](#data-flow-patterns)
+6. [Critical Constraints](#critical-constraints)
+7. [Known Issues & Fixes](#known-issues--fixes)
+
+---
+
+## Database Schema
+
+### Core Models
+
+#### `Athlete`
+**Table:** `Athlete` (PascalCase, NO @@map directive - matches gofastapp-mvp)
+
+**Purpose:** Core user identity and profile
+
+**Key Fields:**
+- `id` (String, cuid) - Primary key
+- `firebaseId` (String, unique) - Firebase Auth UID
+- `email` (String?, optional)
+- `companyId` (String, REQUIRED) - Links to GoFastCompany
+- `fiveKPace` (String?, mm:ss format) - **SOURCE OF TRUTH** for 5K pace
+
+**Relations:**
+- `company` → `GoFastCompany` (many-to-one, required)
+- `trainingPlans` → `TrainingPlan[]` (one-to-many, via `athleteId`)
+- `athleteTrainingPlans` → `AthleteTrainingPlan[]` (junction table)
+- `plannedDays` → `TrainingDayPlanned[]`
+- `executedDays` → `TrainingDayExecuted[]`
+- `activities` → `AthleteActivity[]`
+
+**Critical Notes:**
+- **NO `@@map("athletes")`** - Uses Prisma default PascalCase table name
+- `companyId` is REQUIRED (single-tenant pattern)
+- `fiveKPace` is the authoritative 5K pace value
+
+---
+
+#### `GoFastCompany`
+**Table:** `go_fast_companies` (snake_case via @@map)
+
+**Purpose:** Single-tenant container (all athletes belong to one company)
+
+**Key Fields:**
+- `id` (String, cuid)
+- `slug` (String, unique) - e.g., "gofast"
+- `name` (String)
+
+**Relations:**
+- `athletes` → `Athlete[]` (one-to-many)
+
+**Critical Notes:**
+- Single company per deployment
+- Created via upsert pattern in `/api/athlete/create`
+
+---
+
+#### `RaceRegistry`
+**Table:** `race_registry` (snake_case via @@map)
+
+**Purpose:** Global catalogue of races (shared across all athletes)
+
+**Key Fields:**
+- `id` (String, cuid)
+- `name` (String)
+- `distance` (String) - "marathon", "half", "5k", "10k", etc.
+- `date` (DateTime)
+- `city` (String?)
+- `state` (String?)
+- `createdBy` (String) - athleteId who created it
+- `isGlobal` (Boolean, default: false)
+
+**Relations:**
+- `trainingPlans` → `TrainingPlan[]` (one-to-many)
+
+**Constraints:**
+- `@@unique([name, date])` - Prevents duplicate races
+
+**Critical Notes:**
+- **One-to-many relationship** with `TrainingPlan` (one race can have many plans)
+- When creating a race, check for existing `(name, date)` before creating
+- If duplicate found, return existing race instead of creating new one
+
+---
+
+#### `TrainingPlan`
+**Table:** `TrainingPlan` (PascalCase, NO @@map directive - matches gofastapp-mvp)
+
+**Purpose:** Training plan container (one plan per race goal)
+
+**Key Fields:**
+- `id` (String, cuid)
+- `athleteId` (String) - Original creator/owner
+- `raceRegistryId` (String) - **References RaceRegistry (one-to-many)**
+- `trainingPlanName` (String)
+- `trainingPlanGoalTime` (String?) - e.g., "3:30:00"
+- `trainingPlanStartDate` (DateTime)
+- `trainingPlanTotalWeeks` (Int)
+- `status` (String, default: "draft") - "draft", "active", "completed", "archived"
+
+**Relations:**
+- `athlete` → `Athlete` (many-to-one, via `athleteId`)
+- `raceRegistry` → `RaceRegistry` (many-to-one, via `raceRegistryId`)
+- `athleteTrainingPlans` → `AthleteTrainingPlan[]` (junction table)
+- `plannedDays` → `TrainingDayPlanned[]`
+- `trainingPlanFiveKPace` → `TrainingPlanFiveKPace?` (one-to-one snapshot)
+- `trainingPlanPreferredDays` → `TrainingPlanPreferredDays?` (one-to-one snapshot)
+
+**Indexes:**
+- `@@index([athleteId, status])` - Fast lookup of active plans
+
+**Critical Notes:**
+- **NO `@@map("training_plans")`** - Uses Prisma default PascalCase table name
+- `raceRegistryId` is REQUIRED (no deprecated `raceId` field)
+- Status lifecycle: `draft` → `active` → `completed`/`archived`
+- One plan can be assigned to multiple athletes via `AthleteTrainingPlan` junction table
+
+---
+
+#### `AthleteTrainingPlan` (Junction Table)
+**Table:** `athlete_training_plans` (snake_case via @@map)
+
+**Purpose:** Many-to-many relationship between Athlete and TrainingPlan
+
+**Key Fields:**
+- `id` (String, cuid)
+- `athleteId` (String)
+- `trainingPlanId` (String)
+- `isPrimary` (Boolean, default: false) - Primary/active plan for this athlete
+- `isActive` (Boolean, default: true) - Whether assignment is active
+- `assignedAt` (DateTime, default: now())
+- `activatedAt` (DateTime?)
+- `deactivatedAt` (DateTime?)
+
+**Relations:**
+- `athlete` → `Athlete` (many-to-one)
+- `trainingPlan` → `TrainingPlan` (many-to-one)
+
+**Constraints:**
+- `@@unique([athleteId, trainingPlanId])` - One assignment per athlete-plan pair
+- `@@index([athleteId, isPrimary, isActive])` - Fast lookup of primary active plan
+- `@@index([athleteId, isActive])` - Fast lookup of all active plans
+
+**Critical Notes:**
+- **USE THIS for finding active plans** - Don't query `TrainingPlan` directly by `athleteId` and `status`
+- Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId, isActive: true, isPrimary: true } })`
+- Fallback: If no junction entry, check `TrainingPlan` directly (for legacy plans)
+
+---
+
+#### `TrainingDayPlanned`
+**Table:** `training_days_planned` (snake_case via @@map)
+
+**Purpose:** Individual planned workout days within a training plan
+
+**Key Fields:**
+- `id` (String, cuid)
+- `trainingPlanId` (String)
+- `athleteId` (String)
+- `weekIndex` (Int) - Week number (1-based)
+- `dayIndex` (Int) - Day of week (1=Monday, 7=Sunday)
+- `phase` (String) - "base", "build", "peak", "taper"
+- `date` (DateTime) - Computed date (calculated by backend)
+- `plannedData` (Json) - Workout details (type, mileage, pace, etc.)
+
+**Relations:**
+- `trainingPlan` → `TrainingPlan` (many-to-one)
+- `athlete` → `Athlete` (many-to-one)
+
+**Constraints:**
+- `@@unique([trainingPlanId, weekIndex, dayIndex])` - One planned day per plan/week/day
+
+**Critical Notes:**
+- `date` is computed by backend based on `trainingPlanStartDate` + `weekIndex` + `dayIndex`
+- `plannedData` is JSON structure from AI generation
+- No direct FK to `TrainingPlanExecution` - standalone planned days
+
+---
+
+#### `TrainingDayExecuted`
+**Table:** `training_days_executed` (snake_case via @@map)
+
+**Purpose:** Completed workout executions (links to AthleteActivity)
+
+**Key Fields:**
+- `id` (String, cuid)
+- `athleteId` (String)
+- `activityId` (String?, unique) - Links to `AthleteActivity.id`
+- `weekIndex` (Int)
+- `dayIndex` (Int)
+- `date` (DateTime)
+- `plannedData` (Json?) - Snapshot of planned workout
+- `analysis` (Json?) - AI analysis of execution
+- `feedback` (Json?) - AI feedback
+
+**Relations:**
+- `athlete` → `Athlete` (many-to-one)
+
+**Critical Notes:**
+- **NO direct FK to TrainingPlan** - Links via `athleteId` and `date` matching
+- `activityId` links to `AthleteActivity` (Garmin sync)
+- Can exist without `activityId` (manual entry)
+
+---
+
+#### `TrainingPlanFiveKPace`
+**Table:** `training_plan_five_k_pace` (snake_case via @@map)
+
+**Purpose:** Snapshot of athlete's 5K pace at time of plan creation
+
+**Key Fields:**
+- `id` (String, cuid)
+- `trainingPlanId` (String)
+- `athleteId` (String)
+- `fiveKPace` (String) - mm:ss format
+
+**Relations:**
+- `trainingPlan` → `TrainingPlan` (one-to-one)
+- `athlete` → `Athlete` (many-to-one)
+
+**Constraints:**
+- `@@unique([trainingPlanId])` - One snapshot per plan
+
+**Critical Notes:**
+- Created during plan generation
+- Used for race readiness calculations
+- Source: `Athlete.fiveKPace` at time of generation
+
+---
+
+#### `TrainingPlanPreferredDays`
+**Table:** `training_plan_preferred_days` (snake_case via @@map)
+
+**Purpose:** Snapshot of athlete's preferred training days at time of plan creation
+
+**Key Fields:**
+- `id` (String, cuid)
+- `trainingPlanId` (String)
+- `athleteId` (String)
+- `preferredDays` (Int[]) - e.g., [1,3,5] where 1=Monday, 7=Sunday
+
+**Relations:**
+- `trainingPlan` → `TrainingPlan` (one-to-one)
+- `athlete` → `Athlete` (many-to-one)
+
+**Constraints:**
+- `@@unique([trainingPlanId])` - One snapshot per plan
+
+**Critical Notes:**
+- Currently unused in MVP1
+- Reserved for future plan customization
+
+---
+
+#### `AthleteActivity`
+**Table:** `athlete_activities` (snake_case via @@map)
+
+**Purpose:** Synced activities from Garmin (or other sources)
+
+**Key Fields:**
+- `id` (String, cuid)
+- `athleteId` (String)
+- `sourceActivityId` (String, unique) - External ID (Garmin activity ID)
+- `source` (String, default: "garmin")
+- `activityType` (String?)
+- `startTime` (DateTime?)
+- `duration` (Int?) - seconds
+- `distance` (Float?) - miles
+- `averageSpeed` (Float?)
+- `averageHeartRate` (Int?)
+- `summaryData` (Json?)
+- `detailData` (Json?)
+
+**Relations:**
+- `athlete` → `Athlete` (many-to-one)
+
+**Critical Notes:**
+- Synced from Garmin via PKCE OAuth flow
+- Linked to `TrainingDayExecuted` via `activityId`
+
+---
+
+#### `Race` (DEPRECATED)
+**Table:** `races` (snake_case via @@map)
+
+**Purpose:** Legacy race model - **DO NOT USE**
+
+**Critical Notes:**
+- **DEPRECATED** - Use `RaceRegistry` instead
+- No relations to `TrainingPlan` (removed)
+- Kept for migration purposes only
+
+---
+
+## Model Relationships
+
+### Relationship Diagram
+
+```
+GoFastCompany (1) ──< (many) Athlete
+Athlete (1) ──< (many) TrainingPlan (via athleteId)
+Athlete (many) ──< (many) TrainingPlan (via AthleteTrainingPlan junction)
+RaceRegistry (1) ──< (many) TrainingPlan (via raceRegistryId)
+TrainingPlan (1) ──< (many) TrainingDayPlanned
+TrainingPlan (1) ──< (1) TrainingPlanFiveKPace
+TrainingPlan (1) ──< (1) TrainingPlanPreferredDays
+Athlete (1) ──< (many) TrainingDayExecuted
+Athlete (1) ──< (many) AthleteActivity
+TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
+```
+
+### Critical Relationship Rules
+
+1. **RaceRegistry → TrainingPlan: ONE-TO-MANY**
+   - One race can have many training plans
+   - Query: `RaceRegistry.trainingPlans` returns `TrainingPlan[]`
+   - **NOT a junction table** - direct FK relationship
+
+2. **Athlete → TrainingPlan: MANY-TO-MANY via Junction**
+   - Use `AthleteTrainingPlan` to find active plans
+   - Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId, isActive: true, isPrimary: true } })`
+   - Fallback: `TrainingPlan.findFirst({ where: { athleteId, status: 'active' } })`
+
+3. **TrainingPlan → TrainingDayPlanned: ONE-TO-MANY**
+   - Each plan has many planned days
+   - Days are created during plan generation
+   - Unique constraint: `(trainingPlanId, weekIndex, dayIndex)`
+
+4. **TrainingDayExecuted → TrainingPlan: NO DIRECT FK**
+   - Links via `athleteId` and `date` matching
+   - No FK constraint - flexible matching
+
+---
+
+## API Endpoints
+
+### Authentication & Athlete
+
+#### `POST /api/athlete/create`
+**Purpose:** Create or update athlete record from Firebase token
+
+**Request:**
+- Headers: `Authorization: Bearer <firebaseToken>`
+- Body: `{}` (empty)
+
+**Response:**
+```json
+{
+  "success": true,
+  "athleteId": "...",
+  "data": { ... }
+}
+```
+
+**Business Logic:**
+- Verifies Firebase token
+- Upserts `GoFastCompany` (single company)
+- Upserts `Athlete` with `companyId`
+- Returns athlete data
+
+---
+
+#### `POST /api/athlete/hydrate`
+**Purpose:** Hydrate athlete data including active training plan
+
+**Request:**
+- Headers: `Authorization: Bearer <firebaseToken>`
+- Body: `{}` (empty)
+
+**Response:**
+```json
+{
+  "success": true,
+  "athlete": {
+    "id": "...",
+    "firebaseId": "...",
+    "email": "...",
+    "firstName": "...",
+    "lastName": "...",
+    "trainingPlanId": "..." // Active plan ID from junction table
+  }
+}
+```
+
+**Business Logic:**
+- Finds athlete by Firebase token
+- Queries `AthleteTrainingPlan` for active plan (`isActive: true, isPrimary: true`)
+- Bolts `trainingPlanId` onto athlete object
+- Returns full athlete object
+
+**Critical Notes:**
+- `trainingPlanId` comes from junction table, not direct FK
+- If no active plan, `trainingPlanId` is `null`
+
+---
+
+### Training Plan Setup (Hydrate-ID-First Pattern)
+
+#### `POST /api/training-plan/create`
+**Purpose:** Create draft training plan
+
+**Request:**
+```json
+{
+  "raceRegistryId": "..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "trainingPlanId": "..."
+}
+```
+
+**Business Logic:**
+- Validates `raceRegistryId` exists
+- Creates `TrainingPlan` with `status: "draft"`
+- Returns `trainingPlanId` immediately
+- **NO wizard state** - ID is the source of truth
+
+---
+
+#### `POST /api/training-plan/update`
+**Purpose:** Update draft training plan fields
+
+**Request:**
+```json
+{
+  "trainingPlanId": "...",
+  "updates": {
+    "trainingPlanGoalTime": "3:30:00",
+    "trainingPlanName": "Boston Marathon 2025",
+    "trainingPlanStartDate": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "trainingPlan": { ... }
+}
+```
+
+**Business Logic:**
+- Validates plan exists and is `status: "draft"`
+- Validates athlete ownership
+- Updates fields atomically
+- Returns updated plan
+
+---
+
+#### `POST /api/training-plan/generate`
+**Purpose:** Generate and activate training plan
+
+**Request:**
+```json
+{
+  "trainingPlanId": "..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "trainingPlan": { ... }
+}
+```
+
+**Business Logic:**
+- Loads draft plan
+- Validates required fields (`trainingPlanGoalTime`, `trainingPlanStartDate`, etc.)
+- Calls AI generation service
+- Creates `TrainingPlanFiveKPace` snapshot
+- Creates all `TrainingDayPlanned` records
+- Updates plan `status: "active"`
+- Creates `AthleteTrainingPlan` junction entry (`isPrimary: true, isActive: true`)
+- All within transaction
+
+---
+
+#### `GET /api/training-plan/[id]`
+**Purpose:** Get training plan details
+
+**Response:**
+```json
+{
+  "success": true,
+  "trainingPlan": {
+    "id": "...",
+    "raceRegistry": { ... },
+    "trainingPlanFiveKPace": { ... },
+    ...
+  }
+}
+```
+
+---
+
+### Training Hub
+
+#### `GET /api/training/hub`
+**Purpose:** Get training hub data (today's workout, plan status, race readiness)
+
+**Request:**
+- Headers: `Authorization: Bearer <firebaseToken>`
+
+**Response:**
+```json
+{
+  "todayWorkout": {
+    "id": "...",
+    "date": "...",
+    "plannedData": { ... },
+    "status": "pending" | "completed" | "rest"
+  },
+  "planStatus": {
+    "hasPlan": true,
+    "totalWeeks": 16,
+    "currentWeek": 5,
+    "phase": "build"
+  },
+  "raceReadiness": {
+    "current5kPace": "24:30",
+    "goalDelta": "+2:15",
+    "status": "on-track" | "behind" | "impossible"
+  }
+}
+```
+
+**Business Logic:**
+- **CRITICAL:** Query `AthleteTrainingPlan` first for active plan
+  ```typescript
+  const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
+    where: { athleteId, isActive: true, isPrimary: true },
+    include: { trainingPlan: { include: { raceRegistry: true, trainingPlanFiveKPace: true } } }
+  });
+  ```
+- Fallback: `TrainingPlan.findFirst({ where: { athleteId, status: 'active' } })`
+- Finds today's `TrainingDayPlanned`
+- Checks for `TrainingDayExecuted` to determine status
+- Calculates current week from `trainingPlanStartDate`
+- Returns `hasPlan: false` if no active plan
+
+---
+
+### Race Registry
+
+#### `POST /api/race/search`
+**Purpose:** Search races by name
+
+**Request:**
+```json
+{
+  "query": "Boston"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "races": [
+    {
+      "id": "...",
+      "name": "Boston Marathon",
+      "date": "...",
+      ...
+    }
+  ]
+}
+```
+
+**Business Logic:**
+- Searches `RaceRegistry` by `name` (case-insensitive)
+- Returns empty array if no results (NOT an error)
+- Handles `P2021` (table not found) gracefully → returns 503
+
+---
+
+#### `POST /api/race/create`
+**Purpose:** Create new race in registry
+
+**Request:**
+```json
+{
+  "name": "Boston Marathon",
+  "distance": "marathon",
+  "date": "2025-04-21T00:00:00Z",
+  "city": "Boston",
+  "state": "MA",
+  "country": "USA"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "race": { ... }
+}
+```
+
+**Business Logic:**
+- **CRITICAL:** Check for existing race with `(name, date)` before creating
+- If duplicate found, return existing race (don't create)
+- Creates race with `createdBy: athleteId` from token
+- Returns created or existing race
+
+---
+
+## Business Logic Rules
+
+### Training Plan Lifecycle
+
+1. **Draft Creation**
+   - User selects/creates race → `POST /api/training-plan/create`
+   - Returns `trainingPlanId` immediately
+   - Plan status: `"draft"`
+
+2. **Draft Updates**
+   - Each setup step calls `POST /api/training-plan/update`
+   - Updates single field (goal time, start date, etc.)
+   - Plan remains `status: "draft"`
+
+3. **Plan Generation**
+   - Final step calls `POST /api/training-plan/generate`
+   - Validates all required fields
+   - Calls AI generation service
+   - Creates `TrainingPlanFiveKPace` snapshot
+   - Creates all `TrainingDayPlanned` records
+   - Updates `status: "active"`
+   - Creates `AthleteTrainingPlan` junction entry
+
+4. **Plan Activation**
+   - Junction entry: `isPrimary: true, isActive: true`
+   - Plan becomes visible in training hub
+   - `todayWorkout` queries start working
+
+### Active Plan Lookup Pattern
+
+**ALWAYS use this pattern:**
+
+```typescript
+// 1. Try junction table first
+const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
+  where: {
+    athleteId,
+    isActive: true,
+    isPrimary: true,
+  },
+  include: {
+    trainingPlan: {
+      include: {
+        raceRegistry: true,
+        trainingPlanFiveKPace: true,
+      },
+    },
+  },
+});
+
+let activePlan = activeAssignment?.trainingPlan;
+
+// 2. Fallback to direct query (for legacy plans)
+if (!activePlan) {
+  activePlan = await prisma.trainingPlan.findFirst({
+    where: {
+      athleteId,
+      status: 'active',
+    },
+    include: {
+      raceRegistry: true,
+      trainingPlanFiveKPace: true,
+    },
+  });
+}
+```
+
+### Race Registry Duplicate Prevention
+
+**ALWAYS check before creating:**
+
+```typescript
+// Check for existing race
+const existingRace = await prisma.raceRegistry.findUnique({
+  where: {
+    name_date: {
+      name: raceData.name,
+      date: raceData.date,
+    },
+  },
+});
+
+if (existingRace) {
+  return NextResponse.json({ success: true, race: existingRace });
+}
+
+// Create new race
+const newRace = await prisma.raceRegistry.create({ ... });
+```
+
+---
+
+## Data Flow Patterns
+
+### Hydrate-ID-First Setup Flow
+
+```
+1. User selects race
+   → POST /api/training-plan/create { raceRegistryId }
+   → Returns { trainingPlanId }
+   → Redirect to /training-setup/[trainingPlanId]
+
+2. User enters goal time
+   → Load plan: GET /api/training-plan/[trainingPlanId]
+   → Update: POST /api/training-plan/update { trainingPlanId, updates: { trainingPlanGoalTime } }
+   → Redirect to /training-setup/[trainingPlanId]/review
+
+3. User reviews and generates
+   → Load plan: GET /api/training-plan/[trainingPlanId]
+   → Generate: POST /api/training-plan/generate { trainingPlanId }
+   → Redirect to /training?planId=xxx
+```
+
+**Key Principles:**
+- NO wizard state in frontend
+- Each page loads plan from DB
+- Each update is atomic API call
+- `trainingPlanId` is the source of truth
+
+### Athlete Hydration Flow
+
+```
+1. User authenticates (Firebase)
+   → POST /api/athlete/create
+   → Upserts athlete with companyId
+
+2. User lands on /welcome
+   → POST /api/athlete/hydrate
+   → Queries AthleteTrainingPlan for active plan
+   → Bolts trainingPlanId onto athlete object
+   → Stores in localStorage
+
+3. User clicks "Let's Train"
+   → Checks localStorage for trainingPlanId
+   → If exists: redirect to /training
+   → If not: redirect to /training-setup
+```
+
+---
+
+## Critical Constraints
+
+### Table Name Conventions
+
+- **PascalCase (NO @@map):** `Athlete`, `TrainingPlan` - Matches gofastapp-mvp
+- **snake_case (with @@map):** `race_registry`, `athlete_training_plans`, `training_days_planned`, etc.
+
+### Foreign Key Rules
+
+- `Athlete.companyId` → REQUIRED (single-tenant)
+- `TrainingPlan.raceRegistryId` → REQUIRED (no deprecated `raceId`)
+- `TrainingDayExecuted` → NO FK to `TrainingPlan` (flexible matching)
+
+### Unique Constraints
+
+- `RaceRegistry`: `@@unique([name, date])` - Prevents duplicates
+- `AthleteTrainingPlan`: `@@unique([athleteId, trainingPlanId])` - One assignment per pair
+- `TrainingDayPlanned`: `@@unique([trainingPlanId, weekIndex, dayIndex])` - One day per plan/week/day
+- `TrainingPlanFiveKPace`: `@@unique([trainingPlanId])` - One snapshot per plan
+
+### Status Lifecycle
+
+- `TrainingPlan.status`: `"draft"` → `"active"` → `"completed"` | `"archived"`
+- `AthleteTrainingPlan.isActive`: `true` | `false`
+- `AthleteTrainingPlan.isPrimary`: `true` (only one per athlete)
+
+---
+
+## Known Issues & Fixes
+
+### Issue: Table Name Mismatch
+**Problem:** Prisma schema had `@@map("athletes")` but database table is `Athlete`  
+**Fix:** Removed `@@map` directive - uses Prisma default PascalCase  
+**Status:** ✅ Fixed
+
+### Issue: Missing `fiveKPace` Column
+**Problem:** Schema had `fiveKPace` but column didn't exist in database  
+**Fix:** Added column via migration  
+**Status:** ✅ Fixed
+
+### Issue: Race Registry Duplicates
+**Problem:** Same race created multiple times  
+**Fix:** Added `@@unique([name, date])` constraint + check before create  
+**Status:** ✅ Fixed
+
+### Issue: Active Plan Lookup
+**Problem:** Querying `TrainingPlan` directly instead of using junction table  
+**Fix:** Updated `/api/training/hub` to use `AthleteTrainingPlan` first  
+**Status:** ✅ Fixed
+
+### Issue: Training Plan Table Name
+**Problem:** Schema had `@@map("training_plans")` but database table is `TrainingPlan`  
+**Fix:** Removed `@@map` directive - uses Prisma default PascalCase  
+**Status:** ✅ Fixed
+
+### Issue: Deprecated `raceId` Column
+**Problem:** `TrainingPlan` had `raceId` but should use `raceRegistryId`  
+**Fix:** Added `raceRegistryId`, dropped `raceId` column  
+**Status:** ✅ Fixed
+
+---
+
+## Validation Checklist
+
+Before deploying, verify:
+
+- [ ] All table names match (PascalCase vs snake_case)
+- [ ] `RaceRegistry` has `@@unique([name, date])`
+- [ ] `TrainingPlan` uses `raceRegistryId` (not `raceId`)
+- [ ] Active plan lookup uses `AthleteTrainingPlan` junction table
+- [ ] Race creation checks for duplicates before creating
+- [ ] `Athlete.companyId` is always set
+- [ ] `TrainingPlan.status` lifecycle is enforced
+- [ ] All API endpoints validate athlete ownership
+
+---
+
+**END OF ARCHITECTURE DOCUMENT**
+
