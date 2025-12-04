@@ -29,18 +29,22 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      plan: {
+      trainingPlan: {
         id: plan.id,
-        name: plan.trainingPlanName,
-        goalTime: plan.trainingPlanGoalTime,
-        startDate: plan.trainingPlanStartDate,
-        totalWeeks: plan.trainingPlanTotalWeeks,
+        trainingPlanName: plan.trainingPlanName,
+        trainingPlanGoalTime: plan.trainingPlanGoalTime,
+        trainingPlanStartDate: plan.trainingPlanStartDate,
+        trainingPlanTotalWeeks: plan.trainingPlanTotalWeeks,
         status: plan.status,
+        raceRegistryId: plan.raceRegistryId,
         race: {
           id: plan.raceRegistry.id,
           name: plan.raceRegistry.name,
           distance: plan.raceRegistry.distance,
           date: plan.raceRegistry.date,
+          city: plan.raceRegistry.city,
+          state: plan.raceRegistry.state,
+          country: plan.raceRegistry.country,
         },
         fiveKPace: plan.trainingPlanFiveKPace?.fiveKPace || null,
       },

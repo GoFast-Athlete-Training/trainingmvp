@@ -4,23 +4,63 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
-import { saveTrainingPlanToDB } from '@/lib/training/save-plan';
+import { calculateTrainingDayDate } from '@/lib/training/dates';
 
+/**
+ * Generate training plan from existing draft TrainingPlan
+ * Hydrate-id-first pattern: Uses existing trainingPlanId
+ */
 export async function POST(request: NextRequest) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
     const body = await request.json();
 
-    const { raceRegistryId, goalTime } = body;
+    const { trainingPlanId } = body;
 
-    if (!raceRegistryId || !goalTime) {
+    if (!trainingPlanId) {
       return NextResponse.json(
-        { success: false, error: 'raceRegistryId and goalTime are required' },
+        { success: false, error: 'trainingPlanId is required' },
         { status: 400 }
       );
     }
 
-    // Load athlete and race
+    // Load existing draft plan
+    const existingPlan = await prisma.trainingPlan.findUnique({
+      where: { id: trainingPlanId },
+      include: {
+        raceRegistry: true,
+      },
+    });
+
+    if (!existingPlan) {
+      return NextResponse.json(
+        { success: false, error: 'Training plan not found' },
+        { status: 404 }
+      );
+    }
+
+    if (existingPlan.athleteId !== athleteId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+
+    if (existingPlan.status !== 'draft') {
+      return NextResponse.json(
+        { success: false, error: 'Can only generate from draft plans' },
+        { status: 400 }
+      );
+    }
+
+    if (!existingPlan.trainingPlanGoalTime) {
+      return NextResponse.json(
+        { success: false, error: 'Goal time must be set before generating plan' },
+        { status: 400 }
+      );
+    }
+
+    // Load athlete
     const athlete = await prisma.athlete.findUnique({
       where: { id: athleteId },
       select: { fiveKPace: true },
@@ -37,24 +77,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const race = await prisma.raceRegistry.findUnique({
-      where: { id: raceRegistryId },
-    });
-
-    if (!race) {
-      return NextResponse.json({ success: false, error: 'Race not found' }, { status: 404 });
-    }
-
-    // Calculate total weeks from race date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const raceDate = new Date(race.date);
-    raceDate.setHours(0, 0, 0, 0);
-    const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7)); // Minimum 8 weeks
-
-    // Plan starts today
-    const planStartDate = today;
+    const race = existingPlan.raceRegistry;
+    const goalTime = existingPlan.trainingPlanGoalTime;
+    const planStartDate = existingPlan.trainingPlanStartDate;
+    const totalWeeks = existingPlan.trainingPlanTotalWeeks;
 
     // Generate plan
     const plan = await generateTrainingPlanAI({
@@ -65,20 +91,53 @@ export async function POST(request: NextRequest) {
       totalWeeks,
     });
 
-    // Save plan to database
-    const trainingPlanId = await saveTrainingPlanToDB(
-      athleteId,
-      raceRegistryId,
-      planStartDate,
-      plan,
-      race.name,
-      goalTime,
-      athlete.fiveKPace
-    );
+    // Update existing plan and create all days in transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Update plan status to active
+      const updatedPlan = await tx.trainingPlan.update({
+        where: { id: trainingPlanId },
+        data: {
+          status: 'active',
+        },
+      });
+
+      // Create snapshot: TrainingPlanFiveKPace
+      await tx.trainingPlanFiveKPace.create({
+        data: {
+          trainingPlanId: trainingPlanId,
+          athleteId,
+          fiveKPace: athlete.fiveKPace,
+        },
+      });
+
+      // Create ALL TrainingDayPlanned records with computed dates
+      const dayRecords = [];
+      for (const week of plan.weeks) {
+        for (const day of week.days) {
+          const computedDate = calculateTrainingDayDate(planStartDate, week.weekIndex, day.dayIndex);
+          dayRecords.push({
+            trainingPlanId: trainingPlanId,
+            athleteId,
+            weekIndex: week.weekIndex,
+            dayIndex: day.dayIndex,
+            phase: week.phase,
+            date: computedDate,
+            plannedData: day.plannedData,
+          });
+        }
+      }
+
+      // Batch create all days
+      await tx.trainingDayPlanned.createMany({
+        data: dayRecords,
+      });
+
+      return updatedPlan.id;
+    });
 
     return NextResponse.json({
       success: true,
-      trainingPlanId,
+      trainingPlanId: result,
       totalWeeks: plan.totalWeeks,
     });
   } catch (error: any) {
@@ -89,4 +148,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
