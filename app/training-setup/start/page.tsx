@@ -36,11 +36,25 @@ export default function TrainingSetupStartPage() {
     try {
       const response = await api.post('/race/search', { query: searchQuery });
       if (response.data.success) {
-        setSearchResults(response.data.races || []);
+        const races = response.data.races || [];
+        setSearchResults(races);
+        if (races.length === 0) {
+          setError('No races found. Try a different search term or create a new race.');
+        }
+      } else {
+        setError(response.data.error || 'Failed to search races');
       }
     } catch (err: any) {
       console.error('Search error:', err);
-      setError(err.response?.data?.error || 'Failed to search races');
+      const errorStatus = err.response?.status;
+      const errorData = err.response?.data;
+      
+      // Handle service unavailable (table missing) gracefully
+      if (errorStatus === 503) {
+        setError('Race search is temporarily unavailable. Please create a new race instead.');
+      } else {
+        setError(errorData?.error || errorData?.details || 'Failed to search races. You can still create a new race below.');
+      }
     } finally {
       setSearching(false);
     }

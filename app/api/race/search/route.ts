@@ -44,8 +44,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('❌ RACE SEARCH: Error:', error);
+    
+    // Handle table doesn't exist error gracefully
+    if (error.code === 'P2021' || error.message?.includes('does not exist')) {
+      console.error('❌ RACE SEARCH: race_registry table does not exist');
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Race search is temporarily unavailable', 
+          details: 'Database table not found. Please try creating a new race instead.' 
+        },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
-      { success: false, error: 'Server error', details: error?.message },
+      { success: false, error: 'Failed to search races', details: error?.message || 'Unknown error' },
       { status: 500 }
     );
   }
