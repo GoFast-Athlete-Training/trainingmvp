@@ -131,9 +131,39 @@
 
 **Critical Notes:**
 - **NO `@@map("training_plans")`** - Uses Prisma default PascalCase table name
-- `raceRegistryId` is REQUIRED (no deprecated `raceId` field)
+- **NO `raceRegistryId` field** - Use `RaceTrainingPlan` junction table instead
+- `goalFiveKPace` is calculated automatically when `trainingPlanGoalTime` is set (via `/api/training-plan/update` or `/api/training-plan/generate`)
 - Status lifecycle: `draft` → `active` → `completed`/`archived`
 - One plan can be assigned to multiple athletes via `AthleteTrainingPlan` junction table
+
+---
+
+#### `RaceTrainingPlan` (Junction Table)
+**Table:** `race_training_plans` (snake_case via @@map)
+
+**Purpose:** Many-to-many relationship between RaceRegistry and TrainingPlan
+
+**Key Fields:**
+- `id` (String, cuid)
+- `raceRegistryId` (String)
+- `trainingPlanId` (String)
+- `createdAt` (DateTime, default: now())
+- `updatedAt` (DateTime, updatedAt)
+
+**Relations:**
+- `raceRegistry` → `RaceRegistry` (many-to-one)
+- `trainingPlan` → `TrainingPlan` (many-to-one)
+
+**Constraints:**
+- `@@unique([raceRegistryId, trainingPlanId])` - One race-plan pair
+- `@@index([raceRegistryId])` - Fast lookup of all plans for a race
+- `@@index([trainingPlanId])` - Fast lookup of race for a plan
+
+**Critical Notes:**
+- **This is where the "lock in" happens** - A plan is linked to a race via this junction
+- RaceRegistry is global (search-first registry pattern)
+- Multiple plans can link to the same race
+- Use this junction table to find which race a plan is targeting
 
 ---
 
@@ -146,8 +176,7 @@
 - `id` (String, cuid)
 - `athleteId` (String)
 - `trainingPlanId` (String)
-- `createdAt` (DateTime, default: now())
-- `updatedAt` (DateTime, updatedAt)
+- `assignedAt` (DateTime, default: now())
 
 **Relations:**
 - `athlete` → `Athlete` (many-to-one)
@@ -155,13 +184,13 @@
 
 **Constraints:**
 - `@@unique([athleteId, trainingPlanId])` - One assignment per athlete-plan pair
-- `@@index([athleteId])` - Fast lookup of all plans for athlete
 
 **Critical Notes:**
-- **NO BOOLEAN FLAGS** - Assignment = active plan. No assignment = no active plan. Simple.
-- **USE THIS for finding active plans** - Don't query `TrainingPlan` directly by `athleteId` and `status`
-- Query pattern: `AthleteTrainingPlan.findMany({ where: { athleteId } })` - All assignments are active
-- Fallback: If no junction entry, check `TrainingPlan` directly (for legacy plans)
+- **NO BOOLEAN FLAGS** - No `isActive`, no `isPrimary`, no status fields
+- **MVP1 Behavior:** Only created when plan is generated (in `/api/training-plan/generate`)
+- **Future Use:** For "My Training Plans" selection screen
+- **MVP1:** Do NOT use this table to determine active plan - continue loading "whatever training plan exists"
+- Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId }, orderBy: { assignedAt: 'desc' } })`
 
 ---
 
@@ -276,7 +305,7 @@
 GoFastCompany (1) ──< (many) Athlete
 Athlete (1) ──< (many) TrainingPlan (via athleteId)
 Athlete (many) ──< (many) TrainingPlan (via AthleteTrainingPlan junction)
-RaceRegistry (1) ──< (many) TrainingPlan (via raceRegistryId)
+RaceRegistry (many) ──< (many) TrainingPlan (via RaceTrainingPlan junction)
 TrainingPlan (1) ──< (many) TrainingDayPlanned
 Athlete (1) ──< (many) TrainingDayExecuted
 Athlete (1) ──< (many) AthleteActivity
@@ -285,14 +314,18 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 
 ### Critical Relationship Rules
 
-1. **RaceRegistry → TrainingPlan: ONE-TO-MANY**
+1. **RaceRegistry → TrainingPlan: MANY-TO-MANY via Junction**
    - One race can have many training plans
-   - Query: `RaceRegistry.trainingPlans` returns `TrainingPlan[]`
-   - **NOT a junction table** - direct FK relationship
+   - One plan can target one race (via `RaceTrainingPlan` junction table)
+   - Query: `RaceRegistry.raceTrainingPlans` → `RaceTrainingPlan[]` → `TrainingPlan[]`
+   - **This is where the "lock in" happens** - A plan is linked to a race via this junction
+   - RaceRegistry is global (search-first registry pattern)
 
 2. **Athlete → TrainingPlan: MANY-TO-MANY via Junction**
-   - Use `AthleteTrainingPlan` to find active plans
-   - Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId } })` - All assignments are active
+   - Use `AthleteTrainingPlan` for future "My Training Plans" selection screen
+   - **MVP1:** Only created when plan is generated, NOT used to determine active plan
+   - **MVP1:** Continue loading "whatever training plan exists" for the athlete
+   - Query pattern: `AthleteTrainingPlan.findFirst({ where: { athleteId }, orderBy: { assignedAt: 'desc' } })`
    - Fallback: `TrainingPlan.findFirst({ where: { athleteId, status: 'active' } })`
 
 3. **TrainingPlan → TrainingDayPlanned: ONE-TO-MANY**
@@ -389,8 +422,12 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 ```
 
 **Business Logic:**
-- Validates `raceRegistryId` exists
-- Creates `TrainingPlan` with `status: "draft"`
+- If `raceRegistryId` provided:
+  - Validates race exists
+  - Creates `TrainingPlan` with `status: "draft"`
+  - Creates `RaceTrainingPlan` junction entry to link plan to race
+- If no `raceRegistryId`:
+  - Creates `TrainingPlan` with `status: "draft"` (race can be attached later)
 - Returns `trainingPlanId` immediately
 - **NO wizard state** - ID is the source of truth
 
@@ -601,17 +638,17 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 
 3. **Plan Generation**
    - Final step calls `POST /api/training-plan/generate`
-   - Validates all required fields
+   - Validates all required fields (goal time, race attached via junction)
+   - Calculates `goalFiveKPace` if not already set (from goal time + race distance)
    - Calls AI generation service
-   - Creates `TrainingPlanFiveKPace` snapshot
    - Creates all `TrainingDayPlanned` records
-   - Updates `status: "active"`
-   - Creates `AthleteTrainingPlan` junction entry
+   - Updates `status: "active"` and sets `goalFiveKPace`
+   - Creates `AthleteTrainingPlan` junction entry (`assignedAt: now()`) - MVP1: only created when plan is generated
 
 4. **Plan Activation**
-   - Junction entry: `isPrimary: true, isActive: true`
    - Plan becomes visible in training hub
    - `todayWorkout` queries start working
+   - **MVP1:** Continue loading "whatever training plan exists" - do NOT use junction table to determine active plan yet
 
 ### Active Plan Lookup Pattern
 
@@ -732,19 +769,30 @@ const newRace = await prisma.raceRegistry.create({ ... });
 ### Foreign Key Rules
 
 - `Athlete.companyId` → REQUIRED (single-tenant)
-- `TrainingPlan.raceRegistryId` → REQUIRED (no deprecated `raceId`)
+- `TrainingPlan` → NO direct `raceRegistryId` field - use `RaceTrainingPlan` junction table
 - `TrainingDayExecuted` → NO FK to `TrainingPlan` (flexible matching)
 
 ### Unique Constraints
 
 - `RaceRegistry`: `@@unique([name, date])` - Prevents duplicates
+- `RaceTrainingPlan`: `@@unique([raceRegistryId, trainingPlanId])` - One race-plan pair
 - `AthleteTrainingPlan`: `@@unique([athleteId, trainingPlanId])` - One assignment per pair
 - `TrainingDayPlanned`: `@@unique([trainingPlanId, weekIndex, dayIndex])` - One day per plan/week/day
 
 ### Status Lifecycle
 
 - `TrainingPlan.status`: `"draft"` → `"active"` → `"completed"` | `"archived"`
-- `AthleteTrainingPlan`: Assignment = active plan. No assignment = no active plan. Simple.
+- `AthleteTrainingPlan`: MVP1 - Only created when plan is generated. Future: Used for "My Training Plans" selection screen.
+
+### Goal Pace Derivation
+
+- When `trainingPlanGoalTime` is set (via `/api/training-plan/update` or `/api/training-plan/generate`):
+  - Get race distance from `RaceTrainingPlan` junction → `RaceRegistry.distance`
+  - Convert goal time to seconds
+  - Calculate pace per mile: `pacePerMileSec = raceGoalSeconds / raceMiles`
+  - Convert to 5K target pace: `goalFiveKSec = pacePerMileSec * 3.10686`
+  - Save as `TrainingPlan.goalFiveKPace` (mm:ss format)
+- **Important:** `goalFiveKPace` is TARGET pace, NOT current fitness (that's `Athlete.fiveKPace`)
 
 ---
 
