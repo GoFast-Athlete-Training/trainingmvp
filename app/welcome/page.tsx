@@ -64,10 +64,11 @@ export default function WelcomePage() {
       LocalStorageAPI.setAthlete(athlete);
       LocalStorageAPI.setHydrationTimestamp(Date.now());
       
-      // Also store raw response as requested
+      // Also store raw response as requested (matching gofastapp-mvp pattern)
       localStorage.setItem('gofastHydration', JSON.stringify(response.data));
       
       console.log('✅ WELCOME: Full hydration model cached');
+      
       
       // Hydration complete - show button for user to click
       console.log('🎯 WELCOME: Hydration complete, ready for user action');
