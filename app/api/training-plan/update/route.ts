@@ -65,22 +65,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Build update data (only allow specific fields)
-    const allowedFields = [
-      'trainingPlanGoalTime',
-      'trainingPlanName',
-      'trainingPlanStartDate',
-      'trainingPlanTotalWeeks',
-    ];
+    // Map old field names to new field names for backward compatibility
+    const fieldMapping: Record<string, string> = {
+      'trainingPlanGoalTime': 'goalTime',
+      'goalTime': 'goalTime',
+      'trainingPlanName': 'name',
+      'name': 'name',
+      'trainingPlanStartDate': 'startDate',
+      'startDate': 'startDate',
+      'trainingPlanTotalWeeks': 'totalWeeks',
+      'totalWeeks': 'totalWeeks',
+    };
+
+    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks'];
 
     const updateData: any = {};
-    for (const field of allowedFields) {
-      if (field in updates) {
-        updateData[field] = updates[field];
+    for (const [oldField, newField] of Object.entries(fieldMapping)) {
+      if (oldField in updates || newField in updates) {
+        const value = updates[newField] ?? updates[oldField];
+        if (allowedFields.includes(newField)) {
+          updateData[newField] = value;
+        }
       }
     }
 
-    // If goal time is being set, calculate goalFiveKPace
-    if (updates.trainingPlanGoalTime) {
+    // If goal time is being set, calculate goalPace5K
+    const goalTimeValue = updates.goalTime || updates.trainingPlanGoalTime;
+    if (goalTimeValue) {
       // Get race from junction table
       const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
       if (!raceTrainingPlan) {
@@ -92,8 +103,8 @@ export async function POST(request: NextRequest) {
 
       const race = raceTrainingPlan.race;
       try {
-        updateData.goalFiveKPace = calculateGoalFiveKPace(
-          updates.trainingPlanGoalTime,
+        updateData.goalPace5K = calculateGoalFiveKPace(
+          goalTimeValue,
           race.distance
         );
       } catch (error: any) {
@@ -123,11 +134,11 @@ export async function POST(request: NextRequest) {
       success: true,
       trainingPlan: {
         id: updatedPlan.id,
-        trainingPlanName: updatedPlan.trainingPlanName,
-        trainingPlanGoalTime: updatedPlan.trainingPlanGoalTime,
-        goalFiveKPace: updatedPlan.goalFiveKPace,
+        name: updatedPlan.name,
+        goalTime: updatedPlan.goalTime,
+        goalPace5K: updatedPlan.goalPace5K,
         status: updatedPlan.status,
-        totalWeeks: updatedPlan.trainingPlanTotalWeeks,
+        totalWeeks: updatedPlan.totalWeeks,
         race: race
           ? {
               id: race.id,

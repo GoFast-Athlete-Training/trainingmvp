@@ -84,8 +84,8 @@ export async function POST(request: NextRequest) {
         const updatedPlan = await prisma.trainingPlan.update({
           where: { id: existingDraftPlan.id },
           data: {
-            trainingPlanName: `${race.name} Training Plan`,
-            trainingPlanTotalWeeks: totalWeeks,
+            name: `${race.name} Training Plan`,
+            totalWeeks: totalWeeks,
           },
         });
 
@@ -94,9 +94,9 @@ export async function POST(request: NextRequest) {
           trainingPlanId: updatedPlan.id,
           trainingPlan: {
             id: updatedPlan.id,
-            trainingPlanName: updatedPlan.trainingPlanName,
+            name: updatedPlan.name,
             status: updatedPlan.status,
-            totalWeeks: updatedPlan.trainingPlanTotalWeeks,
+            totalWeeks: updatedPlan.totalWeeks,
           },
         });
       }
@@ -107,9 +107,9 @@ export async function POST(request: NextRequest) {
         trainingPlanId: existingDraftPlan.id,
         trainingPlan: {
           id: existingDraftPlan.id,
-          trainingPlanName: existingDraftPlan.trainingPlanName,
+          name: existingDraftPlan.name,
           status: existingDraftPlan.status,
-          totalWeeks: existingDraftPlan.trainingPlanTotalWeeks,
+          totalWeeks: existingDraftPlan.totalWeeks,
         },
       });
     }
@@ -145,10 +145,10 @@ export async function POST(request: NextRequest) {
     const trainingPlan = await prisma.trainingPlan.create({
       data: {
         athleteId,
-        trainingPlanName: planName,
-        trainingPlanGoalTime: null, // Will be set in next step
-        trainingPlanStartDate: today,
-        trainingPlanTotalWeeks: totalWeeks,
+        name: planName,
+        goalTime: null, // Will be set in next step
+        startDate: today,
+        totalWeeks: totalWeeks,
         status: 'draft',
       },
     });
@@ -170,9 +170,9 @@ export async function POST(request: NextRequest) {
       trainingPlanId: trainingPlan.id,
       trainingPlan: {
         id: trainingPlan.id,
-        trainingPlanName: trainingPlan.trainingPlanName,
+        name: trainingPlan.name,
         status: trainingPlan.status,
-        totalWeeks: trainingPlan.trainingPlanTotalWeeks,
+        totalWeeks: trainingPlan.totalWeeks,
       },
     });
   } catch (error: any) {

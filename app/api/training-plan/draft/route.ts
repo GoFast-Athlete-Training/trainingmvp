@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     // Determine what's bolted on (what's missing)
     const hasRace = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0;
-    const hasGoalTime = !!plan.trainingPlanGoalTime;
+    const hasGoalTime = !!plan.goalTime;
 
     // Determine next step
     let nextStep: string | null = null;
@@ -89,9 +89,9 @@ export async function GET(request: NextRequest) {
       hasDraftPlan: true,
       draftPlan: {
         id: plan.id,
-        trainingPlanName: plan.trainingPlanName,
-        trainingPlanGoalTime: plan.trainingPlanGoalTime,
-        goalFiveKPace: plan.goalFiveKPace,
+        name: plan.name,
+        goalTime: plan.goalTime,
+        goalPace5K: plan.goalPace5K,
         status: plan.status, // Just metadata, not source of truth
         race: plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
           ? {

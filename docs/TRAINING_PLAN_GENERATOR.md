@@ -14,7 +14,7 @@ The Training Plan Generator is an AI-powered service that creates complete, week
 - Athlete's current 5K pace
 - Total weeks until race
 
-The service generates **all weeks and days immediately** (not incrementally), then saves them to the database in a single atomic transaction.
+The service generates **all phases, weeks, and days immediately** (not incrementally), then saves them to the database in a single atomic transaction using the new **cascade structure**: `phases[] → weeks[] → days[]`.
 
 ---
 
@@ -37,19 +37,20 @@ The service generates **all weeks and days immediately** (not incrementally), th
    ↓
 3. Loads athlete's current 5K pace
    ↓
-4. Calculates goalFiveKPace (if not already set)
+4. Calculates goalPace5K (if not already set)
    ↓
 5. Calls generateTrainingPlanAI() with inputs
    ↓
-6. OpenAI generates complete plan (all weeks, all days)
+6. OpenAI generates complete plan (all phases, all weeks, all days)
    ↓
-7. Parses JSON response
+7. Parses JSON response and validates cascade structure
    ↓
 8. Prisma transaction:
    - Updates TrainingPlan status to "active"
-   - Sets goalFiveKPace
+   - Sets goalPace5K
    - Creates AthleteTrainingPlan junction entry
-   - Creates ALL TrainingDayPlanned records with computed dates
+   - Creates cascade: TrainingPlanPhase → TrainingPlanWeek → TrainingPlanDay
+   - Computes dates, week mileage, phase mileage totals
    ↓
 9. Returns trainingPlanId
 ```
@@ -75,9 +76,9 @@ export interface TrainingInputs {
 |-------|--------|----------|
 | `raceName` | `Race.name` | Junction table: `raceTrainingPlans[0].race.name` |
 | `raceDistance` | `Race.distance` | Junction table: `raceTrainingPlans[0].race.distance` |
-| `goalTime` | `TrainingPlan.trainingPlanGoalTime` | Draft plan field |
+| `goalTime` | `TrainingPlan.goalTime` | Draft plan field |
 | `fiveKPace` | `Athlete.fiveKPace` | Athlete profile (current fitness) |
-| `totalWeeks` | `TrainingPlan.trainingPlanTotalWeeks` | Calculated when plan created |
+| `totalWeeks` | `TrainingPlan.totalWeeks` | Calculated when plan created |
 
 ---
 
@@ -115,22 +116,40 @@ Inputs:
 You must return EXACT JSON ONLY (no markdown, no explanation):
 {
   "totalWeeks": ${inputs.totalWeeks},
-  "weeks": [
+  "phases": [
     {
-      "weekIndex": 1,
-      "phase": "base",
-      "days": [
+      "name": "base",
+      "weekCount": 4,
+      "weeks": [
         {
-          "dayIndex": 1,
-          "plannedData": {
-            "type": "easy",
-            "mileage": 4,
-            "paceRange": "8:30-9:00",
-            "hrZone": "2",
-            "hrRange": "130-150",
-            "label": "Easy Run",
-            "description": "Comfortable pace, conversational"
-          }
+          "weekNumber": 1,
+          "days": [
+            {
+              "dayNumber": 1,
+              "warmup": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 0.5,
+                  "paceGoal": null
+                }
+              ],
+              "workout": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 4.0,
+                  "paceGoal": "8:30"
+                }
+              ],
+              "cooldown": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 0.5,
+                  "paceGoal": null
+                }
+              ],
+              "notes": "Easy run, conversational pace"
+            }
+          ]
         }
       ]
     }
@@ -139,15 +158,20 @@ You must return EXACT JSON ONLY (no markdown, no explanation):
 
 CRITICAL RULES:
 - DO NOT generate calendar dates. We will compute dates ourselves.
-- DO NOT return anything except weekIndex, dayIndex, phase, and plannedData.
-- dayIndex MUST be 1-7 (1=Monday, 2=Tuesday, ..., 7=Sunday)
-- Each week MUST have exactly 7 days (dayIndex 1 through 7)
-- weekIndex starts at 1 (first week is 1, second week is 2, etc.)
-- Generate ALL weeks from weekIndex 1 to weekIndex ${inputs.totalWeeks}
-- Include rest days appropriately
-- Progress mileage gradually
-- Match phases to weeks correctly (base ~25%, build ~35%, peak ~20%, taper remaining)
-- Return complete plan with all weeks and all days
+- Structure MUST be: phases[] → weeks[] → days[]
+- Each phase MUST have a "name" ("base", "build", "peak", "taper")
+- Each phase MUST have "weekCount" (number of weeks in that phase)
+- Each week MUST have "weekNumber" (global 1-N across entire plan)
+- Each week MUST have exactly 7 days (dayNumber 1-7, where 1=Monday, 7=Sunday)
+- Each day MUST have "warmup", "workout", "cooldown" arrays (can be empty [])
+- Each lap MUST have: lapIndex (number), distanceMiles (number), paceGoal (string | null)
+- lapIndex starts at 1 within each array (warmup, workout, cooldown)
+- paceGoal format: "mm:ss" (e.g., "7:20") or null for easy/recovery
+- Generate ALL phases, ALL weeks, ALL days
+- Phase distribution: base ~25%, build ~35%, peak ~20%, taper remaining
+- Progress mileage gradually across weeks
+- Include rest days appropriately (empty workout array or easy pace)
+- Return complete plan with all phases, weeks, and days
 - DO NOT create adaptive metrics, summaries, or preferred days
 
 Return ONLY the JSON object, nothing else.
@@ -183,89 +207,176 @@ const response = await openai.chat.completions.create({
 });
 ```
 
-### Response Parsing
+### Response Parsing & Validation
 ```typescript
 const content = response.choices[0]?.message?.content;
 // Clean JSON response (remove markdown code blocks if present)
 const cleaned = content.replace(/```json|```/g, '').trim();
 const parsed = JSON.parse(cleaned) as GeneratedPlan;
+
+// Validate structure
+if (!parsed.phases || !Array.isArray(parsed.phases)) {
+  throw new Error('Invalid plan structure: missing phases array');
+}
+
+// Validate phase structure
+for (const phase of parsed.phases) {
+  if (!phase.name || !phase.weeks || !Array.isArray(phase.weeks)) {
+    throw new Error(`Invalid phase structure: ${JSON.stringify(phase)}`);
+  }
+  for (const week of phase.weeks) {
+    if (!week.weekNumber || !week.days || !Array.isArray(week.days)) {
+      throw new Error(`Invalid week structure: ${JSON.stringify(week)}`);
+    }
+    if (week.days.length !== 7) {
+      throw new Error(`Week ${week.weekNumber} must have exactly 7 days, got ${week.days.length}`);
+    }
+    for (const day of week.days) {
+      if (!day.dayNumber || !day.warmup || !day.workout || !day.cooldown) {
+        throw new Error(`Invalid day structure: ${JSON.stringify(day)}`);
+      }
+    }
+  }
+}
 ```
 
 ---
 
 ## Output Structure
 
-### GeneratedPlan Interface
+### GeneratedPlan Interface (NEW CASCADE STRUCTURE)
+
 ```typescript
 export interface GeneratedPlan {
   totalWeeks: number;
-  weeks: Week[];
+  phases: TrainingPlanPhase[]; // phases[] → weeks[] → days[]
 }
 
-export interface Week {
-  weekIndex: number;  // 1-based (first week is 1)
-  phase: string;      // "base" | "build" | "peak" | "taper"
-  days: WeekDay[];
+export interface TrainingPlanPhase {
+  name: string;              // "base" | "build" | "peak" | "taper"
+  weekCount: number;          // How many weeks in this phase
+  totalMiles?: number;        // Optional - computed later
+  weeks: TrainingPlanWeek[];  // Weeks belonging to this phase
 }
 
-export interface WeekDay {
-  dayIndex: number;  // 1-7 (1=Monday, 7=Sunday)
-  plannedData: {
-    type: string;           // "easy" | "tempo" | "intervals" | "long_run" | "rest"
-    mileage: number;        // Distance in miles
-    paceRange?: string;     // e.g., "8:30-9:00"
-    targetPace?: string;    // e.g., "8:00"
-    hrZone?: string;         // e.g., "2"
-    hrRange?: string;        // e.g., "130-150"
-    segments?: Array<{      // For interval workouts
-      type: string;
-      distance?: number;
-      duration?: number;
-      pace?: string;
-      reps?: number;
-    }>;
-    label?: string;          // e.g., "Easy Run"
-    description?: string;    // e.g., "Comfortable pace, conversational"
-    coachNotes?: string;     // Additional guidance
-  };
-  // NO date field - dates computed by backend
+export interface TrainingPlanWeek {
+  weekNumber: number;         // Global week 1-N (within entire plan)
+  days: TrainingPlanDay[];    // Exactly 7 days
+}
+
+export interface TrainingPlanDay {
+  dayNumber: number;           // 1-7 (1=Monday, 7=Sunday)
+  warmup: TrainingPlanLap[];  // Lap array
+  workout: TrainingPlanLap[]; // Lap array
+  cooldown: TrainingPlanLap[]; // Lap array
+  notes?: string;
+}
+
+export interface TrainingPlanLap {
+  lapIndex: number;           // Local within warmup/workout/cooldown (starts at 1)
+  distanceMiles: number;      // 0.25, 1.0, etc
+  paceGoal: string | null;   // "7:20" or null for easy/recovery
 }
 ```
 
 ### Example Output
+
 ```json
 {
   "totalWeeks": 16,
-  "weeks": [
+  "phases": [
     {
-      "weekIndex": 1,
-      "phase": "base",
-      "days": [
+      "name": "base",
+      "weekCount": 4,
+      "weeks": [
         {
-          "dayIndex": 1,
-          "plannedData": {
-            "type": "easy",
-            "mileage": 4,
-            "paceRange": "8:30-9:00",
-            "hrZone": "2",
-            "hrRange": "130-150",
-            "label": "Easy Run",
-            "description": "Comfortable pace, conversational"
-          }
+          "weekNumber": 1,
+          "days": [
+            {
+              "dayNumber": 1,
+              "warmup": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 0.5,
+                  "paceGoal": null
+                }
+              ],
+              "workout": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 4.0,
+                  "paceGoal": "8:30"
+                }
+              ],
+              "cooldown": [
+                {
+                  "lapIndex": 1,
+                  "distanceMiles": 0.5,
+                  "paceGoal": null
+                }
+              ],
+              "notes": "Easy run, conversational pace"
+            },
+            {
+              "dayNumber": 2,
+              "warmup": [],
+              "workout": [],
+              "cooldown": [],
+              "notes": "Rest day"
+            },
+            // ... 5 more days (total 7 days per week)
+          ]
         },
         {
-          "dayIndex": 2,
-          "plannedData": {
-            "type": "rest"
-          }
+          "weekNumber": 2,
+          "days": [
+            // ... 7 days
+          ]
         },
-        // ... 5 more days (total 7 days per week)
+        // ... 2 more weeks (total 4 weeks in base phase)
       ]
     },
-    // ... 15 more weeks (total 16 weeks)
+    {
+      "name": "build",
+      "weekCount": 6,
+      "weeks": [
+        {
+          "weekNumber": 5,
+          "days": [
+            // ... 7 days
+          ]
+        },
+        // ... 5 more weeks
+      ]
+    },
+    {
+      "name": "peak",
+      "weekCount": 3,
+      "weeks": [
+        // ... 3 weeks
+      ]
+    },
+    {
+      "name": "taper",
+      "weekCount": 3,
+      "weeks": [
+        // ... 3 weeks
+      ]
+    }
   ]
 }
 ```
+
+### Key Differences from Old Structure
+
+| Old Structure | New Structure |
+|--------------|---------------|
+| `weeks[]` (flat array) | `phases[] → weeks[]` (nested) |
+| `weekIndex` (per-week index) | `weekNumber` (global 1-N) |
+| `dayIndex` (1-7) | `dayNumber` (1-7) |
+| `plannedData` (JSON blob) | `warmup[]`, `workout[]`, `cooldown[]` (structured Lap arrays) |
+| `phase` (string on week) | `name` (string on phase object) |
+| No phase objects | `TrainingPlanPhase` with `weekCount`, `totalMiles` |
 
 ---
 
@@ -282,12 +393,11 @@ const result = await prisma.$transaction(async (tx) => {
     where: { id: trainingPlanId },
     data: {
       status: 'active',
-      goalFiveKPace: goalFiveKPace, // Calculated from goal time + race distance
+      goalPace5K: goalPace5K, // Calculated from goal time + race distance
     },
   });
 
   // 2. Create AthleteTrainingPlan junction entry
-  // MVP1: Only created when plan is generated (not during draft creation)
   await tx.athleteTrainingPlan.create({
     data: {
       athleteId,
@@ -296,33 +406,77 @@ const result = await prisma.$transaction(async (tx) => {
     },
   });
 
-  // 3. Create ALL TrainingDayPlanned records with computed dates
-  const dayRecords = [];
-  for (const week of plan.weeks) {
-    for (const day of week.days) {
-      // Calculate actual date from plan start date + weekIndex + dayIndex
-      const computedDate = calculateTrainingDayDate(
-        planStartDate,
-        week.weekIndex,
-        day.dayIndex
-      );
-      
-      dayRecords.push({
-        trainingPlanId: trainingPlanId,
-        athleteId,
-        weekIndex: week.weekIndex,
-        dayIndex: day.dayIndex,
-        phase: week.phase,
-        date: computedDate,
-        plannedData: day.plannedData, // JSON field storing all workout details
+  // 3. Create cascade: phases → weeks → days
+  for (const phaseData of plan.phases) {
+    // Create phase
+    const phase = await tx.trainingPlanPhase.create({
+      data: {
+        planId: trainingPlanId,
+        name: phaseData.name,
+        weekCount: phaseData.weekCount,
+        totalMiles: phaseData.totalMiles || null,
+      },
+    });
+
+    // Create weeks for this phase
+    for (const weekData of phaseData.weeks) {
+      // Calculate total miles for the week from all days
+      let weekMiles = 0;
+      for (const dayData of weekData.days) {
+        const warmupMiles = dayData.warmup.reduce((sum, lap) => sum + lap.distanceMiles, 0);
+        const workoutMiles = dayData.workout.reduce((sum, lap) => sum + lap.distanceMiles, 0);
+        const cooldownMiles = dayData.cooldown.reduce((sum, lap) => sum + lap.distanceMiles, 0);
+        weekMiles += warmupMiles + workoutMiles + cooldownMiles;
+      }
+
+      const week = await tx.trainingPlanWeek.create({
+        data: {
+          planId: trainingPlanId,
+          phaseId: phase.id,
+          weekNumber: weekData.weekNumber,
+          miles: weekMiles > 0 ? weekMiles : null,
+        },
       });
+
+      // Create days for this week
+      for (const dayData of weekData.days) {
+        // Compute date: ((weekNumber - 1) * 7) + (dayNumber - 1) days from planStartDate
+        const daysToAdd = ((weekData.weekNumber - 1) * 7) + (dayData.dayNumber - 1);
+        const computedDate = new Date(planStartDate);
+        computedDate.setDate(computedDate.getDate() + daysToAdd);
+
+        await tx.trainingPlanDay.create({
+          data: {
+            planId: trainingPlanId,
+            phaseId: phase.id,
+            weekId: week.id,
+            date: computedDate,
+            dayNumber: dayData.dayNumber,
+            warmup: dayData.warmup as any,      // JSON array
+            workout: dayData.workout as any,    // JSON array
+            cooldown: dayData.cooldown as any,  // JSON array
+            notes: dayData.notes || null,
+          },
+        });
+      }
     }
   }
 
-  // Batch create all days (single database operation)
-  await tx.trainingDayPlanned.createMany({
-    data: dayRecords,
+  // 4. Compute phase totalMiles (sum of all week miles in phase)
+  const phases = await tx.trainingPlanPhase.findMany({
+    where: { planId: trainingPlanId },
+    include: { weeks: true },
   });
+
+  for (const phase of phases) {
+    const totalMiles = phase.weeks.reduce((sum, week) => sum + (week.miles || 0), 0);
+    if (totalMiles > 0) {
+      await tx.trainingPlanPhase.update({
+        where: { id: phase.id },
+        data: { totalMiles: totalMiles },
+      });
+    }
+  }
 
   return updatedPlan.id;
 });
@@ -330,13 +484,11 @@ const result = await prisma.$transaction(async (tx) => {
 
 ### Date Calculation
 
-**Function:** `calculateTrainingDayDate(planStartDate, weekIndex, dayIndex)`
-
 **Formula:**
 ```typescript
-const daysToAdd = ((weekIndex - 1) * 7) + (dayIndex - 1);
-const date = new Date(planStartDate);
-date.setDate(date.getDate() + daysToAdd);
+const daysToAdd = ((weekNumber - 1) * 7) + (dayNumber - 1);
+const computedDate = new Date(planStartDate);
+computedDate.setDate(computedDate.getDate() + daysToAdd);
 ```
 
 **Examples:**
@@ -345,27 +497,48 @@ date.setDate(date.getDate() + daysToAdd);
 - Week 2, Day 1 (Monday) = `planStartDate + 7 days`
 - Week 2, Day 2 (Tuesday) = `planStartDate + 8 days`
 
+### Mileage Calculation
+
+**Week Miles:**
+- Sum of all `distanceMiles` from `warmup[]`, `workout[]`, `cooldown[]` arrays across all 7 days
+
+**Phase Miles:**
+- Sum of all `week.miles` for all weeks in that phase
+
 ### Database Records Created
 
 1. **TrainingPlan** (updated)
    - `status`: `"draft"` → `"active"`
-   - `goalFiveKPace`: Set if not already calculated
+   - `goalPace5K`: Set if not already calculated
 
 2. **AthleteTrainingPlan** (created)
    - Links athlete to training plan
    - `assignedAt`: Current timestamp
-   - MVP1: Only created when plan is generated
 
-3. **TrainingDayPlanned** (created - one per day)
-   - `trainingPlanId`: FK to TrainingPlan
-   - `athleteId`: FK to Athlete
-   - `weekIndex`: 1-based week number
-   - `dayIndex`: 1-7 (Monday-Sunday)
-   - `phase`: "base" | "build" | "peak" | "taper"
+3. **TrainingPlanPhase** (created - one per phase)
+   - `planId`: FK to TrainingPlan
+   - `name`: "base" | "build" | "peak" | "taper"
+   - `weekCount`: Number of weeks in phase
+   - `totalMiles`: Computed sum of week miles
+
+4. **TrainingPlanWeek** (created - one per week)
+   - `planId`: FK to TrainingPlan
+   - `phaseId`: FK to TrainingPlanPhase
+   - `weekNumber`: Global week number (1-N)
+   - `miles`: Computed sum of day miles
+
+5. **TrainingPlanDay** (created - one per day)
+   - `planId`: FK to TrainingPlan
+   - `phaseId`: FK to TrainingPlanPhase
+   - `weekId`: FK to TrainingPlanWeek
    - `date`: Computed actual calendar date
-   - `plannedData`: JSON field with workout details
+   - `dayNumber`: 1-7 (Monday-Sunday)
+   - `warmup`: JSON array of Lap objects
+   - `workout`: JSON array of Lap objects
+   - `cooldown`: JSON array of Lap objects
+   - `notes`: Optional string
 
-**Total Records:** For a 16-week plan = **112 TrainingDayPlanned records** (16 weeks × 7 days)
+**Total Records:** For a 16-week plan = **4 phases + 16 weeks + 112 days = 132 records**
 
 ---
 
@@ -373,17 +546,20 @@ date.setDate(date.getDate() + daysToAdd);
 
 ### ✅ What Works Well
 
-1. **Atomic Transaction:** All database operations succeed or fail together
-2. **Date Computation:** Backend calculates dates, not AI (more reliable)
-3. **Complete Generation:** All weeks generated at once (no incremental loading)
-4. **Structured Output:** JSON schema enforces consistency
-5. **Phase Distribution:** Clear rules for base/build/peak/taper allocation
+1. **Cascade Structure:** Clear hierarchy (phases → weeks → days) matches mental model
+2. **Structured Workouts:** Warmup/workout/cooldown Lap arrays are explicit and queryable
+3. **Atomic Transaction:** All database operations succeed or fail together
+4. **Date Computation:** Backend calculates dates, not AI (more reliable)
+5. **Complete Generation:** All phases/weeks/days generated at once (no incremental loading)
+6. **Validation:** Structure validation ensures AI output matches expected format
+7. **Mileage Totals:** Computed automatically from Lap arrays
+8. **Phase Distribution:** Clear rules for base/build/peak/taper allocation
 
 ### ⚠️ Current Limitations
 
 1. **No Error Recovery:** If OpenAI fails, entire transaction fails
 2. **No Partial Plans:** Can't generate "just week 1" or regenerate a single week
-3. **No Validation:** Doesn't validate AI output before saving (relies on JSON parsing)
+3. **No Lap Validation:** Doesn't validate Lap structure (lapIndex, distanceMiles, paceGoal)
 4. **Fixed Model:** Hardcoded to `gpt-4o-mini` (no model selection)
 5. **No Retry Logic:** Single API call, no retries on failure
 6. **No Streaming:** Waits for complete response (could be slow for long plans)
@@ -395,14 +571,15 @@ date.setDate(date.getDate() + daysToAdd);
 #### Potential Improvements
 
 1. **Incremental Generation**
-   - Generate one week at a time
-   - Allow regeneration of specific weeks
+   - Generate one phase at a time
+   - Allow regeneration of specific phases/weeks
    - Support plan updates mid-cycle
 
 2. **Validation Layer**
-   - Validate AI output against schema before saving
+   - Validate Lap structure (lapIndex sequence, distanceMiles > 0, paceGoal format)
    - Check phase distribution matches rules
    - Verify all weeks have 7 days
+   - Validate weekNumber sequence (no gaps, no duplicates)
 
 3. **Error Handling**
    - Retry logic with exponential backoff
@@ -415,7 +592,7 @@ date.setDate(date.getDate() + daysToAdd);
    - A/B testing different models
 
 5. **Streaming Response**
-   - Stream weeks as they're generated
+   - Stream phases as they're generated
    - Show progress to user
    - Save incrementally
 
@@ -434,18 +611,21 @@ date.setDate(date.getDate() + daysToAdd);
    - Race-specific guidance (marathon vs 5K)
    - Athlete experience level consideration
    - Injury prevention guidelines
+   - Better Lap structure examples
 
 9. **Post-Processing**
    - Validate mileage progression
    - Check rest day distribution
    - Ensure phase transitions are smooth
    - Add recovery weeks automatically
+   - Validate paceGoal consistency
 
 10. **Testing**
     - Unit tests for date calculation
     - Mock OpenAI responses for testing
     - Integration tests for full flow
     - Load testing for concurrent generations
+    - Validation tests for cascade structure
 
 ---
 
@@ -485,14 +665,22 @@ OPENAI_API_KEY=sk-...  # OpenAI API key for GPT-4o-mini
    }
    ```
 
-4. **Database Transaction Failure**
+4. **Structure Validation Failure**
+   ```typescript
+   if (!parsed.phases || !Array.isArray(parsed.phases)) {
+     throw new Error('Invalid plan structure: missing phases array');
+   }
+   // ... additional validation errors
+   ```
+
+5. **Database Transaction Failure**
    - Entire transaction rolls back
    - No partial data saved
    - Error returned to API route
 
 ### API Route Error Responses
 
-- **400 Bad Request:** Missing required fields, invalid plan state
+- **400 Bad Request:** Missing required fields, invalid plan state, validation failure
 - **401 Unauthorized:** Authentication failure
 - **403 Forbidden:** Plan doesn't belong to athlete
 - **404 Not Found:** Plan or athlete not found
@@ -505,13 +693,13 @@ OPENAI_API_KEY=sk-...  # OpenAI API key for GPT-4o-mini
 ### Current Performance
 
 - **API Call Time:** ~5-15 seconds (depends on plan length)
-- **Database Write Time:** ~1-2 seconds (112 records for 16-week plan)
-- **Total Time:** ~6-17 seconds end-to-end
+- **Database Write Time:** ~2-3 seconds (132 records for 16-week plan: 4 phases + 16 weeks + 112 days)
+- **Total Time:** ~7-18 seconds end-to-end
 
 ### Bottlenecks
 
 1. **OpenAI API:** Slowest part (network + processing)
-2. **Database Writes:** `createMany` is efficient but still writes 100+ records
+2. **Database Writes:** Multiple sequential creates (phases → weeks → days)
 3. **No Parallelization:** Sequential operations
 
 ### Optimization Opportunities
@@ -520,6 +708,7 @@ OPENAI_API_KEY=sk-...  # OpenAI API key for GPT-4o-mini
 2. **Async Processing:** Queue generation, notify when complete
 3. **Database Optimization:** Use bulk inserts, reduce indexes during insert
 4. **Caching:** Cache common plan templates
+5. **Parallel Phase Creation:** Create phases in parallel (if independent)
 
 ---
 
@@ -543,14 +732,18 @@ describe('calculateTrainingDayDate', () => {
   });
 });
 
-// Test prompt construction
+// Test cascade structure validation
 describe('generateTrainingPlanAI', () => {
-  it('includes all required inputs in prompt', () => {
-    // Mock OpenAI, check prompt content
+  it('validates phases array exists', () => {
+    // Mock invalid response (no phases)
   });
   
-  it('handles JSON parsing errors', () => {
-    // Mock invalid JSON response
+  it('validates each week has 7 days', () => {
+    // Mock response with week having 6 days
+  });
+  
+  it('validates day structure (warmup/workout/cooldown)', () => {
+    // Mock response with missing warmup array
   });
 });
 ```
@@ -560,16 +753,24 @@ describe('generateTrainingPlanAI', () => {
 ```typescript
 // Test full flow
 describe('POST /api/training-plan/generate', () => {
-  it('generates and saves complete plan', async () => {
+  it('generates and saves complete cascade', async () => {
     // Create draft plan
     // Call generate endpoint
-    // Verify all TrainingDayPlanned records created
+    // Verify all TrainingPlanPhase records created
+    // Verify all TrainingPlanWeek records created
+    // Verify all TrainingPlanDay records created
     // Verify plan status updated
   });
   
   it('rolls back on OpenAI failure', async () => {
     // Mock OpenAI failure
     // Verify no partial data saved
+  });
+  
+  it('computes week and phase mileage totals', async () => {
+    // Generate plan
+    // Verify week.miles is sum of day miles
+    // Verify phase.totalMiles is sum of week miles
   });
 });
 ```
@@ -580,9 +781,10 @@ describe('POST /api/training-plan/generate', () => {
 
 - **API Route:** `app/api/training-plan/generate/route.ts`
 - **Service:** `lib/training/plan-generator.ts`
+- **Save Service:** `lib/training/save-plan.ts`
 - **Date Utils:** `lib/training/dates.ts`
 - **Goal Pace:** `lib/training/goal-pace.ts`
-- **Schema:** `prisma/schema.prisma` (TrainingPlan, TrainingDayPlanned models)
+- **Schema:** `prisma/schema.prisma` (TrainingPlan, TrainingPlanPhase, TrainingPlanWeek, TrainingPlanDay models)
 
 ---
 
@@ -590,11 +792,12 @@ describe('POST /api/training-plan/generate', () => {
 
 ### Planned Features
 
-1. **Plan Regeneration:** Allow regenerating specific weeks
+1. **Plan Regeneration:** Allow regenerating specific phases/weeks
 2. **Plan Comparison:** Compare old vs new plan versions
 3. **Custom Phases:** Allow user to adjust phase distribution
 4. **Workout Templates:** Pre-built workout library
 5. **Adaptive Plans:** Adjust based on execution data
+6. **Lap Editing:** Allow manual editing of warmup/workout/cooldown arrays
 
 ### Research Areas
 
@@ -602,10 +805,10 @@ describe('POST /api/training-plan/generate', () => {
 2. **Multi-Model Ensemble:** Combine multiple models for better results
 3. **Real-Time Adjustments:** Update plan based on athlete progress
 4. **Injury Prevention:** Incorporate injury risk assessment
+5. **Lap Structure Optimization:** Better AI understanding of workout structure
 
 ---
 
 **Last Updated:** 2025-01-XX  
-**Status:** Production (MVP1)  
-**Next Review:** Before refactoring
-
+**Status:** Production (MVP1) - Refactored to Cascade Structure  
+**Next Review:** After migration testing

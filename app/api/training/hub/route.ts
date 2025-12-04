@@ -139,13 +139,13 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Calculate current week (1-based to match weekIndex in database)
-    const planStart = new Date(activePlan.trainingPlanStartDate);
+    // Calculate current week (1-based to match weekNumber in database)
+    const planStart = new Date(activePlan.startDate);
     const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
-    const currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekIndex starts at 1
+    const currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekNumber starts at 1
 
-    // Get race readiness (using goalFiveKPace from plan)
-    const goal5kPace = activePlan.goalFiveKPace || null;
+    // Get race readiness (using goalPace5K from plan)
+    const goal5kPace = activePlan.goalPace5K || null;
     const race = activePlan.raceTrainingPlans && activePlan.raceTrainingPlans.length > 0
       ? activePlan.raceTrainingPlans[0].race
       : null;
@@ -165,9 +165,9 @@ export async function GET(request: NextRequest) {
       todayWorkout,
       planStatus: {
         hasPlan: true,
-        totalWeeks: activePlan.trainingPlanTotalWeeks,
-        currentWeek: Math.min(currentWeek, activePlan.trainingPlanTotalWeeks),
-        phase: todayPlanned?.phase || 'base',
+        totalWeeks: activePlan.totalWeeks,
+        currentWeek: Math.min(currentWeek, activePlan.totalWeeks),
+        phase: todayPlanned?.phase?.name || 'base', // TODO: Update when hub uses new cascade
       },
       raceReadiness,
     });

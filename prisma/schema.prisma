@@ -77,7 +77,6 @@ model Athlete {
   // Relations
   trainingPlans        TrainingPlan[]
   athleteTrainingPlans AthleteTrainingPlan[] // Junction table for multiple plans
-  plannedDays          TrainingDayPlanned[]
   executedDays         TrainingDayExecuted[]
   activities           AthleteActivity[]
 }
@@ -186,15 +185,15 @@ model TrainingPlan {
   // NO raceRegistryId - use RaceTrainingPlan junction table instead
 
   // PLAN IDENTITY
-  trainingPlanName String
+  name String // Renamed from trainingPlanName
 
   // CYCLE-LEVEL GOALS
-  trainingPlanGoalTime String? // e.g., "3:30:00" for marathon
-  goalFiveKPace        String? // mm:ss format - TARGET 5K pace derived from goal time + race distance
+  goalTime String? // Renamed from trainingPlanGoalTime, e.g., "3:30:00" for marathon
+  goalPace5K String? // Renamed from goalFiveKPace, mm:ss format - TARGET 5K pace derived from goal time + race distance
 
   // PLAN STRUCTURE
-  trainingPlanStartDate  DateTime
-  trainingPlanTotalWeeks Int
+  startDate DateTime // Renamed from trainingPlanStartDate
+  totalWeeks Int // Renamed from trainingPlanTotalWeeks
 
   // STATUS
   status String @default("draft")
@@ -207,39 +206,89 @@ model TrainingPlan {
   athlete              Athlete               @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   raceTrainingPlans    RaceTrainingPlan[] // Junction table - many-to-many with RaceRegistry
   athleteTrainingPlans AthleteTrainingPlan[] // Junction table entries
-  plannedDays          TrainingDayPlanned[]
+  phases               TrainingPlanPhase[]
+  weeks                TrainingPlanWeek[]
+  days                 TrainingPlanDay[]
   // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
 
   // Indexes for fast lookups
   @@index([athleteId, status]) // Fast lookup of active plans by athlete
 }
 
-model TrainingDayPlanned {
-  id             String @id @default(cuid())
-  trainingPlanId String
-  athleteId      String
+// Phase: Base / Build / Peak / Taper
+model TrainingPlanPhase {
+  id     String @id @default(cuid())
+  planId String
 
-  // Day Identification
-  weekIndex Int
-  dayIndex  Int // MUST be 1-7 (1=Monday, 7=Sunday)
-  phase     String // "base", "build", "peak", "taper"
+  // Phase Identity
+  name String // "base" | "build" | "peak" | "taper"
+  weekCount Int // How many weeks in this phase
+  totalMiles Float? // Sum of miles across all weeks in this phase (computed optional)
 
-  // Computed date (calculated by backend, not from AI)
-  date DateTime
+  // Relations
+  plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  weeks TrainingPlanWeek[]
 
-  // PLANNED WORKOUT (atomic element)
-  plannedData Json
-
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  @@unique([planId, name]) // One phase per name per plan (can't have duplicate "base" phases)
+  @@map("training_plan_phases")
+}
 
-  @@unique([trainingPlanId, weekIndex, dayIndex])
-  @@map("training_days_planned")
+// Week: Belongs to both plan and phase
+model TrainingPlanWeek {
+  id      String @id @default(cuid())
+  planId  String
+  phaseId String
+
+  // Week Identity
+  weekNumber Int // Global week number (1, 2, 3...) within the entire plan
+  miles      Float? // Computed from days
+
+  // Relations
+  plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phase TrainingPlanPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  days  TrainingPlanDay[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planId, weekNumber]) // One week per plan per week number
+  @@map("training_plan_weeks")
+}
+
+// Day: Belongs to plan, phase, and week
+// DATE-DRIVEN MODEL: date is authoritative, dayOfWeek is derived from date
+model TrainingPlanDay {
+  id      String @id @default(cuid())
+  planId  String
+  phaseId String
+  weekId  String
+
+  // Day Identity (DATE-DRIVEN)
+  date      DateTime // Actual calendar date (authoritative)
+  dayOfWeek Int // 1-7 (1=Monday, 7=Sunday) - computed from date
+
+  // Structured Workout (Lap arrays)
+  warmup  Json // Lap[]
+  workout Json // Lap[]
+  cooldown Json // Lap[]
+
+  notes String?
+
+  // Relations
+  plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phase TrainingPlanPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  week  TrainingPlanWeek  @relation(fields: [weekId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planId, date]) // One day per plan per date (date-driven identity)
+  @@index([date]) // Fast date lookups
+  @@index([planId, date]) // Fast plan + date lookups
+  @@map("training_plan_days")
 }
 
 model TrainingDayExecuted {

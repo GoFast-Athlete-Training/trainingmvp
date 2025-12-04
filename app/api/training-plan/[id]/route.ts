@@ -38,11 +38,11 @@ export async function GET(
       success: true,
       trainingPlan: {
         id: plan.id,
-        trainingPlanName: plan.trainingPlanName,
-        trainingPlanGoalTime: plan.trainingPlanGoalTime,
-        goalFiveKPace: plan.goalFiveKPace,
-        trainingPlanStartDate: plan.trainingPlanStartDate,
-        trainingPlanTotalWeeks: plan.trainingPlanTotalWeeks,
+        name: plan.name,
+        goalTime: plan.goalTime,
+        goalPace5K: plan.goalPace5K,
+        startDate: plan.startDate,
+        totalWeeks: plan.totalWeeks,
         status: plan.status,
         race: race
           ? {
