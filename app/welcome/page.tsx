@@ -42,21 +42,14 @@ export default function WelcomePage() {
         return;
       }
 
-      // Full athlete object with trainingPlanIds
+      // Full athlete object with trainingPlanId bolted on
       console.log('✅ WELCOME: Athlete hydrated successfully');
       console.log('✅ WELCOME: Athlete ID:', athlete.id);
       console.log('✅ WELCOME: Email:', athlete.email);
       console.log('✅ WELCOME: Name:', athlete.firstName, athlete.lastName);
-      console.log('✅ WELCOME: Training plans count:', athlete.trainingPlans?.length || 0);
-      
-      if (athlete.trainingPlans && athlete.trainingPlans.length > 0) {
-        const activePlan = athlete.trainingPlans.find((p: any) => p.status === 'active');
-        if (activePlan) {
-          console.log('✅ WELCOME: Active training plan found:', activePlan.id);
-        }
-      }
+      console.log('✅ WELCOME: Training Plan ID:', athlete.trainingPlanId || 'None');
 
-      // Store full athlete object with trainingPlanIds
+      // Store full athlete object with trainingPlanId
       console.log('💾 WELCOME: Caching full athlete object to localStorage...');
       LocalStorageAPI.setAthlete(athlete);
       LocalStorageAPI.setHydrationTimestamp(Date.now());

@@ -72,32 +72,35 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    console.log('✅ HYDRATE API: Athlete found, loading training plans...');
+    console.log('✅ HYDRATE API: Athlete found, loading active training plan...');
     
-    // Load training plans (just IDs and basic info, no complex relations)
-    let trainingPlans;
+    // Get active training plan ID (bolted to athleteId)
+    let trainingPlanId = null;
     try {
-      const plans = await prisma.trainingPlan.findMany({
-        where: { athleteId: athlete.id },
+      const activePlan = await prisma.trainingPlan.findFirst({
+        where: { 
+          athleteId: athlete.id,
+          status: 'active'
+        },
         select: {
           id: true,
-          status: true,
-          trainingPlanName: true,
-          raceRegistryId: true,
-          createdAt: true,
         },
         orderBy: { createdAt: 'desc' },
       });
-      trainingPlans = plans;
-      console.log('✅ HYDRATE API: Found', plans.length, 'training plans');
+      if (activePlan) {
+        trainingPlanId = activePlan.id;
+        console.log('✅ HYDRATE API: Found active training plan ID:', trainingPlanId);
+      } else {
+        console.log('✅ HYDRATE API: No active training plan found');
+      }
     } catch (err: any) {
-      console.error('❌ HYDRATE API: Error loading training plans:', err?.message);
-      trainingPlans = []; // Don't fail if we can't load plans
+      console.error('❌ HYDRATE API: Error loading training plan:', err?.message);
+      // Don't fail if we can't load plan - just leave it null
     }
 
     console.log('✅ HYDRATE API: ===== REQUEST SUCCESS =====');
     
-    // Return full athlete object with trainingPlanIds
+    // Return full athlete object with trainingPlanId bolted on
     return NextResponse.json({ 
       success: true, 
       athlete: {
@@ -113,8 +116,8 @@ export async function POST(request: Request) {
         city: athlete.city,
         state: athlete.state,
         primarySport: athlete.primarySport,
-        // Include training plans (foreign keys)
-        trainingPlans: trainingPlans,
+        // Training plan ID bolted to athleteId
+        trainingPlanId: trainingPlanId,
       }
     });
   } catch (err: any) {
