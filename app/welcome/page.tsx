@@ -42,35 +42,21 @@ export default function WelcomePage() {
         return;
       }
 
-      // Extract weeklyActivities and weeklyTotals from athlete object (backend puts them there)
-      const weeklyActivities = athlete.weeklyActivities || [];
-      const weeklyTotals = athlete.weeklyTotals || null;
-      const trainingPlans = athlete.trainingPlans || [];
-
+      // SURGICAL: Just store the athleteId and basic fields
       console.log('✅ WELCOME: Athlete hydrated successfully');
       console.log('✅ WELCOME: Athlete ID:', athlete.id);
       console.log('✅ WELCOME: Email:', athlete.email);
       console.log('✅ WELCOME: Name:', athlete.firstName, athlete.lastName);
-      console.log('✅ WELCOME: Training plans count:', trainingPlans.length);
-      console.log('✅ WELCOME: Weekly activities count:', weeklyActivities.length);
-      
-      if (trainingPlans.length > 0) {
-        const activePlan = trainingPlans.find((p: any) => p.status === 'active');
-        if (activePlan) {
-          console.log('✅ WELCOME: Active training plan found:', activePlan.id);
-        }
-      }
 
-      // Store the complete Prisma model (athlete + all relations + activities)
-      // Using trainingmvp LocalStorageAPI.setAthlete() instead of setFullHydrationModel
-      console.log('💾 WELCOME: Caching full hydration model to localStorage...');
+      // Store just the athleteId and basic info
+      console.log('💾 WELCOME: Caching athleteId to localStorage...');
       LocalStorageAPI.setAthlete(athlete);
       LocalStorageAPI.setHydrationTimestamp(Date.now());
       
-      // Also store raw response as requested (matching gofastapp-mvp pattern)
+      // Also store raw response
       localStorage.setItem('gofastHydration', JSON.stringify(response.data));
       
-      console.log('✅ WELCOME: Full hydration model cached');
+      console.log('✅ WELCOME: AthleteId cached');
       
       
       // Hydration complete - show button for user to click
