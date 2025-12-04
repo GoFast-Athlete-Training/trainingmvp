@@ -161,6 +161,8 @@ model RaceRegistry {
   // Relations
   trainingPlans TrainingPlan[]
 
+  // Unique constraint: prevent duplicate races (same name + date)
+  @@unique([name, date])
   @@map("race_registry")
 }
 

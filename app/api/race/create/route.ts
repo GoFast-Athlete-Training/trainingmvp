@@ -32,12 +32,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('💾 RACE CREATE: Creating race in database...');
+    console.log('🔍 RACE CREATE: Checking if race already exists...');
+    const raceDate = new Date(date);
+    
+    // Check if race already exists (registry should be unique!)
+    const existingRace = await prisma.raceRegistry.findFirst({
+      where: {
+        name: {
+          equals: name,
+          mode: 'insensitive',
+        },
+        date: raceDate,
+      },
+    });
+
+    if (existingRace) {
+      console.log('✅ RACE CREATE: Race already exists in registry:', existingRace.id);
+      return NextResponse.json({
+        success: true,
+        race: {
+          id: existingRace.id,
+          name: existingRace.name,
+          distance: existingRace.distance,
+          date: existingRace.date,
+          city: existingRace.city,
+          state: existingRace.state,
+          country: existingRace.country,
+        },
+        message: 'Race already exists in registry',
+      });
+    }
+
+    console.log('💾 RACE CREATE: Creating new race in database...');
     const race = await prisma.raceRegistry.create({
       data: {
         name,
         distance,
-        date: new Date(date),
+        date: raceDate,
         city: city || null,
         state: state || null,
         country: country || null,
@@ -65,6 +96,52 @@ export async function POST(request: NextRequest) {
     console.error('❌ RACE CREATE: Error code:', error?.code);
     console.error('❌ RACE CREATE: Error meta:', error?.meta);
     console.error('❌ RACE CREATE: Error stack:', error?.stack);
+    
+    // Handle unique constraint violation (duplicate race)
+    if (error.code === 'P2002' || error.code === '23505') {
+      console.log('⚠️ RACE CREATE: Duplicate race detected, attempting to find existing...');
+      try {
+        const existingRace = await prisma.raceRegistry.findFirst({
+          where: {
+            name: {
+              equals: body.name,
+              mode: 'insensitive',
+            },
+            date: new Date(body.date),
+          },
+        });
+        
+        if (existingRace) {
+          console.log('✅ RACE CREATE: Found existing race:', existingRace.id);
+          return NextResponse.json({
+            success: true,
+            race: {
+              id: existingRace.id,
+              name: existingRace.name,
+              distance: existingRace.distance,
+              date: existingRace.date,
+              city: existingRace.city,
+              state: existingRace.state,
+              country: existingRace.country,
+            },
+            message: 'Race already exists in registry',
+          });
+        }
+      } catch (findError) {
+        console.error('❌ RACE CREATE: Error finding existing race:', findError);
+      }
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Race already exists', 
+          details: 'A race with this name and date already exists in the registry',
+          code: error?.code,
+        },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { 
         success: false, 
