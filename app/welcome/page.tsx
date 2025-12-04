@@ -42,21 +42,29 @@ export default function WelcomePage() {
         return;
       }
 
-      // SURGICAL: Just store the athleteId and basic fields
+      // Full athlete object with trainingPlanIds
       console.log('✅ WELCOME: Athlete hydrated successfully');
       console.log('✅ WELCOME: Athlete ID:', athlete.id);
       console.log('✅ WELCOME: Email:', athlete.email);
       console.log('✅ WELCOME: Name:', athlete.firstName, athlete.lastName);
+      console.log('✅ WELCOME: Training plans count:', athlete.trainingPlans?.length || 0);
+      
+      if (athlete.trainingPlans && athlete.trainingPlans.length > 0) {
+        const activePlan = athlete.trainingPlans.find((p: any) => p.status === 'active');
+        if (activePlan) {
+          console.log('✅ WELCOME: Active training plan found:', activePlan.id);
+        }
+      }
 
-      // Store just the athleteId and basic info
-      console.log('💾 WELCOME: Caching athleteId to localStorage...');
+      // Store full athlete object with trainingPlanIds
+      console.log('💾 WELCOME: Caching full athlete object to localStorage...');
       LocalStorageAPI.setAthlete(athlete);
       LocalStorageAPI.setHydrationTimestamp(Date.now());
       
       // Also store raw response
       localStorage.setItem('gofastHydration', JSON.stringify(response.data));
       
-      console.log('✅ WELCOME: AthleteId cached');
+      console.log('✅ WELCOME: Full athlete object cached');
       
       
       // Hydration complete - show button for user to click
