@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebaseAdmin';
-import { getAthleteByFirebaseId, hydrateAthlete } from '@/lib/domain-athlete';
+import { getAthleteByFirebaseId } from '@/lib/domain-athlete';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
@@ -71,10 +72,32 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    console.log('✅ HYDRATE API: Athlete found, returning athleteId:', athlete.id);
+    console.log('✅ HYDRATE API: Athlete found, loading training plans...');
+    
+    // Load training plans (just IDs and basic info, no complex relations)
+    let trainingPlans;
+    try {
+      const plans = await prisma.trainingPlan.findMany({
+        where: { athleteId: athlete.id },
+        select: {
+          id: true,
+          status: true,
+          trainingPlanName: true,
+          raceRegistryId: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      trainingPlans = plans;
+      console.log('✅ HYDRATE API: Found', plans.length, 'training plans');
+    } catch (err: any) {
+      console.error('❌ HYDRATE API: Error loading training plans:', err?.message);
+      trainingPlans = []; // Don't fail if we can't load plans
+    }
+
     console.log('✅ HYDRATE API: ===== REQUEST SUCCESS =====');
     
-    // SURGICAL: Just return the athleteId - no complex hydration
+    // Return full athlete object with trainingPlanIds
     return NextResponse.json({ 
       success: true, 
       athlete: {
@@ -83,6 +106,15 @@ export async function POST(request: Request) {
         email: athlete.email,
         firstName: athlete.firstName,
         lastName: athlete.lastName,
+        fiveKPace: athlete.fiveKPace,
+        companyId: athlete.companyId,
+        gofastHandle: athlete.gofastHandle,
+        photoURL: athlete.photoURL,
+        city: athlete.city,
+        state: athlete.state,
+        primarySport: athlete.primarySport,
+        // Include training plans (foreign keys)
+        trainingPlans: trainingPlans,
       }
     });
   } catch (err: any) {
