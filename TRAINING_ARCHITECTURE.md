@@ -655,7 +655,10 @@ TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
 **ALWAYS use this pattern:**
 
 ```typescript
-// 1. Try junction table first
+// MVP1: Continue loading "whatever training plan exists"
+// Future: Use AthleteTrainingPlan junction table for "My Training Plans" selection
+
+// 1. Try junction table first (for plans created via generate endpoint)
 const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
   where: {
     athleteId,
@@ -663,15 +666,22 @@ const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
   include: {
     trainingPlan: {
       include: {
-        raceRegistry: true,
+        raceTrainingPlans: {
+          include: {
+            raceRegistry: true,
+          },
+        },
       },
     },
+  },
+  orderBy: {
+    assignedAt: 'desc',
   },
 });
 
 let activePlan = activeAssignment?.trainingPlan;
 
-// 2. Fallback to direct query (for legacy plans)
+// 2. Fallback to direct query (for legacy plans or plans not yet generated)
 if (!activePlan) {
   activePlan = await prisma.trainingPlan.findFirst({
     where: {
@@ -679,8 +689,11 @@ if (!activePlan) {
       status: 'active',
     },
     include: {
-      raceRegistry: true,
-      trainingPlanFiveKPace: true,
+      raceTrainingPlans: {
+        include: {
+          raceRegistry: true,
+        },
+      },
     },
   });
 }
