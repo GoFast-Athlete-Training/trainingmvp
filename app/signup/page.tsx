@@ -83,32 +83,44 @@ export default function SignupPage() {
     function checkFirebaseAuth() {
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
-          console.log('✅ SIGNUP PAGE: Firebase user authenticated, redirecting to welcome');
+          console.log('✅ SIGNUP PAGE: Firebase user authenticated, checking athlete...');
           try {
-            const token = await user.getIdToken();
+            // Force fresh token
+            const token = await user.getIdToken(true);
             localStorage.setItem('firebaseToken', token);
             
-              // Try to hydrate - if successful, go to welcome
-              try {
-                const hydrateResponse = await api.post('/athlete/hydrate');
-                if (hydrateResponse.data.success) {
-                  LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
-                  LocalStorageAPI.setHydrationTimestamp(Date.now());
-                  router.replace('/welcome');
-                  return;
-                }
-              } catch (err: any) {
-                // If 404, athlete doesn't exist yet - let them sign up
-                if (err.response?.status === 404) {
-                  console.log('ℹ️ SIGNUP PAGE: Authenticated but no athlete record - allowing signup');
-                  setCheckingAuth(false);
-                  return;
-                }
-                // Other errors - still redirect to welcome (they're authenticated)
-                console.log('⚠️ SIGNUP PAGE: Hydrate failed but user is authenticated, going to welcome');
+            // Try to hydrate - if successful, go to welcome
+            try {
+              const hydrateResponse = await api.post('/athlete/hydrate');
+              if (hydrateResponse.data.success) {
+                console.log('✅ SIGNUP PAGE: Athlete found, redirecting to welcome');
+                LocalStorageAPI.setAthlete(hydrateResponse.data.athlete);
+                LocalStorageAPI.setHydrationTimestamp(Date.now());
                 router.replace('/welcome');
                 return;
               }
+            } catch (err: any) {
+              const errorStatus = err.response?.status;
+              
+              // If 404, athlete doesn't exist yet - let them sign up
+              if (errorStatus === 404) {
+                console.log('ℹ️ SIGNUP PAGE: Authenticated but no athlete record - allowing signup');
+                setCheckingAuth(false);
+                return;
+              }
+              
+              // If 401, token might be expired - stay on signup page (don't redirect to welcome)
+              if (errorStatus === 401) {
+                console.log('⚠️ SIGNUP PAGE: Token expired (401) - staying on signup page');
+                setCheckingAuth(false);
+                return;
+              }
+              
+              // Other errors - stay on signup (don't create redirect loop)
+              console.log('⚠️ SIGNUP PAGE: Hydrate failed with status', errorStatus, '- staying on signup');
+              setCheckingAuth(false);
+              return;
+            }
           } catch (err) {
             console.error('❌ SIGNUP PAGE: Error checking auth:', err);
             setCheckingAuth(false);

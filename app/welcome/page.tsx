@@ -14,7 +14,7 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
 
-  const hydrateAthlete = async (firebaseUser: any) => {
+  const hydrateAthlete = async (firebaseUser: any, forceTokenRefresh = false) => {
     try {
       console.log('🚀 WELCOME: ===== STARTING HYDRATION =====');
       setIsLoading(true);
@@ -23,6 +23,15 @@ export default function WelcomePage() {
       console.log('✅ WELCOME: Firebase user found');
       console.log('✅ WELCOME: Firebase UID:', firebaseUser.uid);
       console.log('✅ WELCOME: Firebase Email:', firebaseUser.email);
+      
+      // Force token refresh if requested (for retry after 401)
+      if (forceTokenRefresh) {
+        console.log('🔄 WELCOME: Forcing token refresh...');
+        const freshToken = await firebaseUser.getIdToken(true);
+        localStorage.setItem('firebaseToken', freshToken);
+        console.log('✅ WELCOME: Token refreshed');
+      }
+      
       console.log('🚀 WELCOME: Calling hydration endpoint...');
 
       // Call hydration endpoint (token automatically added by api interceptor)
@@ -84,27 +93,30 @@ export default function WelcomePage() {
       setError(fullErrorMsg);
       setIsLoading(false);
       
-      // STATE 3: Firebase user exists BUT DB athlete does NOT exist
-      // This is the dangerous "token-valid-but-athlete-missing" case
-      if (errorStatus === 401 && firebaseUser) {
-        console.log('🚫 WELCOME: Unauthorized (401) but Firebase user exists → routing to signup');
-        router.push('/signup');
-        return;
+      // Handle 401 (Unauthorized) - token expired or invalid
+      if (errorStatus === 401) {
+        if (firebaseUser) {
+          // User is authenticated in Firebase but token expired
+          // Don't redirect - show error with retry that forces token refresh
+          console.log('🚫 WELCOME: Token expired (401) but Firebase user exists → showing error with retry');
+          // Error already set above - user can retry which will force token refresh
+          return;
+        } else {
+          // No Firebase user - redirect to signup
+          console.log('🚫 WELCOME: Unauthorized (401) and no Firebase user → redirecting to signup');
+          router.push('/signup');
+          return;
+        }
       }
       
-      // STATE 1: No Firebase user
-      if (errorStatus === 401 && !firebaseUser) {
-        console.log('🚫 WELCOME: Unauthorized (401) and no Firebase user → redirecting to signup');
-        router.push('/signup');
-        return;
-      }
-      
-      // If user not found (404), check Firebase user state
+      // Handle 404 (Athlete not found)
       if (errorStatus === 404) {
         if (firebaseUser) {
+          // Firebase user exists but no athlete record - they need to complete signup
           console.log('👤 WELCOME: Athlete not found (404) but Firebase user exists → routing to signup');
           router.push('/signup');
         } else {
+          // No Firebase user - redirect to signup
           console.log('👤 WELCOME: Athlete not found (404) and no Firebase user → redirecting to signup');
           router.push('/signup');
         }
@@ -163,14 +175,18 @@ export default function WelcomePage() {
           <div className="flex gap-4 justify-center">
             <button
               onClick={() => {
-                console.log('🔄 WELCOME: Retrying hydration...');
+                console.log('🔄 WELCOME: Retrying hydration with forced token refresh...');
                 setError(null);
                 setIsLoading(true);
-                auth.currentUser && hydrateAthlete(auth.currentUser);
+                if (auth.currentUser) {
+                  hydrateAthlete(auth.currentUser, true); // Force token refresh
+                } else {
+                  router.push('/signup');
+                }
               }}
               className="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition"
             >
-              Retry
+              Retry (Refresh Token)
             </button>
             <button
               onClick={() => {

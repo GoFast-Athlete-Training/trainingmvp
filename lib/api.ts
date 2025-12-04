@@ -10,25 +10,23 @@ const api = axios.create({
 // Add Firebase token to all requests
 api.interceptors.request.use(
   async (config) => {
-    // First check localStorage for token (from main app or previous session)
-    const storedToken = localStorage.getItem('firebaseToken');
-    
-    if (storedToken) {
-      config.headers.Authorization = `Bearer ${storedToken}`;
-      return config;
-    }
-    
-    // Fall back to Firebase auth currentUser
+    // Always get a fresh token from Firebase (force refresh to avoid expired tokens)
     const user = auth.currentUser;
     if (user) {
       try {
-        const token = await user.getIdToken();
-        // Store token for future requests
-        localStorage.setItem('firebaseToken', token);
+        // Force refresh to get the latest token (prevents expired token errors)
+        const token = await user.getIdToken(true);
         config.headers.Authorization = `Bearer ${token}`;
+        // Optionally store for debugging, but don't rely on it
+        localStorage.setItem('firebaseToken', token);
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        console.error('❌ API: Failed to get token in interceptor:', error);
+        // Clear any stale token
+        localStorage.removeItem('firebaseToken');
       }
+    } else {
+      // No user - clear any stale token
+      localStorage.removeItem('firebaseToken');
     }
     return config;
   },
