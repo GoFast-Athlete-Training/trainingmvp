@@ -224,7 +224,7 @@ model TrainingPlan {
 
   // Indexes for fast lookups
   @@index([athleteId, status]) // Fast lookup of active plans by athlete
-  @@map("training_plans")
+  // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
 }
 
 model TrainingDayPlanned {
