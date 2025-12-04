@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -16,6 +16,17 @@ export default function TrainingSetupStartPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [trainingPlanId, setTrainingPlanId] = useState<string | null>(null);
+
+  // Get trainingPlanId from URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const planId = urlParams.get('planId');
+    if (planId) {
+      setTrainingPlanId(planId);
+      console.log('📋 Training plan ID from URL:', planId);
+    }
+  }, []);
 
   // Create race form state
   const [raceName, setRaceName] = useState('');
@@ -66,23 +77,49 @@ export default function TrainingSetupStartPage() {
     setError(null);
 
     try {
-      console.log('📋 Creating training plan for race:', race.id);
-      const response = await api.post('/training-plan/create', {
-        raceRegistryId: race.id,
-      });
+      // Get trainingPlanId from URL params (if coming from training hub)
+      const urlParams = new URLSearchParams(window.location.search);
+      const trainingPlanId = urlParams.get('planId');
+      
+      if (trainingPlanId) {
+        // Update existing draft plan with race
+        console.log('📋 Updating training plan with race:', race.id);
+        const response = await api.post('/training-plan/update', {
+          trainingPlanId,
+          updates: {
+            raceRegistryId: race.id,
+            trainingPlanName: `${race.name} Training Plan`,
+          },
+        });
 
-      if (response.data.success) {
-        console.log('✅ Training plan created:', response.data.trainingPlanId);
-        router.push(`/training-setup/${response.data.trainingPlanId}`);
+        if (response.data.success) {
+          console.log('✅ Training plan updated with race:', trainingPlanId);
+          router.push(`/training-setup/${trainingPlanId}`);
+        } else {
+          const errorMsg = response.data.error || response.data.details || 'Failed to update training plan';
+          console.error('❌ Training plan update failed:', errorMsg);
+          setError(`Failed to update training plan: ${errorMsg}`);
+        }
       } else {
-        const errorMsg = response.data.error || response.data.details || 'Failed to create training plan';
-        console.error('❌ Training plan creation failed:', errorMsg);
-        setError(`Failed to create training plan: ${errorMsg}`);
+        // Create new plan with race (fallback for direct navigation)
+        console.log('📋 Creating training plan for race:', race.id);
+        const response = await api.post('/training-plan/create', {
+          raceRegistryId: race.id,
+        });
+
+        if (response.data.success) {
+          console.log('✅ Training plan created:', response.data.trainingPlanId);
+          router.push(`/training-setup/${response.data.trainingPlanId}`);
+        } else {
+          const errorMsg = response.data.error || response.data.details || 'Failed to create training plan';
+          console.error('❌ Training plan creation failed:', errorMsg);
+          setError(`Failed to create training plan: ${errorMsg}`);
+        }
       }
     } catch (err: any) {
-      console.error('❌ Create plan error:', err);
-      const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to create training plan';
-      setError(`Failed to create training plan: ${errorMsg}`);
+      console.error('❌ Error:', err);
+      const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to process';
+      setError(`Failed: ${errorMsg}`);
     } finally {
       setLoading(false);
     }

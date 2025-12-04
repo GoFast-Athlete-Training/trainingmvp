@@ -29,6 +29,27 @@ interface RaceReadiness {
   status: 'on-track' | 'behind' | 'impossible';
 }
 
+interface DraftPlan {
+  id: string;
+  trainingPlanName: string;
+  raceRegistryId: string | null;
+  trainingPlanGoalTime: string | null;
+  status: string;
+  race: {
+    id: string;
+    name: string;
+    distance: string;
+    date: string;
+  } | null;
+  nextStep: string;
+  nextStepUrl: string;
+  progress: {
+    hasRace: boolean;
+    hasGoalTime: boolean;
+    isComplete: boolean;
+  };
+}
+
 export default function TrainingHub() {
   const router = useRouter();
   const [todayWorkout, setTodayWorkout] = useState<TodayWorkout | null>(null);
@@ -36,6 +57,7 @@ export default function TrainingHub() {
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasPlan, setHasPlan] = useState(false);
+  const [draftPlan, setDraftPlan] = useState<DraftPlan | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -120,6 +142,19 @@ export default function TrainingHub() {
         hasPlan: hasActivePlan,
         planStatus: data.planStatus,
       });
+
+      // If no active plan, check for draft plan
+      if (!hasActivePlan) {
+        try {
+          const draftResponse = await api.get('/training-plan/draft');
+          if (draftResponse.data.success && draftResponse.data.hasDraftPlan) {
+            setDraftPlan(draftResponse.data.draftPlan);
+            console.log('📋 TRAINING PAGE: Found draft plan:', draftResponse.data.draftPlan);
+          }
+        } catch (draftErr: any) {
+          console.log('ℹ️ TRAINING PAGE: No draft plan found');
+        }
+      }
     } catch (error: any) {
       console.error('❌ TRAINING PAGE: Error loading hub data:', error);
       if (error.response?.status === 401) {
@@ -144,7 +179,7 @@ export default function TrainingHub() {
     );
   }
 
-  // If no plan, show landing page with setup button
+  // If no plan, show landing page with setup button or draft plan checklist
   if (!hasPlan) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center p-4">
@@ -154,25 +189,144 @@ export default function TrainingHub() {
               🏃‍♂️
             </div>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
-              Ready to Train?
+              {draftPlan ? 'Continue Your Plan' : 'Ready to Train?'}
             </h1>
             <p className="text-xl md:text-2xl text-white/90 font-medium">
-              Create your personalized training plan and start crushing your goals
+              {draftPlan 
+                ? 'Complete your training plan setup to get started'
+                : 'Create your personalized training plan and start crushing your goals'
+              }
             </p>
           </div>
 
-          <div className="space-y-6">
-            <button
-              onClick={() => router.push('/training-setup')}
-              className="w-full bg-white text-orange-600 py-6 px-8 rounded-2xl font-bold text-2xl hover:bg-orange-50 transition shadow-2xl transform hover:scale-105"
-            >
-              Set My Training Plan →
-            </button>
+          {draftPlan ? (
+            // Show checklist for draft plan
+            <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 shadow-2xl">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Training Plan Setup</h2>
+              <div className="space-y-4 text-left">
+                {/* Step 1: Select Race */}
+                <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
+                  draftPlan.progress.hasRace 
+                    ? 'bg-green-50 border-green-300' 
+                    : 'bg-orange-50 border-orange-300'
+                }`}>
+                  <div className={`text-3xl ${draftPlan.progress.hasRace ? 'text-green-600' : 'text-orange-600'}`}>
+                    {draftPlan.progress.hasRace ? '✅' : '1️⃣'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg text-gray-900">Select Race</div>
+                    {draftPlan.progress.hasRace && draftPlan.race && (
+                      <div className="text-sm text-gray-600 mt-1">
+                        {draftPlan.race.name} • {new Date(draftPlan.race.date).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  {!draftPlan.progress.hasRace && (
+                    <button
+                      onClick={() => router.push(draftPlan.nextStepUrl)}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      {draftPlan.nextStep} →
+                    </button>
+                  )}
+                </div>
 
-            <div className="text-white/80 text-sm">
-              <p>Pick your race • Set your goals • Build your plan</p>
+                {/* Step 2: Set Goal Time */}
+                <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
+                  draftPlan.progress.hasGoalTime 
+                    ? 'bg-green-50 border-green-300' 
+                    : draftPlan.progress.hasRace
+                    ? 'bg-orange-50 border-orange-300'
+                    : 'bg-gray-50 border-gray-200 opacity-50'
+                }`}>
+                  <div className={`text-3xl ${
+                    draftPlan.progress.hasGoalTime 
+                      ? 'text-green-600' 
+                      : draftPlan.progress.hasRace
+                      ? 'text-orange-600'
+                      : 'text-gray-400'
+                  }`}>
+                    {draftPlan.progress.hasGoalTime ? '✅' : '2️⃣'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg text-gray-900">Set Goal Time</div>
+                    {draftPlan.progress.hasGoalTime && draftPlan.trainingPlanGoalTime && (
+                      <div className="text-sm text-gray-600 mt-1">
+                        Goal: {draftPlan.trainingPlanGoalTime}
+                      </div>
+                    )}
+                  </div>
+                  {draftPlan.progress.hasRace && !draftPlan.progress.hasGoalTime && (
+                    <button
+                      onClick={() => router.push(draftPlan.nextStepUrl)}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      {draftPlan.nextStep} →
+                    </button>
+                  )}
+                </div>
+
+                {/* Step 3: Review & Generate */}
+                <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
+                  draftPlan.progress.isComplete 
+                    ? 'bg-orange-50 border-orange-300' 
+                    : 'bg-gray-50 border-gray-200 opacity-50'
+                }`}>
+                  <div className={`text-3xl ${
+                    draftPlan.progress.isComplete 
+                      ? 'text-orange-600' 
+                      : 'text-gray-400'
+                  }`}>
+                    3️⃣
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg text-gray-900">Review & Generate</div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      Generate your personalized training plan
+                    </div>
+                  </div>
+                  {draftPlan.progress.isComplete && (
+                    <button
+                      onClick={() => router.push(draftPlan.nextStepUrl)}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      {draftPlan.nextStep} →
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            // Show create button if no draft plan
+            <div className="space-y-6">
+              <button
+                onClick={async () => {
+                  try {
+                    console.log('🚀 Creating draft training plan...');
+                    const response = await api.post('/training-plan/create', {});
+                    if (response.data.success) {
+                      const trainingPlanId = response.data.trainingPlanId;
+                      console.log('✅ Draft plan created:', trainingPlanId);
+                      router.push(`/training-setup/start?planId=${trainingPlanId}`);
+                    } else {
+                      console.error('❌ Failed to create plan:', response.data.error);
+                      router.push('/training-setup/start');
+                    }
+                  } catch (err: any) {
+                    console.error('❌ Error creating plan:', err);
+                    router.push('/training-setup/start');
+                  }
+                }}
+                className="w-full bg-white text-orange-600 py-6 px-8 rounded-2xl font-bold text-2xl hover:bg-orange-50 transition shadow-2xl transform hover:scale-105"
+              >
+                Set My Training Plan →
+              </button>
+
+              <div className="text-white/80 text-sm">
+                <p>Pick your race • Set your goals • Build your plan</p>
+              </div>
+            </div>
+          )}
 
           {/* Features */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">

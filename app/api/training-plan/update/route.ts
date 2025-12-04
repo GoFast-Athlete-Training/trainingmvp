@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
     const allowedFields = [
       'trainingPlanGoalTime',
       'trainingPlanName',
+      'raceRegistryId', // Allow updating race (for attaching race to draft plan)
+      'trainingPlanTotalWeeks', // Allow updating weeks when race is attached
       // Note: preferredDays would be handled via TrainingPlanPreferredDays snapshot
       // For MVP1, we're not updating preferred days, but structure is ready
     ];

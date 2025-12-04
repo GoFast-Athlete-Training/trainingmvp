@@ -29,46 +29,110 @@ export async function POST(request: NextRequest) {
 
     const { raceRegistryId } = body;
 
-    if (!raceRegistryId) {
-      return NextResponse.json(
-        { success: false, error: 'raceRegistryId is required' },
-        { status: 400 }
-      );
-    }
-
-    // Verify race exists
-    console.log('🔍 TRAINING PLAN CREATE: Verifying race exists:', raceRegistryId);
-    const race = await prisma.raceRegistry.findUnique({
-      where: { id: raceRegistryId },
+    // Check if athlete already has a draft plan without a race
+    const existingDraftPlan = await prisma.trainingPlan.findFirst({
+      where: {
+        athleteId,
+        status: 'draft',
+        raceRegistryId: null, // No race attached yet
+      },
     });
 
-    if (!race) {
-      console.error('❌ TRAINING PLAN CREATE: Race not found:', raceRegistryId);
-      return NextResponse.json(
-        { success: false, error: 'Race not found' },
-        { status: 404 }
-      );
+    if (existingDraftPlan) {
+      console.log('✅ TRAINING PLAN CREATE: Found existing draft plan:', existingDraftPlan.id);
+      
+      // If raceRegistryId provided, update the existing plan
+      if (raceRegistryId) {
+        // Verify race exists
+        const race = await prisma.raceRegistry.findUnique({
+          where: { id: raceRegistryId },
+        });
+
+        if (!race) {
+          return NextResponse.json(
+            { success: false, error: 'Race not found' },
+            { status: 404 }
+          );
+        }
+
+        // Calculate total weeks from race date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const raceDate = new Date(race.date);
+        raceDate.setHours(0, 0, 0, 0);
+        const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+
+        // Update existing plan with race
+        const updatedPlan = await prisma.trainingPlan.update({
+          where: { id: existingDraftPlan.id },
+          data: {
+            raceRegistryId,
+            trainingPlanName: `${race.name} Training Plan`,
+            trainingPlanTotalWeeks: totalWeeks,
+          },
+        });
+
+        return NextResponse.json({
+          success: true,
+          trainingPlanId: updatedPlan.id,
+          trainingPlan: {
+            id: updatedPlan.id,
+            raceRegistryId: updatedPlan.raceRegistryId,
+            trainingPlanName: updatedPlan.trainingPlanName,
+            status: updatedPlan.status,
+            totalWeeks: updatedPlan.trainingPlanTotalWeeks,
+          },
+        });
+      }
+
+      // No race provided, return existing draft plan
+      return NextResponse.json({
+        success: true,
+        trainingPlanId: existingDraftPlan.id,
+        trainingPlan: {
+          id: existingDraftPlan.id,
+          raceRegistryId: existingDraftPlan.raceRegistryId,
+          trainingPlanName: existingDraftPlan.trainingPlanName,
+          status: existingDraftPlan.status,
+          totalWeeks: existingDraftPlan.trainingPlanTotalWeeks,
+        },
+      });
     }
 
-    console.log('✅ TRAINING PLAN CREATE: Race found:', race.name);
-
-    // Calculate total weeks from race date
+    // No existing draft plan - create new one
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const raceDate = new Date(race.date);
-    raceDate.setHours(0, 0, 0, 0);
-    const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7)); // Minimum 8 weeks
+    let totalWeeks = 16; // Default
+    let planName = 'My Training Plan';
 
-    console.log('📅 TRAINING PLAN CREATE: Days until race:', daysUntilRace, 'Total weeks:', totalWeeks);
+    // If raceRegistryId provided, use it
+    if (raceRegistryId) {
+      const race = await prisma.raceRegistry.findUnique({
+        where: { id: raceRegistryId },
+      });
 
-    // Create draft TrainingPlan
+      if (!race) {
+        return NextResponse.json(
+          { success: false, error: 'Race not found' },
+          { status: 404 }
+        );
+      }
+
+      const raceDate = new Date(race.date);
+      raceDate.setHours(0, 0, 0, 0);
+      const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+      planName = `${race.name} Training Plan`;
+    }
+
+    // Create draft TrainingPlan (with or without race)
     console.log('💾 TRAINING PLAN CREATE: Creating training plan...');
     const trainingPlan = await prisma.trainingPlan.create({
       data: {
         athleteId,
-        raceRegistryId,
-        trainingPlanName: `${race.name} Training Plan`,
+        raceRegistryId: raceRegistryId || null, // Can be null initially
+        trainingPlanName: planName,
         trainingPlanGoalTime: null, // Will be set in next step
         trainingPlanStartDate: today,
         trainingPlanTotalWeeks: totalWeeks,
