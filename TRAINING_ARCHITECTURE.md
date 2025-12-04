@@ -232,20 +232,22 @@
 - `id` (String, cuid)
 - `athleteId` (String)
 - `activityId` (String?, unique) - Links to `AthleteActivity.id`
-- `weekIndex` (Int)
-- `dayIndex` (Int)
-- `date` (DateTime)
-- `plannedData` (Json?) - Snapshot of planned workout
-- `analysis` (Json?) - AI analysis of execution
-- `feedback` (Json?) - AI feedback
+- `weekIndex` (Int) - Copied from `TrainingDayPlanned`
+- `dayIndex` (Int) - Copied from `TrainingDayPlanned`
+- `date` (DateTime) - Copied from `TrainingDayPlanned`
+- `plannedData` (Json?) - **SNAPSHOT** - Hydrated from `TrainingDayPlanned.plannedData` at execution time
+- `analysis` (Json?) - AI analysis comparing actual vs planned
+- `feedback` (Json?) - User feedback on workout
 
 **Relations:**
 - `athlete` → `Athlete` (many-to-one)
 
 **Critical Notes:**
-- **NO direct FK to TrainingPlan** - Links via `athleteId` and `date` matching
-- `activityId` links to `AthleteActivity` (Garmin sync)
-- Can exist without `activityId` (manual entry)
+- **NO direct FK to TrainingPlan** - Links via `athleteId` and `date` matching (application logic)
+- **HYDRATION PATTERN:** When creating `TrainingDayExecuted`, we hydrate `plannedData` from `TrainingDayPlanned.plannedData`
+- `activityId` links to `AthleteActivity` (Garmin sync) - optional, can be manual entry
+- Created when athlete completes a workout (auto-match or manual link)
+- `plannedData` is a snapshot - preserves what was planned even if plan changes later
 
 ---
 
@@ -305,21 +307,38 @@
 GoFastCompany (1) ──< (many) Athlete
 Athlete (1) ──< (many) TrainingPlan (via athleteId)
 Athlete (many) ──< (many) TrainingPlan (via AthleteTrainingPlan junction)
-RaceRegistry (many) ──< (many) TrainingPlan (via RaceTrainingPlan junction)
+Race (many) ──< (many) TrainingPlan (via RaceTrainingPlan junction)
 TrainingPlan (1) ──< (many) TrainingDayPlanned
 Athlete (1) ──< (many) TrainingDayExecuted
 Athlete (1) ──< (many) AthleteActivity
-TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId)
+TrainingDayExecuted (1) ──< (1) AthleteActivity (via activityId, optional)
+TrainingDayPlanned ──> (hydrates) TrainingDayExecuted.plannedData (on create)
 ```
+
+### Master Container Pattern
+
+**TrainingPlan** is the master container:
+- Holds plan metadata (name, goal time, start date, status)
+- Links to Race via `RaceTrainingPlan` junction table
+- Links to Athlete via `AthleteTrainingPlan` junction table
+- Contains all planned days via `TrainingDayPlanned[]`
+
+**Junction Tables:**
+- `RaceTrainingPlan` - Links plan to race (many-to-many)
+- `AthleteTrainingPlan` - Links athlete to plan (many-to-many, for future multi-plan support)
+
+**Execution:**
+- `TrainingDayPlanned` - Created when plan is generated (all days at once)
+- `TrainingDayExecuted` - Created when athlete completes workout (hydrates from planned)
 
 ### Critical Relationship Rules
 
-1. **RaceRegistry → TrainingPlan: MANY-TO-MANY via Junction**
+1. **Race → TrainingPlan: MANY-TO-MANY via Junction**
    - One race can have many training plans
    - One plan can target one race (via `RaceTrainingPlan` junction table)
-   - Query: `RaceRegistry.raceTrainingPlans` → `RaceTrainingPlan[]` → `TrainingPlan[]`
+   - Query: `Race.raceTrainingPlans` → `RaceTrainingPlan[]` → `TrainingPlan[]`
    - **This is where the "lock in" happens** - A plan is linked to a race via this junction
-   - RaceRegistry is global (search-first registry pattern)
+   - Race is global (search-first registry pattern)
 
 2. **Athlete → TrainingPlan: MANY-TO-MANY via Junction**
    - Use `AthleteTrainingPlan` for future "My Training Plans" selection screen
