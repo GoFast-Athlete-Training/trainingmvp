@@ -50,61 +50,8 @@ export async function GET(request: NextRequest) {
       }) || undefined;
     }
 
-    // Check if plan exists (active or draft)
-    const hasPlan = !!activePlan;
-    
-    // If no plan exists, check for draft plan
+    // STATE 1: No plan at all
     if (!activePlan) {
-      // Check for draft plan
-      const draftPlan = await prisma.trainingPlan.findFirst({
-        where: {
-          athleteId,
-          status: 'draft',
-        },
-        include: {
-          race: true, // Direct relation
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      if (draftPlan) {
-        // Return draft plan info so frontend can show checklist
-        return NextResponse.json({
-          todayWorkout: null,
-          planStatus: {
-            hasPlan: false, // Not an active plan yet
-            totalWeeks: 0,
-            currentWeek: 0,
-            phase: '',
-          },
-          raceReadiness: null,
-          draftPlan: {
-            id: draftPlan.id,
-            name: draftPlan.name,
-            goalTime: draftPlan.goalTime,
-            goalPace5K: draftPlan.goalPace5K,
-            status: draftPlan.status,
-            race: draftPlan.race
-              ? {
-                  id: draftPlan.race.id,
-                  name: draftPlan.race.name,
-                  raceType: draftPlan.race.raceType,
-                  miles: draftPlan.race.miles,
-                  date: draftPlan.race.date,
-                }
-              : null,
-            progress: {
-              hasRace: !!draftPlan.race,
-              hasGoalTime: !!draftPlan.goalTime,
-              isComplete: !!draftPlan.race && !!draftPlan.goalTime,
-            },
-          },
-        });
-      }
-
-      // No plan at all
       return NextResponse.json({
         todayWorkout: null,
         planStatus: {
@@ -114,9 +61,61 @@ export async function GET(request: NextRequest) {
           phase: '',
         },
         raceReadiness: null,
+        planState: 'no-plan', // State 1: No plan exists
       });
     }
 
+    // Check if plan has been generated (has TrainingPlanDay records)
+    const planDayCount = await prisma.trainingPlanDay.count({
+      where: {
+        planId: activePlan.id,
+      },
+    });
+
+    // Check if plan is complete (has all required fields)
+    const hasRace = !!activePlan.race;
+    const hasGoalTime = !!activePlan.goalTime;
+    const hasStartDate = !!activePlan.startDate;
+    const isPlanComplete = hasRace && hasGoalTime && hasStartDate;
+
+    // STATE 2: Draft/Incomplete plan (exists but not fully set up or not generated)
+    if (!isPlanComplete || planDayCount === 0 || activePlan.status === 'draft') {
+      return NextResponse.json({
+        todayWorkout: null,
+        planStatus: {
+          hasPlan: false, // Not an active plan yet
+          totalWeeks: 0,
+          currentWeek: 0,
+          phase: '',
+        },
+        raceReadiness: null,
+        planState: 'draft', // State 2: Plan exists but incomplete
+        draftPlan: {
+          id: activePlan.id,
+          name: activePlan.name,
+          goalTime: activePlan.goalTime,
+          goalPace5K: activePlan.goalPace5K,
+          status: activePlan.status,
+          race: activePlan.race
+            ? {
+                id: activePlan.race.id,
+                name: activePlan.race.name,
+                raceType: activePlan.race.raceType,
+                miles: activePlan.race.miles,
+                date: activePlan.race.date,
+              }
+            : null,
+          progress: {
+            hasRace,
+            hasGoalTime,
+            hasStartDate,
+            isComplete: isPlanComplete && planDayCount > 0,
+          },
+        },
+      });
+    }
+
+    // STATE 3: Active plan in execution (complete and has days)
     // Get today's workout
     const today = new Date();
     const startOfDay = getStartOfDay(today);
@@ -203,6 +202,7 @@ export async function GET(request: NextRequest) {
         phase: todayPlanned?.phase.name || 'base',
       },
       raceReadiness,
+      planState: 'active', // State 3: Plan is active and in execution
     });
   } catch (error) {
     console.error('Error loading hub data:', error);

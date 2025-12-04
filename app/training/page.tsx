@@ -154,8 +154,11 @@ export default function TrainingHub() {
       setPlanStatus(data.planStatus);
       setRaceReadiness(data.raceReadiness);
       
-      // Check for draft plan
-      if (data.draftPlan) {
+      // Determine plan state from API response
+      const planState = data.planState || 'no-plan';
+      
+      if (planState === 'draft' && data.draftPlan) {
+        // STATE 2: Draft/Incomplete plan
         setDraftPlan({
           id: data.draftPlan.id,
           name: data.draftPlan.name,
@@ -171,12 +174,16 @@ export default function TrainingHub() {
             : null,
           nextStep: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
-              ? 'Review & Generate'
+              ? data.draftPlan.progress.hasStartDate
+                ? 'Review & Generate'
+                : 'Set Start Date'
               : 'Set Goal Time'
             : 'Select Race',
           nextStepUrl: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
-              ? `/training-setup/${data.draftPlan.id}/review`
+              ? data.draftPlan.progress.hasStartDate
+                ? `/training-setup/${data.draftPlan.id}/review`
+                : `/training-setup/${data.draftPlan.id}/review` // Start date is set on review page
               : `/training-setup/${data.draftPlan.id}`
             : `/training-setup/start?planId=${data.draftPlan.id}`,
           progress: data.draftPlan.progress,
@@ -186,8 +193,8 @@ export default function TrainingHub() {
         setDraftPlan(null);
       }
       
-      // Only set hasPlan to true if we actually have an active plan
-      const hasActivePlan = data.planStatus?.hasPlan === true;
+      // Only set hasPlan to true if plan is active (State 3)
+      const hasActivePlan = planState === 'active' && data.planStatus?.hasPlan === true;
       setHasPlan(hasActivePlan);
       
       console.log('📊 TRAINING PAGE: Plan status:', {
@@ -258,7 +265,7 @@ export default function TrainingHub() {
               🏃‍♂️
             </div>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
-              {draftPlan ? 'Continue Your Plan' : 'Ready to Train?'}
+              {draftPlan ? 'Finish Setting Up Your Plan' : 'Ready to Train?'}
             </h1>
             <p className="text-xl md:text-2xl text-white/90 font-medium">
               {draftPlan 
