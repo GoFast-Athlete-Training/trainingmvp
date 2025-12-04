@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
           include: {
             raceTrainingPlans: {
               include: {
-                raceRegistry: true,
+                race: true,
               },
             },
           },
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         include: {
           raceTrainingPlans: {
             include: {
-              raceRegistry: true,
+              race: true,
             },
           },
         },
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           include: {
             raceTrainingPlans: {
               include: {
-                raceRegistry: true,
+                race: true,
               },
             },
           },
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
     // Get race readiness (using goalFiveKPace from plan)
     const goal5kPace = activePlan.goalFiveKPace || null;
     const race = activePlan.raceTrainingPlans && activePlan.raceTrainingPlans.length > 0
-      ? activePlan.raceTrainingPlans[0].raceRegistry
+      ? activePlan.raceTrainingPlans[0].race
       : null;
     let raceReadiness = null;
 

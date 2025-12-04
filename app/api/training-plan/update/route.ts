@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       include: {
         raceTrainingPlans: {
           include: {
-            raceRegistry: true,
+            race: true,
           },
         },
       },
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const race = raceTrainingPlan.raceRegistry;
+      const race = raceTrainingPlan.race;
       try {
         updateData.goalFiveKPace = calculateGoalFiveKPace(
           updates.trainingPlanGoalTime,
@@ -111,13 +111,13 @@ export async function POST(request: NextRequest) {
       include: {
         raceTrainingPlans: {
           include: {
-            raceRegistry: true,
+            race: true,
           },
         },
       },
     });
 
-    const race = updatedPlan.raceTrainingPlans[0]?.raceRegistry;
+    const race = updatedPlan.raceTrainingPlans[0]?.race;
 
     return NextResponse.json({
       success: true,

@@ -8,7 +8,7 @@ import { GeneratedPlan } from './plan-generator';
  */
 export async function saveTrainingPlanToDB(
   athleteId: string,
-  raceRegistryId: string,
+  raceId: string, // Route param renamed from raceRegistryId → raceId
   planStartDate: Date,
   plan: GeneratedPlan,
   raceName: string,
@@ -32,7 +32,7 @@ export async function saveTrainingPlanToDB(
     // 2. Create RaceTrainingPlan junction entry
     await tx.raceTrainingPlan.create({
       data: {
-        raceRegistryId,
+        raceRegistryId: raceId, // FK column name stays same
         trainingPlanId: trainingPlan.id,
       },
     });

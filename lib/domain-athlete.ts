@@ -44,7 +44,7 @@ export async function hydrateAthlete(athleteId: string) {
         include: {
           raceTrainingPlans: {
             include: {
-              raceRegistry: true,
+              race: true,
             },
           },
         },

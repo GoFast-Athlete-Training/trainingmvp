@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📝 TRAINING PLAN CREATE: Request body:', body);
 
-    const { raceRegistryId } = body;
+    const { raceId } = body; // Route param renamed from raceRegistryId → raceId
 
     // Check if athlete already has a draft plan without a race
     // Check via junction table - if no raceTrainingPlans, then no race attached
@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
     if (existingDraftPlan) {
       console.log('✅ TRAINING PLAN CREATE: Found existing draft plan:', existingDraftPlan.id);
       
-      // If raceRegistryId provided, update the existing plan
-      if (raceRegistryId) {
+      // If raceId provided, update the existing plan
+      if (raceId) {
         // Verify race exists
-        const race = await prisma.raceRegistry.findUnique({
-          where: { id: raceRegistryId },
+        const race = await prisma.race.findUnique({
+          where: { id: raceId },
         });
 
         if (!race) {
@@ -70,12 +70,12 @@ export async function POST(request: NextRequest) {
         await prisma.raceTrainingPlan.upsert({
           where: {
             raceRegistryId_trainingPlanId: {
-              raceRegistryId,
+              raceRegistryId: raceId, // FK column name stays same
               trainingPlanId: existingDraftPlan.id,
             },
           },
           create: {
-            raceRegistryId,
+            raceRegistryId: raceId, // FK column name stays same
             trainingPlanId: existingDraftPlan.id,
           },
           update: {},
@@ -120,10 +120,10 @@ export async function POST(request: NextRequest) {
     let totalWeeks = 16; // Default
     let planName = 'My Training Plan';
 
-    // If raceRegistryId provided, use it
-    if (raceRegistryId) {
-      const race = await prisma.raceRegistry.findUnique({
-        where: { id: raceRegistryId },
+    // If raceId provided, use it
+    if (raceId) {
+      const race = await prisma.race.findUnique({
+        where: { id: raceId },
       });
 
       if (!race) {
@@ -153,11 +153,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // If raceRegistryId provided, create junction table entry
-    if (raceRegistryId) {
+    // If raceId provided, create junction table entry
+    if (raceId) {
       await prisma.raceTrainingPlan.create({
         data: {
-          raceRegistryId,
+          raceRegistryId: raceId, // FK column name stays same
           trainingPlanId: trainingPlan.id,
         },
       });

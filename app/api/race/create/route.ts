@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     const raceDate = new Date(date);
     
     // REGISTRY PATTERN: Search first, if exists, return it. If not, create it.
-    const existingRace = await prisma.raceRegistry.findFirst({
+    const existingRace = await prisma.race.findFirst({
       where: {
         name: {
           equals: name,
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('💾 RACE CREATE: Race not found in registry, creating new entry...');
-    const race = await prisma.raceRegistry.create({
+    const race = await prisma.race.create({
       data: {
         name,
         distance,
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
           throw new Error('Missing race name or date in error handler');
         }
         
-        const existingRace = await prisma.raceRegistry.findFirst({
+        const existingRace = await prisma.race.findFirst({
           where: {
             name: {
               equals: errorName,

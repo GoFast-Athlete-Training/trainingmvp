@@ -119,30 +119,9 @@ model AthleteActivity {
   @@map("athlete_activities")
 }
 
-// Legacy Race model - deprecated, use RaceRegistry instead
-model Race {
-  id String @id @default(cuid())
-
-  // Race Event Details
-  raceName      String
-  raceType      String
-  raceDate      DateTime
-  location      String?
-  distanceMiles Float
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations (deprecated - no new plans should use this)
-  // trainingPlans TrainingPlan[] // Removed - use RaceRegistry instead
-
-  @@map("races")
-}
-
-// Race Registry - Global catalogue of races (search-first, shared across all users)
+// Race - Global catalogue of races (search-first, shared across all users)
 // Registry pattern: Search first, if exists use it, if not create it
-model RaceRegistry {
+model Race {
   id        String   @id @default(cuid())
   name      String
   distance  String // "marathon", "half", "5k", "10k", etc.
@@ -164,11 +143,11 @@ model RaceRegistry {
   @@map("race_registry")
 }
 
-// Junction table: RaceRegistry <-> TrainingPlan (many-to-many)
+// Junction table: Race <-> TrainingPlan (many-to-many)
 // This is where the "lock in" happens - a plan is linked to a race via this junction
 model RaceTrainingPlan {
   id             String @id @default(cuid())
-  raceRegistryId String
+  raceRegistryId String // FK column name stays same (table schema)
   trainingPlanId String
 
   // Timestamps
@@ -176,7 +155,7 @@ model RaceTrainingPlan {
   updatedAt DateTime @updatedAt
 
   // Relations
-  raceRegistry RaceRegistry @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
+  race         Race         @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
   trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
 
   @@unique([raceRegistryId, trainingPlanId])

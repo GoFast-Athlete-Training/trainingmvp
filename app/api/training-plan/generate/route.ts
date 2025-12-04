@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       include: {
         raceTrainingPlans: {
           include: {
-            raceRegistry: true,
+            race: true,
           },
         },
       },
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const race = raceTrainingPlan.raceRegistry;
+    const race = raceTrainingPlan.race;
 
     // Load athlete
     const athlete = await prisma.athlete.findUnique({

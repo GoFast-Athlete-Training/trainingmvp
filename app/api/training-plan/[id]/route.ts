@@ -20,7 +20,7 @@ export async function GET(
       include: {
         raceTrainingPlans: {
           include: {
-            raceRegistry: true,
+            race: true,
           },
         },
       },
@@ -31,7 +31,7 @@ export async function GET(
     }
 
     const race = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
-      ? plan.raceTrainingPlans[0].raceRegistry
+      ? plan.raceTrainingPlans[0].race
       : null;
 
     return NextResponse.json({

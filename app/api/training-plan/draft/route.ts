@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
           include: {
             raceTrainingPlans: {
               include: {
-                raceRegistry: true,
+                race: true,
               },
             },
           },
@@ -45,9 +45,9 @@ export async function GET(request: NextRequest) {
         },
         include: {
           raceTrainingPlans: {
-            include: {
-              raceRegistry: true,
-            },
+          include: {
+            race: true,
+          },
           },
         },
         orderBy: {
@@ -95,10 +95,10 @@ export async function GET(request: NextRequest) {
         status: plan.status, // Just metadata, not source of truth
         race: plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
           ? {
-              id: plan.raceTrainingPlans[0].raceRegistry.id,
-              name: plan.raceTrainingPlans[0].raceRegistry.name,
-              distance: plan.raceTrainingPlans[0].raceRegistry.distance,
-              date: plan.raceTrainingPlans[0].raceRegistry.date,
+              id: plan.raceTrainingPlans[0].race.id,
+              name: plan.raceTrainingPlans[0].race.name,
+              distance: plan.raceTrainingPlans[0].race.distance,
+              date: plan.raceTrainingPlans[0].race.date,
             }
           : null,
         nextStep,
