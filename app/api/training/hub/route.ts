@@ -16,17 +16,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
     }
 
-    // Get active training plan
-    const activePlan = await prisma.trainingPlan.findFirst({
+    // Get active training plan via junction table (supports multiple plans per athlete)
+    const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
       where: {
         athleteId,
-        status: 'active',
+        isActive: true,
+        isPrimary: true, // Get the primary active plan
       },
       include: {
-        raceRegistry: true,
-        trainingPlanFiveKPace: true,
+        trainingPlan: {
+          include: {
+            raceRegistry: true,
+            trainingPlanFiveKPace: true,
+          },
+        },
       },
     });
+
+    // Fallback: if no primary plan, check for any active plan with status='active'
+    let activePlan = activeAssignment?.trainingPlan;
+    if (!activePlan) {
+      activePlan = await prisma.trainingPlan.findFirst({
+        where: {
+          athleteId,
+          status: 'active',
+        },
+        include: {
+          raceRegistry: true,
+          trainingPlanFiveKPace: true,
+        },
+      });
+    }
 
     if (!activePlan) {
       return NextResponse.json({

@@ -111,13 +111,22 @@ export default function TrainingHub() {
       setTodayWorkout(data.todayWorkout);
       setPlanStatus(data.planStatus);
       setRaceReadiness(data.raceReadiness);
-      setHasPlan(data.planStatus?.hasPlan || false);
+      
+      // Only set hasPlan to true if we actually have an active plan
+      const hasActivePlan = data.planStatus?.hasPlan === true;
+      setHasPlan(hasActivePlan);
+      
+      console.log('📊 TRAINING PAGE: Plan status:', {
+        hasPlan: hasActivePlan,
+        planStatus: data.planStatus,
+      });
     } catch (error: any) {
-      console.error('Error loading hub data:', error);
+      console.error('❌ TRAINING PAGE: Error loading hub data:', error);
       if (error.response?.status === 401) {
         router.push('/signup');
+        return;
       }
-      // If no plan, that's okay - show setup button
+      // If error or no plan, show setup button
       setHasPlan(false);
     } finally {
       setLoading(false);
