@@ -194,6 +194,8 @@ model TrainingPlan {
   trainingPlanFiveKPace     TrainingPlanFiveKPace?
   trainingPlanPreferredDays TrainingPlanPreferredDays?
 
+  // Indexes for fast lookups
+  @@index([athleteId, status]) // Fast lookup of active plans by athlete
   @@map("training_plans")
 }
 
