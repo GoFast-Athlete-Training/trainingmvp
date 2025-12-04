@@ -287,15 +287,15 @@
 
 ---
 
-#### `Race` (DEPRECATED)
+#### Legacy `Race` Model (REMOVED)
 **Table:** `races` (snake_case via @@map)
 
-**Purpose:** Legacy race model - **DO NOT USE**
+**Status:** **REMOVED** from schema
 
 **Critical Notes:**
-- **DEPRECATED** - Use `RaceRegistry` instead
-- No relations to `TrainingPlan` (removed)
-- Kept for migration purposes only
+- This was a deprecated legacy model that has been removed
+- Current model is `Race` (maps to `race_registry` table)
+- No longer exists in Prisma schema
 
 ---
 
