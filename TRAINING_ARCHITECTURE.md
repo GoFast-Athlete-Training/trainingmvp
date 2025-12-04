@@ -70,7 +70,7 @@
 
 ---
 
-#### `RaceRegistry`
+#### `Race`
 **Table:** `race_registry` (snake_case via @@map)
 
 **Purpose:** Global catalogue of races (search-first registry pattern, shared across all users)
@@ -117,7 +117,7 @@
 
 **Relations:**
 - `athlete` → `Athlete` (many-to-one, via `athleteId`)
-- `raceTrainingPlans` → `RaceTrainingPlan[]` (junction table - many-to-many with RaceRegistry)
+- `raceTrainingPlans` → `RaceTrainingPlan[]` (junction table - many-to-many with Race)
 - `athleteTrainingPlans` → `AthleteTrainingPlan[]` (junction table)
 - `plannedDays` → `TrainingDayPlanned[]`
 
@@ -141,7 +141,7 @@
 #### `RaceTrainingPlan` (Junction Table)
 **Table:** `race_training_plans` (snake_case via @@map)
 
-**Purpose:** Many-to-many relationship between RaceRegistry and TrainingPlan
+**Purpose:** Many-to-many relationship between Race and TrainingPlan
 
 **Key Fields:**
 - `id` (String, cuid)
@@ -151,7 +151,7 @@
 - `updatedAt` (DateTime, updatedAt)
 
 **Relations:**
-- `raceRegistry` → `RaceRegistry` (many-to-one)
+- `race` → `Race` (many-to-one)
 - `trainingPlan` → `TrainingPlan` (many-to-one)
 
 **Constraints:**
@@ -161,7 +161,7 @@
 
 **Critical Notes:**
 - **This is where the "lock in" happens** - A plan is linked to a race via this junction
-- RaceRegistry is global (search-first registry pattern)
+- Race is global (search-first registry pattern)
 - Multiple plans can link to the same race
 - Use this junction table to find which race a plan is targeting
 
@@ -604,7 +604,7 @@ TrainingDayPlanned ──> (hydrates) TrainingDayExecuted.plannedData (on create
 ```
 
 **Business Logic:**
-- Searches `RaceRegistry` by `name` (case-insensitive)
+- Searches `Race` by `name` (case-insensitive)
 - Returns empty array if no results (NOT an error)
 - Handles `P2021` (table not found) gracefully → returns 503
 
@@ -806,7 +806,7 @@ const newRace = await prisma.raceRegistry.create({ ... });
 
 ### Unique Constraints
 
-- `RaceRegistry`: `@@unique([name, date])` - Prevents duplicates
+- `Race`: `@@unique([name, date])` - Prevents duplicates
 - `RaceTrainingPlan`: `@@unique([raceRegistryId, trainingPlanId])` - One race-plan pair
 - `AthleteTrainingPlan`: `@@unique([athleteId, trainingPlanId])` - One assignment per pair
 - `TrainingDayPlanned`: `@@unique([trainingPlanId, weekIndex, dayIndex])` - One day per plan/week/day
@@ -819,7 +819,7 @@ const newRace = await prisma.raceRegistry.create({ ... });
 ### Goal Pace Derivation
 
 - When `trainingPlanGoalTime` is set (via `/api/training-plan/update` or `/api/training-plan/generate`):
-  - Get race distance from `RaceTrainingPlan` junction → `RaceRegistry.distance`
+  - Get race distance from `RaceTrainingPlan` junction → `Race.distance`
   - Convert goal time to seconds
   - Calculate pace per mile: `pacePerMileSec = raceGoalSeconds / raceMiles`
   - Convert to 5K target pace: `goalFiveKSec = pacePerMileSec * 3.10686`
@@ -867,7 +867,7 @@ const newRace = await prisma.raceRegistry.create({ ... });
 Before deploying, verify:
 
 - [ ] All table names match (PascalCase vs snake_case)
-- [ ] `RaceRegistry` has `@@unique([name, date])`
+- [ ] `Race` has `@@unique([name, date])`
 - [ ] `TrainingPlan` uses `raceRegistryId` (not `raceId`)
 - [ ] Active plan lookup uses `AthleteTrainingPlan` junction table
 - [ ] Race creation checks for duplicates before creating
