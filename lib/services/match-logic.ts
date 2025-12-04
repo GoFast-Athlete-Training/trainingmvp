@@ -22,14 +22,20 @@ export async function autoMatchActivityToDay(
   const endOfDay = new Date(activityDate);
   endOfDay.setHours(23, 59, 59, 999);
 
-  // Find planned day for this date
-  const plannedDay = await prisma.trainingDayPlanned.findFirst({
+  // Find planned day for this date using new cascade structure
+  const plannedDay = await prisma.trainingPlanDay.findFirst({
     where: {
-      athleteId,
       date: {
         gte: startOfDay,
         lte: endOfDay,
       },
+      plan: {
+        athleteId,
+      },
+    },
+    include: {
+      week: true,
+      phase: true,
     },
     orderBy: {
       date: 'desc',
@@ -60,10 +66,15 @@ export async function autoMatchActivityToDay(
     data: {
       athleteId,
       activityId,
-      weekIndex: plannedDay.weekIndex,
-      dayIndex: plannedDay.dayIndex,
+      weekIndex: plannedDay.week.weekNumber, // Use weekNumber from cascade
+      dayIndex: plannedDay.dayOfWeek, // Use dayOfWeek
       date: plannedDay.date,
-      plannedData: plannedDay.plannedData as any,
+      plannedData: {
+        warmup: plannedDay.warmup,
+        workout: plannedDay.workout,
+        cooldown: plannedDay.cooldown,
+        notes: plannedDay.notes,
+      } as any,
     },
   });
 
@@ -107,11 +118,15 @@ export async function linkActivityToDay(
   dayId: string,
   activityId: string
 ): Promise<void> {
-  const plannedDay = await prisma.trainingDayPlanned.findUnique({
+  const plannedDay = await prisma.trainingPlanDay.findUnique({
     where: { id: dayId },
+    include: {
+      plan: true,
+      week: true,
+    },
   });
 
-  if (!plannedDay || plannedDay.athleteId !== athleteId) {
+  if (!plannedDay || plannedDay.plan.athleteId !== athleteId) {
     throw new Error('Day not found or access denied');
   }
 
@@ -148,7 +163,12 @@ export async function linkActivityToDay(
       where: { id: existingExecutedDay.id },
       data: {
         activityId,
-        plannedData: plannedDay.plannedData as any,
+        plannedData: {
+          warmup: plannedDay.warmup,
+          workout: plannedDay.workout,
+          cooldown: plannedDay.cooldown,
+          notes: plannedDay.notes,
+        } as any,
       },
     });
   } else {
@@ -157,10 +177,15 @@ export async function linkActivityToDay(
       data: {
         athleteId,
         activityId,
-        weekIndex: plannedDay.weekIndex,
-        dayIndex: plannedDay.dayIndex,
+        weekIndex: plannedDay.week.weekNumber, // Use weekNumber from cascade
+        dayIndex: plannedDay.dayOfWeek, // Use dayOfWeek
         date: plannedDay.date,
-        plannedData: plannedDay.plannedData as any,
+        plannedData: {
+          warmup: plannedDay.warmup,
+          workout: plannedDay.workout,
+          cooldown: plannedDay.cooldown,
+          notes: plannedDay.notes,
+        } as any,
       },
     });
   }

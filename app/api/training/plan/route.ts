@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     // Get phase overview from plan structure
     // For now, we'll calculate phases based on total weeks
-    const totalWeeks = activePlan.trainingPlanTotalWeeks;
+    const totalWeeks = activePlan.totalWeeks;
     const baseWeeks = Math.floor(totalWeeks * 0.25);
     const buildWeeks = Math.floor(totalWeeks * 0.35);
     const peakWeeks = Math.floor(totalWeeks * 0.2);
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       id: activePlan.id,
-      name: activePlan.trainingPlanName,
+      name: activePlan.name,
       totalWeeks,
       phases,
       weeklyMileage,

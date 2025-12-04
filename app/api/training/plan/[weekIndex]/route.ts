@@ -30,17 +30,30 @@ export async function GET(
       return NextResponse.json({ error: 'No active plan found' }, { status: 404 });
     }
 
-    // Get all days for this week
-    const plannedDays = await prisma.trainingDayPlanned.findMany({
+    // Get all days for this week using new cascade structure
+    const week = await prisma.trainingPlanWeek.findFirst({
       where: {
-        athleteId,
-        trainingPlanId: activePlan.id,
-        weekIndex,
+        planId: activePlan.id,
+        weekNumber: weekIndex,
+        plan: {
+          athleteId,
+        },
       },
-      orderBy: {
-        dayIndex: 'asc',
+      include: {
+        phase: true,
+        days: {
+          orderBy: {
+            dayOfWeek: 'asc',
+          },
+        },
       },
     });
+
+    if (!week) {
+      return NextResponse.json({ error: 'Week not found' }, { status: 404 });
+    }
+
+    const plannedDays = week.days;
 
     if (plannedDays.length === 0) {
       return NextResponse.json({ error: 'Week not found' }, { status: 404 });
@@ -71,10 +84,14 @@ export async function GET(
     const days = plannedDays.map((day) => {
       const dateKey = day.date.toISOString().split('T')[0];
       const executed = executedMap.get(dateKey);
-      const plannedData = day.plannedData as any;
+      
+      // Check if it's a rest day
+      const workout = day.workout as any[];
+      const isRestDay = !workout || workout.length === 0 || 
+        workout.every((lap: any) => lap.paceGoal === null && lap.distanceMiles < 2);
 
       let status: 'pending' | 'completed' | 'rest' = 'pending';
-      if (plannedData.type === 'rest') {
+      if (isRestDay) {
         status = 'rest';
       } else if (executed) {
         status = 'completed';
@@ -82,17 +99,20 @@ export async function GET(
 
       return {
         id: day.id,
-        dayIndex: day.dayIndex,
+        dayOfWeek: day.dayOfWeek,
         date: day.date,
-        phase: day.phase,
-        plannedData,
+        phase: week.phase.name,
+        warmup: day.warmup,
+        workout: day.workout,
+        cooldown: day.cooldown,
+        notes: day.notes,
         status,
       };
     });
 
     return NextResponse.json({
-      weekIndex,
-      phase: plannedDays[0]?.phase || 'base',
+      weekNumber: weekIndex,
+      phase: week.phase.name,
       days,
     });
   } catch (error) {
