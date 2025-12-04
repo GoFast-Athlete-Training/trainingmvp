@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
       },
       include: {
         trainingPlan: {
-          raceRegistry: true,
+          include: {
+            raceRegistry: true,
+          },
         },
       },
       orderBy: {
