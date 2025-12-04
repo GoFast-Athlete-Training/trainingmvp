@@ -173,9 +173,9 @@ export default function TrainingSetupStartPage() {
           // Calculate total weeks from race date
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          const raceDate = new Date(raceDate);
-          raceDate.setHours(0, 0, 0, 0);
-          const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const raceDateObj = new Date(raceDate);
+          raceDateObj.setHours(0, 0, 0, 0);
+          const daysUntilRace = Math.ceil((raceDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
           const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
 
           const updatePlanResponse = await api.post('/training-plan/update', {
