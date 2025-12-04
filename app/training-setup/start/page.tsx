@@ -18,26 +18,24 @@ export default function TrainingSetupStartPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [trainingPlanId, setTrainingPlanId] = useState<string | null>(null);
 
-  // Get trainingPlanId from URL params
+  // Get trainingPlanId from URL params and auto-search for races
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const planId = urlParams.get('planId');
     if (planId) {
       setTrainingPlanId(planId);
       console.log('📋 Training plan ID from URL:', planId);
+      
+      // Auto-search for common races to help user find existing races
+      const commonQueries = ['Boston', 'Marathon', '5k', '10k', 'Half'];
+      // Try searching for "Boston" first (most common)
+      setSearchQuery('Boston');
+      handleSearchForQuery('Boston');
     }
   }, []);
 
-  // Create race form state
-  const [raceName, setRaceName] = useState('');
-  const [raceDistance, setRaceDistance] = useState('5k');
-  const [raceDate, setRaceDate] = useState('');
-  const [raceCity, setRaceCity] = useState('');
-  const [raceState, setRaceState] = useState('');
-  const [raceCountry, setRaceCountry] = useState('USA');
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+  const handleSearchForQuery = async (query: string) => {
+    if (!query.trim()) {
       setSearchResults([]);
       setHasSearched(false);
       return;
@@ -48,11 +46,10 @@ export default function TrainingSetupStartPage() {
     setHasSearched(true);
 
     try {
-      const response = await api.post('/race/search', { query: searchQuery });
+      const response = await api.post('/race/search', { query });
       if (response.data.success) {
         const races = response.data.races || [];
         setSearchResults(races);
-        // No error for empty results - just show empty state
       } else {
         setError(response.data.error || 'Failed to search races');
       }
@@ -61,7 +58,6 @@ export default function TrainingSetupStartPage() {
       const errorStatus = err.response?.status;
       const errorData = err.response?.data;
       
-      // Handle service unavailable (table missing) gracefully
       if (errorStatus === 503) {
         setError('Race search is temporarily unavailable. Please create a new race instead.');
       } else {
@@ -70,6 +66,18 @@ export default function TrainingSetupStartPage() {
     } finally {
       setSearching(false);
     }
+  };
+
+  // Create race form state
+  const [raceName, setRaceName] = useState('');
+  const [raceDistance, setRaceDistance] = useState('5k');
+  const [raceDate, setRaceDate] = useState('');
+  const [raceCity, setRaceCity] = useState('');
+  const [raceState, setRaceState] = useState('');
+  const [raceCountry, setRaceCountry] = useState('USA');
+
+  const handleSearch = async () => {
+    await handleSearchForQuery(searchQuery);
   };
 
   const handleSelectRace = async (race: any) => {
