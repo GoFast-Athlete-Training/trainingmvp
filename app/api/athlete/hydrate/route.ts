@@ -71,39 +71,19 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    console.log('🚀 HYDRATE API: Starting hydration for athlete ID:', athlete.id);
-    let hydrated;
-    try {
-      hydrated = await hydrateAthlete(athlete.id);
-      console.log('✅ HYDRATE API: Hydration completed successfully');
-      console.log('✅ HYDRATE API: Hydrated athlete has', hydrated?.athlete?.trainingPlans?.length || 0, 'training plans');
-    } catch (err: any) {
-      console.error('❌ HYDRATE API: Prisma error during hydration:', err);
-      console.error('❌ HYDRATE API: Error message:', err?.message);
-      console.error('❌ HYDRATE API: Error stack:', err?.stack);
-      console.error('❌ HYDRATE API: Full error:', JSON.stringify(err, null, 2));
-      return NextResponse.json({ 
-        success: false,
-        error: 'Database error during hydration',
-        details: err?.message,
-        stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined
-      }, { status: 500 });
-    }
-
-    if (!hydrated) {
-      console.error('❌ HYDRATE API: Hydration returned null');
-      return NextResponse.json({ 
-        success: false,
-        error: 'Failed to hydrate athlete data',
-        details: 'Hydration function returned null'
-      }, { status: 500 });
-    }
-
-    console.log('✅ HYDRATE API: Returning hydrated athlete data');
+    console.log('✅ HYDRATE API: Athlete found, returning athleteId:', athlete.id);
     console.log('✅ HYDRATE API: ===== REQUEST SUCCESS =====');
+    
+    // SURGICAL: Just return the athleteId - no complex hydration
     return NextResponse.json({ 
       success: true, 
-      athlete: hydrated.athlete 
+      athlete: {
+        id: athlete.id,
+        firebaseId: athlete.firebaseId,
+        email: athlete.email,
+        firstName: athlete.firstName,
+        lastName: athlete.lastName,
+      }
     });
   } catch (err: any) {
     console.error('❌ HYDRATE API: ===== UNEXPECTED ERROR =====');
