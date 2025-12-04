@@ -66,18 +66,23 @@ export default function TrainingSetupStartPage() {
     setError(null);
 
     try {
+      console.log('📋 Creating training plan for race:', race.id);
       const response = await api.post('/training-plan/create', {
         raceRegistryId: race.id,
       });
 
       if (response.data.success) {
+        console.log('✅ Training plan created:', response.data.trainingPlanId);
         router.push(`/training-setup/${response.data.trainingPlanId}`);
       } else {
-        setError(response.data.error || 'Failed to create training plan');
+        const errorMsg = response.data.error || response.data.details || 'Failed to create training plan';
+        console.error('❌ Training plan creation failed:', errorMsg);
+        setError(`Failed to create training plan: ${errorMsg}`);
       }
     } catch (err: any) {
-      console.error('Create plan error:', err);
-      setError(err.response?.data?.error || 'Failed to create training plan');
+      console.error('❌ Create plan error:', err);
+      const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to create training plan';
+      setError(`Failed to create training plan: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -93,7 +98,8 @@ export default function TrainingSetupStartPage() {
     setError(null);
 
     try {
-      // Create race
+      // Step 1: Create or find race (separate concern)
+      console.log('🏁 STEP 1: Creating/finding race...');
       const createRaceResponse = await api.post('/race/create', {
         name: raceName,
         distance: raceDistance,
@@ -103,23 +109,39 @@ export default function TrainingSetupStartPage() {
         country: raceCountry || null,
       });
 
-      if (createRaceResponse.data.success) {
-        // Create training plan with new race
+      if (!createRaceResponse.data.success) {
+        setError(createRaceResponse.data.error || 'Failed to create race');
+        return;
+      }
+
+      const raceId = createRaceResponse.data.race.id;
+      console.log('✅ STEP 1: Race created/found:', raceId);
+
+      // Step 2: Create training plan (separate concern)
+      console.log('📋 STEP 2: Creating training plan...');
+      try {
         const createPlanResponse = await api.post('/training-plan/create', {
-          raceRegistryId: createRaceResponse.data.race.id,
+          raceRegistryId: raceId,
         });
 
         if (createPlanResponse.data.success) {
+          console.log('✅ STEP 2: Training plan created:', createPlanResponse.data.trainingPlanId);
           router.push(`/training-setup/${createPlanResponse.data.trainingPlanId}`);
         } else {
-          setError(createPlanResponse.data.error || 'Failed to create training plan');
+          // Race was created successfully, but training plan failed
+          setError(`Race saved successfully, but failed to create training plan: ${createPlanResponse.data.error || 'Unknown error'}`);
         }
-      } else {
-        setError(createRaceResponse.data.error || 'Failed to create race');
+      } catch (planErr: any) {
+        // Race was created successfully, but training plan failed
+        console.error('❌ STEP 2: Training plan creation failed:', planErr);
+        const planErrorMsg = planErr.response?.data?.error || planErr.response?.data?.details || planErr.message || 'Unknown error';
+        setError(`Race saved successfully, but failed to create training plan: ${planErrorMsg}`);
       }
     } catch (err: any) {
-      console.error('Create race error:', err);
-      setError(err.response?.data?.error || 'Failed to create race');
+      // Race creation failed
+      console.error('❌ STEP 1: Race creation failed:', err);
+      const raceErrorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Unknown error';
+      setError(`Failed to create race: ${raceErrorMsg}`);
     } finally {
       setCreating(false);
     }
