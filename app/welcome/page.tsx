@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
@@ -41,13 +39,14 @@ export default function WelcomePage() {
         return;
       }
 
-      // Extract data from athlete object
+      // Extract weeklyActivities and weeklyTotals from athlete object (backend puts them there)
       const weeklyActivities = athlete.weeklyActivities || [];
       const weeklyTotals = athlete.weeklyTotals || null;
       const trainingPlans = athlete.trainingPlans || [];
 
       console.log('✅ WELCOME: Athlete hydrated successfully');
       console.log('✅ WELCOME: Athlete ID:', athlete.id);
+      console.log('✅ WELCOME: Email:', athlete.email);
       console.log('✅ WELCOME: Name:', athlete.firstName, athlete.lastName);
       console.log('✅ WELCOME: Training plans count:', trainingPlans.length);
       console.log('✅ WELCOME: Weekly activities count:', weeklyActivities.length);
@@ -59,12 +58,19 @@ export default function WelcomePage() {
         }
       }
 
-      // Store the complete hydration model (athlete + training plans + activities)
+      // Store the complete Prisma model (athlete + all relations + activities)
+      // Using trainingmvp LocalStorageAPI.setAthlete() instead of setFullHydrationModel
       console.log('💾 WELCOME: Caching full hydration model to localStorage...');
       LocalStorageAPI.setAthlete(athlete);
       LocalStorageAPI.setHydrationTimestamp(Date.now());
       
+      // Also store raw response as requested
+      localStorage.setItem('gofastHydration', JSON.stringify(response.data));
+      
       console.log('✅ WELCOME: Full hydration model cached');
+      
+      // Hydration complete - show button for user to click
+      console.log('🎯 WELCOME: Hydration complete, ready for user action');
       console.log('✅ WELCOME: ===== HYDRATION SUCCESS =====');
       setIsHydrated(true);
       setIsLoading(false);
@@ -80,17 +86,30 @@ export default function WelcomePage() {
       setError(error.response?.data?.error || error.message || 'Failed to load athlete data');
       setIsLoading(false);
       
-      // If 404, athlete doesn't exist - redirect to signup
-      if (errorStatus === 404) {
-        console.log('👤 WELCOME: Athlete not found (404) → redirecting to signup');
+      // STATE 3: Firebase user exists BUT DB athlete does NOT exist
+      // This is the dangerous "token-valid-but-athlete-missing" case
+      if (errorStatus === 401 && firebaseUser) {
+        console.log('🚫 WELCOME: Unauthorized (401) but Firebase user exists → routing to signup');
         router.push('/signup');
         return;
       }
       
-      // If 401, unauthorized - redirect to signup
-      if (errorStatus === 401) {
-        console.log('🚫 WELCOME: Unauthorized (401) → redirecting to signup');
+      // STATE 1: No Firebase user
+      if (errorStatus === 401 && !firebaseUser) {
+        console.log('🚫 WELCOME: Unauthorized (401) and no Firebase user → redirecting to signup');
         router.push('/signup');
+        return;
+      }
+      
+      // If user not found (404), check Firebase user state
+      if (errorStatus === 404) {
+        if (firebaseUser) {
+          console.log('👤 WELCOME: Athlete not found (404) but Firebase user exists → routing to signup');
+          router.push('/signup');
+        } else {
+          console.log('👤 WELCOME: Athlete not found (404) and no Firebase user → redirecting to signup');
+          router.push('/signup');
+        }
         return;
       }
       
@@ -99,7 +118,8 @@ export default function WelcomePage() {
   };
 
   useEffect(() => {
-    // Wait for Firebase auth to initialize
+    // CRITICAL: Wait for Firebase auth to initialize using onAuthStateChanged
+    // DO NOT check auth.currentUser directly - it will be null on page refresh!
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setAuthInitialized(true);
 
@@ -124,10 +144,10 @@ export default function WelcomePage() {
 
   if (!authInitialized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-xl text-white">Checking authentication...</p>
+          <p className="text-xl text-sky-100">Checking authentication...</p>
         </div>
       </div>
     );
@@ -135,7 +155,7 @@ export default function WelcomePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center">
         <div className="text-center bg-white rounded-xl shadow-lg p-8 max-w-md mx-4">
           <div className="text-6xl mb-4">⚠️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Account</h1>
@@ -154,19 +174,19 @@ export default function WelcomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center">
       <div className="text-center animate-fade-in">
         <h1 className="text-6xl md:text-8xl font-bold text-white mb-8 animate-pulse">
-          Let's Go <span className="text-orange-200">Crush</span> Goals!
+          Let's Go <span className="text-orange-400">Crush</span> Goals!
         </h1>
-        <p className="text-2xl md:text-3xl text-white/90 font-medium mb-8">
-          Start your training journey
+        <p className="text-2xl md:text-3xl text-sky-100 font-medium mb-8">
+          Start your running journey
         </p>
         
         {isLoading && (
           <div className="mt-8">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-xl text-white/90">Loading your account...</p>
+            <p className="text-xl text-sky-100">Loading your account...</p>
           </div>
         )}
 
@@ -174,7 +194,7 @@ export default function WelcomePage() {
           <div className="mt-8">
             <button
               onClick={handleLetsTrain}
-              className="bg-gradient-to-r from-orange-600 to-red-500 text-white px-12 py-4 rounded-xl font-bold text-2xl hover:from-orange-700 hover:to-red-600 transition shadow-2xl transform hover:scale-105"
+              className="bg-gradient-to-r from-orange-600 to-orange-500 text-white px-12 py-4 rounded-xl font-bold text-2xl hover:from-orange-700 hover:to-orange-600 transition shadow-2xl transform hover:scale-105"
             >
               Let's Train! →
             </button>

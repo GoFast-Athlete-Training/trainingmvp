@@ -13,14 +13,22 @@ export async function POST(request: Request) {
 
     const adminAuth = getAdminAuth();
     if (!adminAuth) {
-      return NextResponse.json({ error: 'Auth unavailable' }, { status: 500 });
+      console.error('❌ HYDRATE: Firebase Admin not initialized - check FIREBASE_SERVICE_ACCOUNT env var');
+      return NextResponse.json({ 
+        success: false,
+        error: 'Authentication service unavailable. Please check server configuration.' 
+      }, { status: 500 });
     }
 
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(authHeader.substring(7));
-    } catch {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    } catch (err: any) {
+      console.error('❌ HYDRATE: Token verification failed:', err?.message);
+      return NextResponse.json({ 
+        success: false,
+        error: 'Invalid or expired token' 
+      }, { status: 401 });
     }
 
     const firebaseId = decodedToken.uid;
@@ -34,7 +42,10 @@ export async function POST(request: Request) {
     }
 
     if (!athlete) {
-      return NextResponse.json({ error: 'Athlete not found' }, { status: 404 });
+      return NextResponse.json({ 
+        success: false,
+        error: 'Athlete not found' 
+      }, { status: 404 });
     }
 
     let hydrated;
@@ -46,7 +57,10 @@ export async function POST(request: Request) {
     }
 
     if (!hydrated) {
-      return NextResponse.json({ error: 'Failed to hydrate' }, { status: 500 });
+      return NextResponse.json({ 
+        success: false,
+        error: 'Failed to hydrate athlete data' 
+      }, { status: 500 });
     }
 
     return NextResponse.json({ 
@@ -55,7 +69,11 @@ export async function POST(request: Request) {
     });
   } catch (err: any) {
     console.error('❌ HYDRATE: Unexpected error:', err);
-    return NextResponse.json({ error: 'Server error', details: err?.message }, { status: 500 });
+    return NextResponse.json({ 
+      success: false,
+      error: 'Server error', 
+      details: err?.message 
+    }, { status: 500 });
   }
 }
 
