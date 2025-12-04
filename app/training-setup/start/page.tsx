@@ -15,6 +15,7 @@ export default function TrainingSetupStartPage() {
   const [searching, setSearching] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Create race form state
   const [raceName, setRaceName] = useState('');
@@ -27,20 +28,20 @@ export default function TrainingSetupStartPage() {
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setHasSearched(false);
       return;
     }
 
     setSearching(true);
     setError(null);
+    setHasSearched(true);
 
     try {
       const response = await api.post('/race/search', { query: searchQuery });
       if (response.data.success) {
         const races = response.data.races || [];
         setSearchResults(races);
-        if (races.length === 0) {
-          setError('No races found. Try a different search term or create a new race.');
-        }
+        // No error for empty results - just show empty state
       } else {
         setError(response.data.error || 'Failed to search races');
       }
@@ -177,6 +178,13 @@ export default function TrainingSetupStartPage() {
                     </div>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {hasSearched && !searching && searchResults.length === 0 && !error && (
+              <div className="bg-blue-50 border-2 border-blue-200 text-blue-700 px-4 py-3 rounded-xl mb-4">
+                <p className="font-semibold">No races found</p>
+                <p className="text-sm mt-1">Please create a new race below to get started.</p>
               </div>
             )}
           </div>
