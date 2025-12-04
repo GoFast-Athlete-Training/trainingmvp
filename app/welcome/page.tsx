@@ -29,12 +29,15 @@ export default function WelcomePage() {
       const response = await api.post('/athlete/hydrate');
       
       console.log('📡 WELCOME: Response received:', response.status);
+      console.log('📡 WELCOME: Full response data:', JSON.stringify(response.data, null, 2));
       
       const { success, athlete } = response.data;
 
       if (!success || !athlete) {
-        console.error('❌ WELCOME: Hydration failed:', response.data.error || 'Invalid response');
-        setError(response.data.error || 'Failed to load athlete data');
+        const errorMsg = response.data?.error || 'Invalid response';
+        console.error('❌ WELCOME: Hydration failed:', errorMsg);
+        console.error('❌ WELCOME: Full response:', response.data);
+        setError(`Hydration failed: ${errorMsg}. Check console for details.`);
         setIsLoading(false);
         return;
       }
@@ -81,10 +84,17 @@ export default function WelcomePage() {
       console.error('❌ WELCOME: Error message:', error.message);
       console.error('❌ WELCOME: Error status:', error.response?.status);
       console.error('❌ WELCOME: Error data:', error.response?.data);
+      console.error('❌ WELCOME: Full error object:', error);
+      console.error('❌ WELCOME: Error stack:', error.stack);
       
       const errorStatus = error.response?.status;
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.error || errorData?.message || error.message || 'Failed to load athlete data';
+      const errorDetails = errorData?.details || '';
       
-      setError(error.response?.data?.error || error.message || 'Failed to load athlete data');
+      // Show full error details on screen for debugging
+      const fullErrorMsg = `Error: ${errorMessage}${errorDetails ? `\nDetails: ${errorDetails}` : ''}\nStatus: ${errorStatus || 'N/A'}\nCheck console for full details.`;
+      setError(fullErrorMsg);
       setIsLoading(false);
       
       // STATE 3: Firebase user exists BUT DB athlete does NOT exist
@@ -156,19 +166,34 @@ export default function WelcomePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center">
-        <div className="text-center bg-white rounded-xl shadow-lg p-8 max-w-md mx-4">
+      <div className="min-h-screen bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center p-4">
+        <div className="text-center bg-white rounded-xl shadow-lg p-8 max-w-2xl w-full mx-4">
           <div className="text-6xl mb-4">⚠️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Account</h1>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => {
-              router.push('/signup');
-            }}
-            className="bg-orange-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-600 transition"
-          >
-            Go to Signup
-          </button>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-left">
+            <p className="text-red-800 font-mono text-sm whitespace-pre-wrap break-words">{error}</p>
+          </div>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => {
+                console.log('🔄 WELCOME: Retrying hydration...');
+                setError(null);
+                setIsLoading(true);
+                auth.currentUser && hydrateAthlete(auth.currentUser);
+              }}
+              className="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => {
+                router.push('/signup');
+              }}
+              className="bg-orange-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-600 transition"
+            >
+              Go to Signup
+            </button>
+          </div>
         </div>
       </div>
     );
