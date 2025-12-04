@@ -25,11 +25,7 @@ export async function GET(request: NextRequest) {
       include: {
         trainingPlan: {
           include: {
-            raceTrainingPlans: {
-              include: {
-                race: true,
-              },
-            },
+            race: true, // Direct relation
           },
         },
       },
@@ -46,11 +42,7 @@ export async function GET(request: NextRequest) {
           athleteId,
         },
         include: {
-          raceTrainingPlans: {
-            include: {
-              race: true,
-            },
-          },
+          race: true, // Direct relation
         },
         orderBy: {
           createdAt: 'desc',
@@ -135,9 +127,7 @@ export async function GET(request: NextRequest) {
 
     // Get race readiness (using goalPace5K from plan)
     const goal5kPace = activePlan.goalPace5K || null;
-    const race = activePlan.raceTrainingPlans && activePlan.raceTrainingPlans.length > 0
-      ? activePlan.raceTrainingPlans[0].race
-      : null;
+    const race = activePlan.race || null;
     let raceReadiness = null;
 
     if (goal5kPace && race) {

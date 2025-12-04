@@ -18,11 +18,7 @@ export async function GET(
         athleteId,
       },
       include: {
-        raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-        },
+        race: true, // Direct relation
       },
     });
 
@@ -30,9 +26,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Plan not found' }, { status: 404 });
     }
 
-    const race = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
-      ? plan.raceTrainingPlans[0].race
-      : null;
+    const race = plan.race || null;
 
     return NextResponse.json({
       success: true,

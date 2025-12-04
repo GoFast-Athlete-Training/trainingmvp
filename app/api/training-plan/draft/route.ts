@@ -23,11 +23,7 @@ export async function GET(request: NextRequest) {
       include: {
         trainingPlan: {
           include: {
-            raceTrainingPlans: {
-              include: {
-                race: true,
-              },
-            },
+            race: true, // Direct relation
           },
         },
       },
@@ -44,11 +40,7 @@ export async function GET(request: NextRequest) {
           athleteId,
         },
         include: {
-          raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-          },
+          race: true, // Direct relation
         },
         orderBy: {
           createdAt: 'desc',
@@ -66,7 +58,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Determine what's bolted on (what's missing)
-    const hasRace = plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0;
+    const hasRace = !!plan.race;
     const hasGoalTime = !!plan.goalTime;
 
     // Determine next step
@@ -93,13 +85,13 @@ export async function GET(request: NextRequest) {
         goalTime: plan.goalTime,
         goalPace5K: plan.goalPace5K,
         status: plan.status, // Just metadata, not source of truth
-        race: plan.raceTrainingPlans && plan.raceTrainingPlans.length > 0
+        race: plan.race
           ? {
-              id: plan.raceTrainingPlans[0].race.id,
-              name: plan.raceTrainingPlans[0].race.name,
-              raceType: plan.raceTrainingPlans[0].race.raceType,
-              miles: plan.raceTrainingPlans[0].race.miles,
-              date: plan.raceTrainingPlans[0].race.date,
+              id: plan.race.id,
+              name: plan.race.name,
+              raceType: plan.race.raceType,
+              miles: plan.race.miles,
+              date: plan.race.date,
             }
           : null,
         nextStep,

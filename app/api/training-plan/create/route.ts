@@ -36,11 +36,7 @@ export async function POST(request: NextRequest) {
         athleteId,
       },
       include: {
-        raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-        },
+        race: true, // Direct relation
       },
       orderBy: {
         createdAt: 'desc',
@@ -65,9 +61,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if race is already attached
-        const raceAlreadyAttached = existingPlan.raceTrainingPlans.some(
-          rtp => rtp.raceRegistryId === raceId
-        );
+        const raceAlreadyAttached = existingPlan.raceId === raceId;
 
         if (!raceAlreadyAttached) {
           // Calculate total weeks from race date
@@ -78,18 +72,11 @@ export async function POST(request: NextRequest) {
           const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
           const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
 
-          // Attach race via junction table
-          await prisma.raceTrainingPlan.create({
-            data: {
-              raceRegistryId: raceId,
-              trainingPlanId: existingPlan.id,
-            },
-          });
-
-          // Update plan name and weeks if needed
+          // Update plan with raceId directly
           const updatedPlan = await prisma.trainingPlan.update({
             where: { id: existingPlan.id },
             data: {
+              raceId: raceId,
               name: `${race.name} Training Plan`,
               totalWeeks: totalWeeks,
             },
@@ -155,18 +142,9 @@ export async function POST(request: NextRequest) {
         startDate: today,
         totalWeeks: totalWeeks,
         status: 'draft',
+        raceId: raceId || null, // Direct FK - no junction table needed
       },
     });
-
-    // If raceId provided, create junction table entry
-    if (raceId) {
-      await prisma.raceTrainingPlan.create({
-        data: {
-          raceRegistryId: raceId, // FK column name stays same
-          trainingPlanId: trainingPlan.id,
-        },
-      });
-    }
 
     console.log('✅ TRAINING PLAN CREATE: Plan created successfully:', trainingPlan.id);
 

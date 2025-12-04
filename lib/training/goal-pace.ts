@@ -77,10 +77,10 @@ export function calculateGoalFiveKPace(goalTime: string, raceTypeOrMiles: string
   // Convert to 5K target pace (5K = 3.1 miles)
   const goalFiveKSec = pacePerMileSec * 3.1;
 
-  // Validate result is reasonable (should be between 2:00 and 30:00 per mile for 5K)
-  if (goalFiveKSec < 120 || goalFiveKSec > 1800) {
-    console.warn(`Warning: Calculated 5K pace seems unusual: ${goalFiveKSec} seconds. Goal time: ${goalTime}, Race distance: ${raceDistance}`);
-  }
+      // Validate result is reasonable (should be between 2:00 and 30:00 per mile for 5K)
+      if (goalFiveKSec < 120 || goalFiveKSec > 1800) {
+        console.warn(`Warning: Calculated 5K pace seems unusual: ${goalFiveKSec} seconds. Goal time: ${goalTime}, Race distance: ${raceMiles} miles`);
+      }
 
   // Convert to mm:ss string
   const minutes = Math.floor(goalFiveKSec / 60);

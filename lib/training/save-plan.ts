@@ -17,24 +17,17 @@ export async function saveTrainingPlanToDB(
 ): Promise<string> {
   // Use transaction to ensure atomicity
   const result = await prisma.$transaction(async (tx) => {
-    // 1. Create TrainingPlan
+    // 1. Create TrainingPlan with raceId FK (direct relation, no junction table)
     const trainingPlan = await tx.trainingPlan.create({
       data: {
         athleteId,
+        raceId: raceId, // Direct FK to Race
         name: `${raceName} Training Plan`,
         goalTime: goalTime,
         goalPace5K: goalPace5K,
         startDate: planStartDate,
         totalWeeks: plan.totalWeeks,
         status: 'active',
-      },
-    });
-
-    // 2. Create RaceTrainingPlan junction entry
-    await tx.raceTrainingPlan.create({
-      data: {
-        raceRegistryId: raceId,
-        trainingPlanId: trainingPlan.id,
       },
     });
 

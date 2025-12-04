@@ -29,11 +29,7 @@ export async function POST(request: NextRequest) {
     const existingPlan = await prisma.trainingPlan.findUnique({
       where: { id: trainingPlanId },
       include: {
-        raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-        },
+        race: true, // Direct relation
       },
     });
 
@@ -73,15 +69,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get race from junction table (required)
-    const raceTrainingPlan = existingPlan.raceTrainingPlans[0];
-    if (!raceTrainingPlan) {
+    // Get race from direct relation (required)
+    const race = existingPlan.race;
+    if (!race) {
       return NextResponse.json(
         { success: false, error: 'Race must be attached before generating plan' },
         { status: 400 }
       );
     }
-    const race = raceTrainingPlan.race;
 
     // Load athlete
     const athlete = await prisma.athlete.findUnique({
@@ -121,7 +116,7 @@ export async function POST(request: NextRequest) {
     // Generate plan using new cascade structure
     const plan = await generateTrainingPlanAI({
       raceName: race.name,
-      raceDistance: race.raceType || race.distance, // Use raceType, fallback to distance for backward compat
+      raceDistance: race.raceType, // Use raceType (migration should have populated this)
       raceMiles: race.miles, // Pass miles for accurate calculations
       goalTime,
       fiveKPace: athlete.fiveKPace,
@@ -143,11 +138,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Get race ID from junction table
-      const raceTrainingPlan = await tx.raceTrainingPlan.findFirst({
-        where: { trainingPlanId: trainingPlanId },
-      });
-      const raceId = raceTrainingPlan?.raceRegistryId || '';
+      // Race is already linked via raceId FK (no junction table needed)
+      const raceId = race.id;
 
       // Create cascade: phases → weeks → days
       for (const phaseData of plan.phases) {

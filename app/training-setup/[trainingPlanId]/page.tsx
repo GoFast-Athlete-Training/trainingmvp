@@ -202,7 +202,7 @@ export default function TrainingSetupGoalTimePage() {
                 Goal Time *
               </label>
               
-              {(raceType === 'marathon' || raceType === 'half') ? (
+              {((plan?.race?.raceType?.toLowerCase() === 'marathon' || plan?.race?.raceType?.toLowerCase() === 'half')) ? (
                 // Long race: HH:MM:SS format
                 <div className="flex items-center gap-2">
                   <div className="flex-1">

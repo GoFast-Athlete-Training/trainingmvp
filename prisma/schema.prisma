@@ -118,8 +118,8 @@ model AthleteActivity {
   @@map("athlete_activities")
 }
 
-// Race - Global catalogue of races (search-first, shared across all users)
-// Registry pattern: Search first, if exists use it, if not create it
+// Race - Global catalogue of races (registry pattern)
+// Registry pattern: One race (Boston Marathon 2025) exists once, many TrainingPlans can reference it
 model Race {
   id        String   @id @default(cuid())
   name      String
@@ -135,33 +135,12 @@ model Race {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  raceTrainingPlans RaceTrainingPlan[] // Junction table - many-to-many with TrainingPlan
+  // Relations - Direct 1-to-many with TrainingPlan
+  trainingPlans TrainingPlan[]
 
   // Unique constraint: prevent duplicate races (same name + date)
   @@unique([name, date])
   @@map("race_registry")
-}
-
-// Junction table: Race <-> TrainingPlan (many-to-many)
-// This is where the "lock in" happens - a plan is linked to a race via this junction
-model RaceTrainingPlan {
-  id             String @id @default(cuid())
-  raceRegistryId String // FK column name stays same (table schema)
-  trainingPlanId String
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  race         Race         @relation(fields: [raceRegistryId], references: [id], onDelete: Cascade)
-  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-
-  @@unique([raceRegistryId, trainingPlanId])
-  @@index([raceRegistryId]) // Fast lookup of all plans for a race
-  @@index([trainingPlanId]) // Fast lookup of race for a plan
-  @@map("race_training_plans")
 }
 
 // Junction table: Athlete <-> TrainingPlan (many-to-many)
@@ -183,7 +162,7 @@ model AthleteTrainingPlan {
 model TrainingPlan {
   id        String @id @default(cuid())
   athleteId String // Original creator/owner
-  // NO raceRegistryId - use RaceTrainingPlan junction table instead
+  raceId    String? // Direct FK to Race (many TrainingPlans can reference same Race)
 
   // PLAN IDENTITY
   name String // Renamed from trainingPlanName
@@ -205,7 +184,7 @@ model TrainingPlan {
 
   // Relations
   athlete              Athlete               @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  raceTrainingPlans    RaceTrainingPlan[] // Junction table - many-to-many with RaceRegistry
+  race                 Race?                  @relation(fields: [raceId], references: [id], onDelete: SetNull)
   athleteTrainingPlans AthleteTrainingPlan[] // Junction table entries
   phases               TrainingPlanPhase[]
   weeks                TrainingPlanWeek[]
@@ -214,6 +193,7 @@ model TrainingPlan {
 
   // Indexes for fast lookups
   @@index([athleteId, status]) // Fast lookup of active plans by athlete
+  @@index([raceId]) // Fast lookup of all plans for a race
 }
 
 // Phase: Base / Build / Peak / Taper

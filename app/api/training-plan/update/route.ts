@@ -34,11 +34,7 @@ export async function POST(request: NextRequest) {
     const existingPlan = await prisma.trainingPlan.findUnique({
       where: { id: trainingPlanId },
       include: {
-        raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-        },
+        race: true, // Direct relation now
       },
     });
 
@@ -77,7 +73,7 @@ export async function POST(request: NextRequest) {
       'totalWeeks': 'totalWeeks',
     };
 
-    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks'];
+    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks', 'raceId'];
 
     const updateData: any = {};
     for (const [oldField, newField] of Object.entries(fieldMapping)) {
@@ -89,7 +85,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle raceId attachment via junction table
+    // Handle raceId attachment - just set it directly (no junction table)
     const raceId = updates.raceId;
     if (raceId) {
       console.log('📋 UPDATE: Attaching race:', raceId);
@@ -108,63 +104,44 @@ export async function POST(request: NextRequest) {
 
       console.log('✅ UPDATE: Race found:', race.name, 'Date:', race.date);
 
-      // Check if race is already attached
-      const raceAlreadyAttached = existingPlan.raceTrainingPlans.some(
-        rtp => rtp.raceRegistryId === raceId
-      );
+      // Set raceId directly - no junction table needed
+      updateData.raceId = raceId;
 
-      if (!raceAlreadyAttached) {
-        console.log('📋 UPDATE: Creating junction table entry...');
-        // Attach race via junction table
-        await prisma.raceTrainingPlan.create({
-          data: {
-            raceRegistryId: raceId,
-            trainingPlanId: trainingPlanId,
-          },
-        });
-        console.log('✅ UPDATE: Junction table entry created');
+      // Calculate total weeks from race date if not already set
+      if (!updateData.totalWeeks) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const raceDate = new Date(race.date);
+        raceDate.setHours(0, 0, 0, 0);
+        const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        updateData.totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
+      }
 
-        // Calculate total weeks from race date if not already set
-        if (!updateData.totalWeeks) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const raceDate = new Date(race.date);
-          raceDate.setHours(0, 0, 0, 0);
-          const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          updateData.totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
-        }
-
-        // Update plan name if not already set
-        if (!updateData.name) {
-          updateData.name = `${race.name} Training Plan`;
-        }
+      // Update plan name if not already set
+      if (!updateData.name) {
+        updateData.name = `${race.name} Training Plan`;
       }
     }
 
     // If goal time is being set, calculate goalPace5K
     const goalTimeValue = updates.goalTime || updates.trainingPlanGoalTime;
     if (goalTimeValue) {
-      // Get race from junction table (may have just been attached)
+      // Get race from direct relation (may have just been attached or already exists)
       const planWithRace = await prisma.trainingPlan.findUnique({
         where: { id: trainingPlanId },
         include: {
-          raceTrainingPlans: {
-            include: {
-              race: true,
-            },
-          },
+          race: true, // Direct relation
         },
       });
 
-      const raceTrainingPlan = planWithRace?.raceTrainingPlans[0];
-      if (!raceTrainingPlan) {
+      const race = planWithRace?.race;
+      if (!race) {
         return NextResponse.json(
           { success: false, error: 'Race must be attached before setting goal time' },
           { status: 400 }
         );
       }
 
-      const race = raceTrainingPlan.race;
       console.log('📊 UPDATE: Calculating goal pace');
       console.log('  Goal time:', goalTimeValue);
       console.log('  Race type:', race.raceType);
@@ -192,16 +169,12 @@ export async function POST(request: NextRequest) {
       where: { id: trainingPlanId },
       data: updateData,
       include: {
-        raceTrainingPlans: {
-          include: {
-            race: true,
-          },
-        },
+        race: true, // Direct relation
       },
     });
 
     console.log('✅ UPDATE: Plan updated successfully');
-    const race = updatedPlan.raceTrainingPlans[0]?.race;
+    const race = updatedPlan.race;
     if (race) {
       console.log('✅ UPDATE: Race attached:', race.name, 'Date:', race.date);
     }
