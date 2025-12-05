@@ -26,9 +26,10 @@ export interface TrainingInputs {
 
 // Lap format: stored in warmup/workout/cooldown JSON arrays
 export interface TrainingPlanLap {
-  lapIndex: number; // Local within warmup/workout/cooldown
-  distanceMiles: number; // 0.25, 1.0, etc
-  paceGoal: string | null; // "7:20" or null
+  lapIndex: number; // Sequential within warmup/workout/cooldown (1-based, must increment)
+  distanceMiles: number; // 0.25, 1.0, etc (must be > 0)
+  paceGoal: string | null; // "7:20" or null (mm:ss format)
+  hrGoal?: string | null; // "Z2", "Z3", "Z4", "Z5" or null (optional heart rate zone)
 }
 
 // Day: belongs to week, contains structured workout
@@ -284,22 +285,28 @@ E. MILEAGE RULES (CRITICAL):
 - A day with ANY workout MUST have mileage (cannot be zero miles)
 - Do NOT generate zero-mile run days except pure rest days
 
-F. PREFERRED TRAINING DAY ENFORCEMENT (CRITICAL):
+F. PREFERRED TRAINING DAY ENFORCEMENT (MANDATORY - NOT OPTIONAL):
 - Athlete's preferred training days: ${inputs.preferredDays.map(d => {
     const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return dayNames[d];
   }).join(', ')} (dayNumbers: ${inputs.preferredDays.join(', ')})
-- If the athlete prefers a day:
-  * It MUST be a run, unless it's a scheduled rest day by design
-- If the athlete does NOT prefer a day:
-  * It should default to rest or very light recovery
-- Typical pattern (respect day-of-week):
-  * Tuesday: easy/moderate run
-  * Wednesday: moderate or tempo run
-  * Thursday: intervals or steady tempo
-  * Saturday: long run
-  * Sunday: recovery run
-  * Monday + Friday → rest days unless in Peak phase
+
+YOU MUST STRICTLY OBEY PREFERRED TRAINING DAYS:
+- If a day IS preferred: It MUST be a run (with proper warmup/workout/cooldown), unless the plan calls for scheduled rest
+- If a day is NOT preferred: It MUST be rest (all arrays empty) or very short recovery (2-3 miles max)
+- Saturday MUST be the long run day (unless race-day proximity requires adjustment)
+- Sunday MUST be a recovery run (2-4 miles easy pace)
+- Tuesday/Wednesday/Thursday rotate: easy → tempo → intervals (assign based on phase and week progression)
+- Monday + Friday: Rest or light recovery unless in Peak phase (then may have easy runs)
+
+Day-of-Week Pattern (MANDATORY):
+- Monday (dayNumber 1): Rest or recovery (after weekend long run)
+- Tuesday (dayNumber 2): Easy/moderate run OR intervals (if preferred)
+- Wednesday (dayNumber 3): Moderate or tempo run (if preferred)
+- Thursday (dayNumber 4): Intervals or steady tempo (traditional speed day, if preferred)
+- Friday (dayNumber 5): Rest or recovery (prep for weekend, unless preferred)
+- Saturday (dayNumber 6): LONG RUN (MANDATORY if preferred, 6-12 miles in Week 1)
+- Sunday (dayNumber 7): Recovery run (2-4 miles easy, MANDATORY if preferred)
 
 G. WARMUP / WORKOUT / COOLDOWN GUARANTEES (CRITICAL):
 For ANY run day (non-rest):
@@ -358,10 +365,14 @@ VALIDATION REQUIREMENTS:
 - Each day MUST include warmup/workout/cooldown arrays
 - A run day cannot have empty arrays (must have at least 1 lap in warmup, workout, and cooldown)
 - Rest days must have ALL arrays empty
-- lapIndex starts at 1 within each array
+- lapIndex MUST be sequential (1, 2, 3...) within each array - NOT all the same number!
 - distanceMiles must be > 0 for any lap
 - paceGoal must be "mm:ss" format (e.g., "7:20") or null
+- hrGoal is optional but recommended (Z2/Z3/Z4/Z5 or null)
 - Daily mileage must match day type (easy: 3-5, moderate: 4-7, long: 6-12, recovery: 2-4)
+- Weekly mileage MUST total approximately ${inputs.currentWeeklyMileage} miles for Week 1
+- Weekly mileage = sum of ALL lap distances across all 7 days (warmup + workout + cooldown)
+- Preferred training days MUST be respected (run days on preferred days, rest on non-preferred)
 
 CRITICAL: The JSON structure must be EXACTLY this format (no variations):
 {
