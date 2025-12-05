@@ -107,6 +107,10 @@ export async function generateTrainingPlanAI(
   // Convert to our 1-7 system (1=Monday, 7=Sunday)
   const startDayNumber = startDayOfWeek === 0 ? 7 : startDayOfWeek;
   
+  // Calculate how many days are left in the week (for partial first week)
+  // If starting Monday (1), generate 7 days. If starting Friday (5), generate 3 days (Fri, Sat, Sun)
+  const daysRemainingInWeek = 8 - startDayNumber; // Monday=1 → 7 days, Friday=5 → 3 days, Sunday=7 → 1 day
+  
   // Format dates for AI context
   const today = new Date();
   const todayYear = today.getFullYear();
@@ -118,6 +122,16 @@ export async function generateTrainingPlanAI(
   const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
   const startDay = String(startDate.getDate()).padStart(2, '0');
   const startDateStr = `${startMonth}/${startDay}/${startYear}`;
+  
+  // Build list of dayNumbers to generate for Week 1
+  const week1DayNumbers: number[] = [];
+  for (let i = startDayNumber; i <= 7; i++) {
+    week1DayNumbers.push(i);
+  }
+  const week1DayNames = week1DayNumbers.map(d => {
+    const names = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return names[d];
+  }).join(', ');
   
   const prompt = `You are a professional running coach creating a training plan using the GoFast Training Model.
 
@@ -355,8 +369,10 @@ F. CRITICAL OUTPUT RULES:
 - Each phase MUST have ONLY "name" and "weekCount" - NO "weeks" property
 - Phase distribution: base ~25%, build ~35%, peak ~20%, taper remaining
 - Generate ONLY the phase structure (with weekCount) and Week 1
-- Week 1 MUST have "weekNumber": 1 and exactly 7 days
-- Progress mileage gradually - Week 1 should start at or near currentWeeklyMileage (${inputs.currentWeeklyMileage} miles)
+- Week 1 MUST have "weekNumber": 1
+- Week 1 MUST have exactly ${daysRemainingInWeek} days (dayNumbers: ${week1DayNumbers.join(', ')}) because plan starts on ${startDayName}
+- DO NOT generate days before the start date
+- Progress mileage gradually - Week 1 should target approximately ${Math.round(inputs.currentWeeklyMileage * (daysRemainingInWeek / 7))} miles (proportional to ${daysRemainingInWeek} days remaining in week)
 - Include rest days appropriately (all arrays empty for pure rest days)
 - DO NOT create adaptive metrics, summaries, or preferred days
 
