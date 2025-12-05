@@ -331,8 +331,8 @@ export default function TrainingSetupReviewPage() {
                         {(() => {
                           const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                           return plan.preferredDays
-                            .sort((a, b) => a - b)
-                            .map(d => dayNames[d])
+                            .sort((a: number, b: number) => a - b)
+                            .map((d: number) => dayNames[d])
                             .join('/');
                         })()}
                       </p>
