@@ -402,13 +402,7 @@ CRITICAL: The JSON structure must be EXACTLY this format (no variations):
   "week": {
     "weekNumber": 1,
     "days": [
-      { "dayNumber": 1, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 2, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 3, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 4, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 5, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 6, "warmup": [], "workout": [], "cooldown": [] },
-      { "dayNumber": 7, "warmup": [], "workout": [], "cooldown": [] }
+      ${week1DayNumbers.map(d => `{ "dayNumber": ${d}, "warmup": [], "workout": [], "cooldown": [] }`).join(',\n      ')}
     ]
   }
 }
