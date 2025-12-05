@@ -177,6 +177,9 @@ model TrainingPlan {
   current5KPace String? // Current 5K pace in mm:ss format (baseline fitness)
   currentWeeklyMileage Int? // Current weekly mileage (baseline volume)
 
+  // PLAN PREFERENCES
+  preferredDays Int[] // Preferred training days (1=Monday, 7=Sunday), e.g., [1,3,5] for Mon/Wed/Fri
+
   // PLAN STRUCTURE
   startDate DateTime // Renamed from trainingPlanStartDate
   totalWeeks Int // Renamed from trainingPlanTotalWeeks

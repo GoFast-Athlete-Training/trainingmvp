@@ -67,6 +67,7 @@ interface DraftPlan {
     hasRace: boolean;
     hasGoalTime: boolean;
     hasBaseline: boolean;
+    hasPreferences: boolean;
     hasStartDate: boolean;
     isComplete: boolean;
   };
@@ -177,18 +178,22 @@ export default function TrainingHub() {
           nextStep: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
               ? data.draftPlan.progress.hasBaseline
-                ? data.draftPlan.progress.hasStartDate
-                  ? 'Review & Generate'
-                  : 'Set Start Date'
+                ? data.draftPlan.progress.hasPreferences
+                  ? data.draftPlan.progress.hasStartDate
+                    ? 'Review & Generate'
+                    : 'Set Start Date'
+                  : 'Set Preferences'
                 : 'Set Baseline'
               : 'Set Goal Time'
             : 'Select Race',
           nextStepUrl: data.draftPlan.progress.hasRace
             ? data.draftPlan.progress.hasGoalTime
               ? data.draftPlan.progress.hasBaseline
-                ? data.draftPlan.progress.hasStartDate
-                  ? `/training-setup/${data.draftPlan.id}/review`
-                  : `/training-setup/${data.draftPlan.id}/review` // Start date is set on review page
+                ? data.draftPlan.progress.hasPreferences
+                  ? data.draftPlan.progress.hasStartDate
+                    ? `/training-setup/${data.draftPlan.id}/review`
+                    : `/training-setup/${data.draftPlan.id}/review` // Start date is set on review page
+                  : `/training-setup/${data.draftPlan.id}/preferences`
                 : `/training-setup/${data.draftPlan.id}/baseline`
               : `/training-setup/${data.draftPlan.id}`
             : `/training-setup/start?planId=${data.draftPlan.id}`,
@@ -392,7 +397,51 @@ export default function TrainingHub() {
                   )}
                 </div>
 
-                {/* Step 4: Review & Generate */}
+                {/* Step 4: Set Preferences */}
+                <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
+                  draftPlan.progress.hasPreferences 
+                    ? 'bg-green-50 border-green-300' 
+                    : draftPlan.progress.hasBaseline
+                    ? 'bg-orange-50 border-orange-300'
+                    : 'bg-gray-50 border-gray-200 opacity-50'
+                }`}>
+                  <div className={`text-3xl ${
+                    draftPlan.progress.hasPreferences 
+                      ? 'text-green-600' 
+                      : draftPlan.progress.hasBaseline
+                      ? 'text-orange-600'
+                      : 'text-gray-400'
+                  }`}>
+                    {draftPlan.progress.hasPreferences ? '✅' : '4️⃣'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg text-gray-900">Your Plan Preferences</div>
+                    {draftPlan.progress.hasPreferences ? (
+                      <div className="text-sm text-gray-600 mt-1">
+                        Training days selected
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-600 mt-1">
+                        Preferred training days
+                      </div>
+                    )}
+                  </div>
+                  {draftPlan.progress.hasBaseline && !draftPlan.progress.hasPreferences && (
+                    <button
+                      onClick={() => router.push(`/training-setup/${draftPlan.id}/preferences`)}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      Set Preferences →
+                    </button>
+                  )}
+                  {draftPlan.progress.hasPreferences && (
+                    <div className="text-sm text-green-600 font-semibold">
+                      Preferences set ✓
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 5: Review & Generate */}
                 <div className={`flex items-center gap-4 p-4 rounded-xl border-2 ${
                   draftPlan.progress.isComplete 
                     ? 'bg-orange-50 border-orange-300' 
@@ -403,7 +452,7 @@ export default function TrainingHub() {
                       ? 'text-orange-600' 
                       : 'text-gray-400'
                   }`}>
-                    4️⃣
+                    5️⃣
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-lg text-gray-900">Review & Generate</div>
@@ -411,13 +460,18 @@ export default function TrainingHub() {
                       Generate your personalized training plan
                     </div>
                   </div>
-                  {draftPlan.progress.isComplete && (
+                  {draftPlan.progress.hasPreferences && draftPlan.progress.hasStartDate && !draftPlan.progress.isComplete && (
                     <button
                       onClick={() => router.push(draftPlan.nextStepUrl)}
                       className="bg-orange-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-orange-600 transition"
                     >
                       {draftPlan.nextStep} →
                     </button>
+                  )}
+                  {draftPlan.progress.isComplete && (
+                    <div className="text-sm text-green-600 font-semibold">
+                      Ready to Generate ✓
+                    </div>
                   )}
                 </div>
               </div>

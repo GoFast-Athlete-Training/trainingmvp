@@ -107,6 +107,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate preferred days - require at least 5 days for effective training
+    const preferredDays = existingPlan.preferredDays && existingPlan.preferredDays.length >= 5
+      ? existingPlan.preferredDays
+      : [1, 2, 3, 4, 5, 6]; // Default to Mon-Sat (6 days) if not set or insufficient
+
     const goalTime = existingPlan.goalTime!;
     const planStartDate = existingPlan.startDate;
     const totalWeeks = existingPlan.totalWeeks;
@@ -159,6 +164,7 @@ export async function POST(request: NextRequest) {
       predictedRacePace: predictedRacePaceString,
       goalRacePace: goalRacePaceString,
       currentWeeklyMileage: currentWeeklyMileage, // Baseline weekly mileage for gradual build-up
+      preferredDays: preferredDays, // Preferred training days (1=Monday, 7=Sunday)
       totalWeeks,
       planStartDate: planStartDate, // Pass actual start date so AI knows day of week patterns
     });

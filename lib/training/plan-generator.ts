@@ -19,6 +19,7 @@ export interface TrainingInputs {
   predictedRacePace: string; // mm:ss format - predicted race pace based on 5K fitness
   goalRacePace: string; // mm:ss format - goal race pace from goal time
   currentWeeklyMileage: number; // Baseline weekly mileage - start here and build up gradually
+  preferredDays: number[]; // Preferred training days (1=Monday, 7=Sunday)
   totalWeeks: number; // Calculated externally
   planStartDate: Date; // Actual start date - used to determine day of week patterns
 }
@@ -209,6 +210,11 @@ D. DAY BEFORE RACE RULE (CRITICAL):
 - This is the LAST day of the plan
 
 D. DAY-OF-WEEK TRAINING PATTERNS (CRITICAL):
+- Athlete's preferred training days: ${inputs.preferredDays.map(d => {
+    const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return dayNames[d];
+  }).join(', ')} (dayNumbers: ${inputs.preferredDays.join(', ')})
+- PRIORITIZE workouts on these preferred days when possible
 - Respect traditional day-of-week training patterns:
   - Monday: Recovery/easy day (after weekend long run)
   - Tuesday: Workout day (intervals, tempo, or speed work)
@@ -235,6 +241,7 @@ D. DAY-OF-WEEK TRAINING PATTERNS (CRITICAL):
   - dayNumber 7 = Sunday (recovery/rest)
 - Each week MUST have exactly 7 days (dayNumber 1 through 7)
 - The backend will map these dayNumbers to actual calendar dates based on the plan start date
+- When assigning workouts, prioritize the athlete's preferred days (${inputs.preferredDays.join(', ')}) for key workouts like intervals, tempo runs, and long runs
 
 E. STRUCTURED LAP FORMAT:
 - Each day MUST have "warmup", "workout", "cooldown" arrays (can be empty [])

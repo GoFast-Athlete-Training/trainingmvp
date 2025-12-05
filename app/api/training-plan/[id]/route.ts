@@ -43,6 +43,9 @@ export async function GET(
         goalPace5K: plan.goalPace5K, // Deprecated, kept for backward compatibility
         goalRacePace: plan.goalRacePace,
         predictedRacePace: plan.predictedRacePace,
+        current5KPace: plan.current5KPace,
+        currentWeeklyMileage: plan.currentWeeklyMileage,
+        preferredDays: plan.preferredDays,
         startDate: plan.startDate,
         totalWeeks: plan.totalWeeks,
         status: plan.status,

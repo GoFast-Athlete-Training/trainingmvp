@@ -126,8 +126,8 @@ export default function TrainingSetupBaselinePage() {
           // Don't fail the whole flow if athlete update fails
         }
         
-        // Route to review page
-        router.push(`/training-setup/${trainingPlanId}/review`);
+        // Route to preferences page
+        router.push(`/training-setup/${trainingPlanId}/preferences`);
       } else {
         setError(response.data.error || 'Failed to save baseline metrics');
         setSaving(false);

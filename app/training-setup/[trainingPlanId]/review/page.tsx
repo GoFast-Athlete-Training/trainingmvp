@@ -295,6 +295,28 @@ export default function TrainingSetupReviewPage() {
                   )}
                 </div>
 
+                {/* Current 5K Pace Section */}
+                {plan.current5KPace && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600">Current 5K Pace</p>
+                    <p className="text-lg font-bold text-blue-600">
+                      {plan.current5KPace} /mile
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Your current fitness level</p>
+                  </div>
+                )}
+
+                {/* Predicted Race Pace Section */}
+                {plan.predictedRacePace && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600">Predicted Race Pace</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {paceToString(plan.predictedRacePace)} /mile
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Based on your current 5K pace</p>
+                  </div>
+                )}
+
 
                 {/* Weeks Until Race (calculated, read-only) */}
                 {weeksUntilRace !== null && (
@@ -340,7 +362,7 @@ export default function TrainingSetupReviewPage() {
 
           <div className="flex gap-4">
             <button
-              onClick={() => router.push(`/training-setup/${trainingPlanId}/baseline`)}
+              onClick={() => router.push(`/training-setup/${trainingPlanId}/preferences`)}
               className="flex-1 bg-gray-100 text-gray-700 py-4 px-6 rounded-xl font-semibold hover:bg-gray-200 transition"
             >
               ← Back

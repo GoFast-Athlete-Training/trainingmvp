@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       'totalWeeks': 'totalWeeks',
     };
 
-    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks', 'raceId', 'current5KPace', 'currentWeeklyMileage'];
+    const allowedFields = ['goalTime', 'name', 'startDate', 'totalWeeks', 'raceId', 'current5KPace', 'currentWeeklyMileage', 'preferredDays'];
 
     const updateData: any = {};
     for (const [oldField, newField] of Object.entries(fieldMapping)) {
@@ -92,6 +92,24 @@ export async function POST(request: NextRequest) {
     }
     if ('currentWeeklyMileage' in updates) {
       updateData.currentWeeklyMileage = updates.currentWeeklyMileage;
+    }
+
+    // Handle preferredDays with validation (require at least 5 days)
+    if ('preferredDays' in updates) {
+      const preferredDays = updates.preferredDays;
+      if (!Array.isArray(preferredDays)) {
+        return NextResponse.json(
+          { success: false, error: 'Preferred days must be an array' },
+          { status: 400 }
+        );
+      }
+      if (preferredDays.length < 5) {
+        return NextResponse.json(
+          { success: false, error: 'You need to select at least 5 training days to build up to 40-45 miles per week effectively' },
+          { status: 400 }
+        );
+      }
+      updateData.preferredDays = preferredDays;
     }
 
     // Handle raceId attachment - just set it directly (no junction table)

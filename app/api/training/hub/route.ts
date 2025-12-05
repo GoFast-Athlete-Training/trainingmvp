@@ -76,8 +76,9 @@ export async function GET(request: NextRequest) {
     const hasRace = !!activePlan.race;
     const hasGoalTime = !!activePlan.goalTime;
     const hasBaseline = !!(activePlan.current5KPace && activePlan.currentWeeklyMileage);
+    const hasPreferences = !!(activePlan.preferredDays && activePlan.preferredDays.length > 0);
     const hasStartDate = !!activePlan.startDate;
-    const isPlanComplete = hasRace && hasGoalTime && hasBaseline && hasStartDate;
+    const isPlanComplete = hasRace && hasGoalTime && hasBaseline && hasPreferences && hasStartDate;
 
     // STATE 2: Draft/Incomplete plan (exists but not fully set up or not generated)
     if (!isPlanComplete || planDayCount === 0 || activePlan.status === 'draft') {
@@ -110,6 +111,7 @@ export async function GET(request: NextRequest) {
             hasRace,
             hasGoalTime,
             hasBaseline,
+            hasPreferences,
             hasStartDate,
             isComplete: isPlanComplete && planDayCount > 0,
           },
