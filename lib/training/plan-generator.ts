@@ -529,13 +529,21 @@ DO NOT include "weeks" inside phases. DO NOT generate weeks beyond week 1. Retur
       }
     }
 
-    // Validate week 1 structure
+    // Validate week 1 structure (may be partial week)
     const week = parsed.week;
     if (!week.days || !Array.isArray(week.days)) {
       throw new Error(`Invalid week structure: missing days array`);
     }
-    if (week.days.length !== 7) {
-      throw new Error(`Week 1 must have exactly 7 days, got ${week.days.length}`);
+    // Week 1 may be partial (not always 7 days) - validate against expected days
+    const expectedDayCount = daysRemainingInWeek;
+    if (week.days.length !== expectedDayCount) {
+      throw new Error(`Week 1 must have exactly ${expectedDayCount} days (starting on ${startDayName}, dayNumber ${startDayNumber}), got ${week.days.length}`);
+    }
+    // Validate that dayNumbers match expected range
+    const expectedDayNumbers = week1DayNumbers;
+    const actualDayNumbers = week.days.map((d: any) => d.dayNumber).sort((a: number, b: number) => a - b);
+    if (JSON.stringify(actualDayNumbers) !== JSON.stringify(expectedDayNumbers)) {
+      throw new Error(`Week 1 dayNumbers must be [${expectedDayNumbers.join(', ')}] (starting on ${startDayName}), got [${actualDayNumbers.join(', ')}]`);
     }
     for (const day of week.days) {
       if (!day.dayNumber || day.dayNumber < 1 || day.dayNumber > 7) {
