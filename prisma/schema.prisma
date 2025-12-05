@@ -215,6 +215,13 @@ model TrainingPlanPhase {
   weekCount Int // How many weeks in this phase
   totalMiles Float? // Sum of miles across all weeks in this phase (computed optional)
 
+  // Phase Configuration (new fields)
+  phaseDescription String? // User-editable description of the phase
+  phaseTotalMilesTarget Float? // Optional user-set target total miles for the phase
+  longRunProgression Int[] @default([]) // Array of long run distances, e.g. [10, 12, 14, 12]
+  qualityWorkoutsPerWeek Int @default(1) // 0, 1, or 2 quality workouts per week
+  runTypesEnabled Json? // { easy: boolean, tempo: boolean, intervals: boolean, longRun: boolean }
+
   // Relations
   plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   weeks TrainingPlanWeek[]
