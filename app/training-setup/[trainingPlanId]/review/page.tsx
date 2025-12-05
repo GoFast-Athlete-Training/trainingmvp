@@ -152,32 +152,37 @@ export default function TrainingSetupReviewPage() {
     setGeneratedPlan(null); // Clear previous generation
 
     try {
-      // First, update the plan with the start date and recalculated weeks
+      // First, ALWAYS update the plan with the start date (required before generation)
       const startDateObj = new Date(startDate);
       startDateObj.setUTCHours(0, 0, 0, 0);
       
+      // Calculate total weeks if race date exists
+      let calculatedWeeks = plan?.totalWeeks || 16; // Default to 16 if no race date
       if (plan?.race?.date) {
         const raceDate = new Date(plan.race.date);
         raceDate.setUTCHours(0, 0, 0, 0);
         const diffMs = raceDate.getTime() - startDateObj.getTime();
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        const calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
-        
-        // Update plan with start date and weeks
-        const updateResponse = await api.post('/training-plan/update', {
-          trainingPlanId,
-          updates: {
-            startDate: startDateObj.toISOString(),
-            totalWeeks: calculatedWeeks,
-          },
-        });
-
-        if (!updateResponse.data.success) {
-          setError(updateResponse.data.error || 'Failed to update plan');
-          setGenerating(false);
-          return;
-        }
+        calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
       }
+      
+      // ALWAYS update plan with start date (and weeks if calculated)
+      const updateResponse = await api.post('/training-plan/update', {
+        trainingPlanId,
+        updates: {
+          startDate: startDateObj.toISOString(),
+          totalWeeks: calculatedWeeks,
+        },
+      });
+
+      if (!updateResponse.data.success) {
+        setError(updateResponse.data.error || 'Failed to update plan with start date');
+        setGenerating(false);
+        return;
+      }
+      
+      // Wait a moment to ensure database transaction commits
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Generate the plan (returns plan for review, doesn't save)
       console.log('🔄 REVIEW: Calling generate endpoint...');
