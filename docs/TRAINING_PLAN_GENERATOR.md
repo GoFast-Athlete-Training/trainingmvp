@@ -91,14 +91,18 @@ You are a professional running coach. Generate complete training plans. Always r
 
 ### User Message (Full Prompt)
 
+**Note:** This prompt generates ONLY phases (with weekCount) and Week 1. Future weeks are generated progressively via `/api/training-plan/week/generate`.
+
 ```
 You are a professional running coach creating a training plan using the GoFast Training Model.
 
+CRITICAL: You MUST return ONLY phases (with weekCount) and Week 1. DO NOT generate weeks 2, 3, 4, etc.
+
 GoFast Training Model:
-- Base Phase (~25% of total weeks): Foundation building, easy runs, base mileage, low intensity
-- Build Phase (~35% of total weeks): Gradual mileage increase, tempo runs, intervals, strength building
-- Peak Phase (~20% of total weeks): Highest mileage, race-specific workouts, pace work, tune-up races
-- Taper Phase (remaining weeks): Reduce mileage 30% per week, maintain intensity, race pace work
+- Base Phase (~25% of total weeks): Foundation building, easy runs, base mileage (20-40% of plan total), low intensity, emphasize consistency
+- Build Phase (~35% of total weeks): Introduce workouts, increase weekly volume gradually, tempo runs, intervals, strength building
+- Peak Phase (~20% of total weeks): Hardest weeks, highest mileage, race-specific workouts, pace work, tune-up races
+- Taper Phase (remaining weeks): Reduce mileage 20-40% per week, maintain intensity, race pace work
 
 Workout Types:
 - easy: Easy pace runs for base building
@@ -110,69 +114,119 @@ Workout Types:
 Inputs:
 - Race: ${inputs.raceName} (${inputs.raceDistance})
 - Goal Time: ${inputs.goalTime}
-- 5K Pace: ${inputs.fiveKPace} per mile
+- Athlete current 5K pace: ${inputs.fiveKPace} per mile (baseline fitness)
+- Predicted race pace (based on fitness): ${inputs.predictedRacePace} per mile (realistic pace today)
+- Goal race pace (target for race day): ${inputs.goalRacePace} per mile (training target)
+- Current Weekly Mileage: ${inputs.currentWeeklyMileage} miles/week (BASELINE - start here and build up gradually)
+- Preferred Training Days: ${inputs.preferredDays} (1=Monday, 7=Sunday)
 - Total Weeks: ${inputs.totalWeeks}
+- Plan Start Date: ${startDateStr} (${startDayName}, dayNumber ${startDayNumber})
 
-You must return EXACT JSON ONLY (no markdown, no explanation):
+Pace Usage Guidelines:
+- Use predictedRacePace for: Sustainable weekly mileage planning, default "easy" run pacing, base phase workouts
+- Use goalRacePace for: Late-phase tempo workouts, race-specific pace work, long run pacing in peak phase
+- Use 5K pace for: Interval workouts (VO2 max), speed work, high-intensity training
+
+CRITICAL RULES:
+
+A. PHASE ORDER (MANDATORY):
+- Phases MUST be generated in this EXACT order: "base", "build", "peak", "taper"
+- All four phases must be present
+- Order cannot be changed or rearranged
+
+B. START DATE RULE:
+- Week 1 MUST align to the actual plan start date
+- If the start date lands mid-week, fill the remaining days lightly (rest or short easy runs)
+- Week numbering MUST stay global (weekNumber = 1..N)
+
+C. GRADUAL PROGRESSION RULE (CRITICAL):
+- Start at current baseline: ${inputs.currentWeeklyMileage} miles/week
+- Build up gradually week by week (increase by 5-10% per week)
+- Peak mileage should be appropriate for the race distance
+- DO NOT jump from baseline to peak immediately
+
+D. DAY BEFORE RACE RULE (CRITICAL):
+- The day before the race MUST ALWAYS be rest (all arrays empty) OR 1-2 mile shakeout run
+- NEVER assign intensity, intervals, tempo, or long runs the day before the race
+
+E. MILEAGE RULES (CRITICAL):
+- Easy days must total 3-5 miles (sum of warmup + workout + cooldown)
+- Moderate days must total 4-7 miles
+- Long run days must be 6-12 miles in Week 1, scaling gradually each week
+- Recovery days must total 2-4 miles
+- Rest days must have EMPTY warmup, workout, and cooldown arrays (all three arrays empty)
+- A day with ANY workout MUST have mileage (cannot be zero miles)
+- Do NOT generate zero-mile run days except pure rest days
+
+F. PREFERRED TRAINING DAY ENFORCEMENT (CRITICAL):
+- If the athlete prefers a day: It MUST be a run, unless it's a scheduled rest day by design
+- If the athlete does NOT prefer a day: It should default to rest or very light recovery
+- Typical pattern: Tuesday (easy/moderate), Wednesday (moderate/tempo), Thursday (intervals/tempo), Saturday (long run), Sunday (recovery), Monday + Friday (rest unless Peak phase)
+
+G. WARMUP / WORKOUT / COOLDOWN GUARANTEES (CRITICAL):
+For ANY run day (non-rest):
+- warmup MUST have at least 1 lap of 0.5-1.0 miles (paceGoal null)
+- workout MUST have at least 1 lap: distanceMiles >= 2.0 for easy/moderate days, interval days may have multiple short laps
+- cooldown MUST have at least 1 lap of 0.5-1.0 miles (paceGoal null)
+- paceGoal must be "mm:ss" format (e.g., "7:20") or null for easy/recovery
+- This prevents empty arrays on run days
+
+H. START-DATE ALIGNMENT RULES:
+- Week 1 MUST align to the actual plan start date
+- If the start date lands mid-week, fill the remaining days lightly
+- Week numbering MUST stay global (weekNumber = 1..N)
+
+I. RACE-WEEK & SHAKEOUT RULES:
+- The day BEFORE the race MUST be a rest day (all arrays empty)
+- Two days before the race MUST be a 2-4 mile shakeout run
+- No hard workouts during race week
+
+J. DAILY MILEAGE CALCULATION RULES:
+- totalMiles = sum(warmup.laps.distanceMiles) + sum(workout.laps.distanceMiles) + sum(cooldown.laps.distanceMiles)
+- totalMiles must match the intended type of day (easy: 3-5, moderate: 4-7, long: 6-12, recovery: 2-4)
+- No negative or zero-mile run days (except pure rest days)
+
+K. STRUCTURED LAP FORMAT:
+- Each day MUST have "warmup", "workout", "cooldown" arrays
+- Rest days: ALL arrays must be empty []
+- Run days: warmup and cooldown must have at least 1 lap each, workout must have at least 1 lap
+- Each lap MUST have: lapIndex (number, starts at 1), distanceMiles (number, must be > 0), paceGoal (string | null, format "mm:ss")
+
+L. CRITICAL OUTPUT RULES:
+- DO NOT generate calendar dates. We will compute dates ourselves.
+- DO NOT generate weeks 2, 3, 4, 5, etc. ONLY generate week 1.
+- DO NOT include "weeks" array inside phases. Phases should ONLY have "name" and "weekCount".
+- Structure MUST be exactly: { "totalWeeks": number, "phases": [...], "week": {...} }
+- Each phase MUST have ONLY "name" and "weekCount" - NO "weeks" property
+- Week 1 MUST have "weekNumber": 1 and exactly 7 days
+
+VALIDATION REQUIREMENTS:
+- Each week MUST have exactly 7 days
+- Each day MUST include warmup/workout/cooldown arrays
+- A run day cannot have empty arrays (must have at least 1 lap in warmup, workout, and cooldown)
+- Rest days must have ALL arrays empty
+- lapIndex starts at 1 within each array
+- distanceMiles must be > 0 for any lap
+- paceGoal must be "mm:ss" format (e.g., "7:20") or null
+- Daily mileage must match day type (easy: 3-5, moderate: 4-7, long: 6-12, recovery: 2-4)
+
+Expected JSON structure:
 {
   "totalWeeks": ${inputs.totalWeeks},
   "phases": [
-    {
-      "name": "base",
-      "weekCount": 4,
-      "weeks": [
-        {
-          "weekNumber": 1,
-          "days": [
-            {
-              "dayNumber": 1,
-              "warmup": [
-                {
-                  "lapIndex": 1,
-                  "distanceMiles": 0.5,
-                  "paceGoal": null
-                }
-              ],
-              "workout": [
-                {
-                  "lapIndex": 1,
-                  "distanceMiles": 4.0,
-                  "paceGoal": "8:30"
-                }
-              ],
-              "cooldown": [
-                {
-                  "lapIndex": 1,
-                  "distanceMiles": 0.5,
-                  "paceGoal": null
-                }
-              ],
-              "notes": "Easy run, conversational pace"
-            }
-          ]
-        }
-      ]
-    }
-  ]
+    { "name": "base", "weekCount": 5 },
+    { "name": "build", "weekCount": 7 },
+    { "name": "peak", "weekCount": 4 },
+    { "name": "taper", "weekCount": 3 }
+  ],
+  "week": {
+    "weekNumber": 1,
+    "days": [
+      { "dayNumber": 1, "warmup": [...], "workout": [...], "cooldown": [...] },
+      ... (7 days total, each with proper mileage)
+    ]
+  }
 }
-
-CRITICAL RULES:
-- DO NOT generate calendar dates. We will compute dates ourselves.
-- Structure MUST be: phases[] → weeks[] → days[]
-- Each phase MUST have a "name" ("base", "build", "peak", "taper")
-- Each phase MUST have "weekCount" (number of weeks in that phase)
-- Each week MUST have "weekNumber" (global 1-N across entire plan)
-- Each week MUST have exactly 7 days (dayNumber 1-7, where 1=Monday, 7=Sunday)
-- Each day MUST have "warmup", "workout", "cooldown" arrays (can be empty [])
-- Each lap MUST have: lapIndex (number), distanceMiles (number), paceGoal (string | null)
-- lapIndex starts at 1 within each array (warmup, workout, cooldown)
-- paceGoal format: "mm:ss" (e.g., "7:20") or null for easy/recovery
-- Generate ALL phases, ALL weeks, ALL days
-- Phase distribution: base ~25%, build ~35%, peak ~20%, taper remaining
-- Progress mileage gradually across weeks
-- Include rest days appropriately (empty workout array or easy pace)
-- Return complete plan with all phases, weeks, and days
-- DO NOT create adaptive metrics, summaries, or preferred days
 
 Return ONLY the JSON object, nothing else.
 ```
@@ -184,7 +238,8 @@ Return ONLY the JSON object, nothing else.
 ### Model
 - **Model:** `gpt-4o-mini` (not gpt-4, not gpt-3.5)
 - **Temperature:** `0.7` (moderate creativity)
-- **Max Tokens:** `4000` (limit on response size)
+- **Max Tokens:** `2000` (reduced since we only generate phases + week 1)
+- **Response Format:** `{ type: 'json_object' }` (ensures valid JSON output)
 
 ### API Call
 ```typescript
@@ -758,6 +813,61 @@ describe('POST /api/training-plan/generate', () => {
     // Call generate endpoint
     // Verify all TrainingPlanPhase records created
     // Verify all TrainingPlanWeek records created
+    // Verify all TrainingPlanDay records created
+    // Verify plan status updated
+  });
+  
+  it('rolls back on OpenAI failure', async () => {
+    // Mock OpenAI failure
+    // Verify no partial data saved
+  });
+  
+  it('computes week and phase mileage totals', async () => {
+    // Generate plan
+    // Verify week.miles is sum of day miles
+    // Verify phase.totalMiles is sum of week miles
+  });
+});
+```
+
+---
+
+## Related Files
+
+- **API Route:** `app/api/training-plan/generate/route.ts`
+- **Service:** `lib/training/plan-generator.ts`
+- **Save Service:** `lib/training/save-plan.ts`
+- **Date Utils:** `lib/training/dates.ts`
+- **Goal Pace:** `lib/training/goal-pace.ts`
+- **Schema:** `prisma/schema.prisma` (TrainingPlan, TrainingPlanPhase, TrainingPlanWeek, TrainingPlanDay models)
+
+---
+
+## Future Enhancements
+
+### Planned Features
+
+1. **Plan Regeneration:** Allow regenerating specific phases/weeks
+2. **Plan Comparison:** Compare old vs new plan versions
+3. **Custom Phases:** Allow user to adjust phase distribution
+4. **Workout Templates:** Pre-built workout library
+5. **Adaptive Plans:** Adjust based on execution data
+6. **Lap Editing:** Allow manual editing of warmup/workout/cooldown arrays
+
+### Research Areas
+
+1. **Fine-Tuned Models:** Train model on GoFast-specific plans
+2. **Multi-Model Ensemble:** Combine multiple models for better results
+3. **Real-Time Adjustments:** Update plan based on athlete progress
+4. **Injury Prevention:** Incorporate injury risk assessment
+5. **Lap Structure Optimization:** Better AI understanding of workout structure
+
+---
+
+**Last Updated:** 2025-01-XX  
+**Status:** Production (MVP1) - Refactored to Cascade Structure  
+**Next Review:** After migration testing
+
     // Verify all TrainingPlanDay records created
     // Verify plan status updated
   });
