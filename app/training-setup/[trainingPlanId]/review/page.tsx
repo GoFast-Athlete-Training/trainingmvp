@@ -40,8 +40,10 @@ export default function TrainingSetupReviewPage() {
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<any>(null);
+  const [generatedPlan, setGeneratedPlan] = useState<any>(null); // Generated plan from AI
   const [startDate, setStartDate] = useState('');
   const [weeksUntilRace, setWeeksUntilRace] = useState<number | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export default function TrainingSetupReviewPage() {
 
     setGenerating(true);
     setError(null);
+    setGeneratedPlan(null); // Clear previous generation
 
     try {
       // First, update the plan with the start date and recalculated weeks
@@ -176,21 +179,66 @@ export default function TrainingSetupReviewPage() {
         }
       }
 
-      // Now generate the plan
+      // Generate the plan (returns plan for review, doesn't save)
+      console.log('🔄 REVIEW: Calling generate endpoint...');
       const response = await api.post('/training-plan/generate', {
         trainingPlanId,
+      });
+
+      console.log('📋 REVIEW: Generate response:', {
+        success: response.data.success,
+        hasPlan: !!response.data.plan,
+        planKeys: response.data.plan ? Object.keys(response.data.plan) : [],
+      });
+
+      if (response.data.success) {
+        if (response.data.plan) {
+          setGeneratedPlan(response.data.plan);
+          console.log('✅ REVIEW: Plan set for review:', {
+            phases: response.data.plan.phases?.length,
+            hasWeek: !!response.data.plan.week,
+          });
+        } else {
+          setError('Plan generated but no plan data returned');
+        }
+      } else {
+        setError(response.data.error || response.data.details || 'Failed to generate plan');
+      }
+    } catch (err: any) {
+      console.error('❌ REVIEW: Generate error:', err);
+      console.error('❌ REVIEW: Error response:', err.response?.data);
+      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to generate plan');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!generatedPlan) {
+      setError('No plan to confirm');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      // Confirm and save the plan
+      const response = await api.put('/training-plan/generate', {
+        trainingPlanId,
+        plan: generatedPlan,
       });
 
       if (response.data.success) {
         router.push(`/training?planId=${trainingPlanId}`);
       } else {
-        setError(response.data.error || response.data.details || 'Failed to generate plan');
+        setError(response.data.error || response.data.details || 'Failed to save plan');
       }
     } catch (err: any) {
-      console.error('Generate error:', err);
-      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to generate plan');
+      console.error('Confirm error:', err);
+      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to save plan');
     } finally {
-      setGenerating(false);
+      setSaving(false);
     }
   };
 
@@ -401,6 +449,7 @@ export default function TrainingSetupReviewPage() {
               onClick={handleGenerate}
               disabled={
                 generating || 
+                saving ||
                 !plan.goalTime || 
                 !startDate || 
                 !plan.race ||
@@ -411,7 +460,7 @@ export default function TrainingSetupReviewPage() {
               }
               className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 px-6 rounded-xl font-bold hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 shadow-lg"
             >
-              {generating ? 'Generating Plan...' : 'Generate My Plan →'}
+              {generating ? 'Generating...' : generatedPlan ? 'Regenerate Plan' : 'Generate Preview →'}
             </button>
           </div>
 
@@ -433,8 +482,80 @@ export default function TrainingSetupReviewPage() {
           {generating && (
             <div className="mt-6 text-center">
               <p className="text-gray-600">
-                This may take a minute. Please don't close this page.
+                Generating your plan... This may take a minute. Please don't close this page.
               </p>
+            </div>
+          )}
+
+          {/* Generated Plan Review */}
+          {generatedPlan && !generating && generatedPlan.phases && generatedPlan.week && (
+            <div className="mt-8 bg-white rounded-xl p-6 border-2 border-green-200">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">✨ Your Generated Plan</h2>
+              
+              {/* Phases */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Training Phases</h3>
+                <div className="space-y-2">
+                  {generatedPlan.phases && Array.isArray(generatedPlan.phases) && generatedPlan.phases.map((phase: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="font-semibold text-gray-700 capitalize">{phase.name}</span>
+                      <span className="text-gray-600">{phase.weekCount} weeks</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-500 mt-2">Total: {generatedPlan.totalWeeks} weeks</p>
+              </div>
+
+              {/* Week 1 */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Week 1</h3>
+                <div className="space-y-3">
+                  {generatedPlan.week && generatedPlan.week.days && Array.isArray(generatedPlan.week.days) && generatedPlan.week.days.map((day: any, idx: number) => {
+                    const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    const totalMiles = 
+                      (day.warmup?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
+                      (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
+                      (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
+                    
+                    return (
+                      <div key={idx} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-gray-800">{dayNames[day.dayNumber]}</span>
+                          <span className="text-sm text-gray-600">{totalMiles.toFixed(1)} miles</span>
+                        </div>
+                        {day.notes && (
+                          <p className="text-sm text-gray-600 italic">{day.notes}</p>
+                        )}
+                        <div className="text-xs text-gray-500 mt-1">
+                          Warmup: {day.warmup?.length || 0} laps | 
+                          Workout: {day.workout?.length || 0} laps | 
+                          Cooldown: {day.cooldown?.length || 0} laps
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Confirm Button */}
+              <div className="flex gap-4 mt-6">
+                <button
+                  onClick={() => {
+                    setGeneratedPlan(null);
+                    setError(null);
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 py-4 px-6 rounded-xl font-semibold hover:bg-gray-200 transition"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={saving}
+                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-4 px-6 rounded-xl font-bold hover:from-green-600 hover:to-emerald-600 transition disabled:opacity-50 shadow-lg"
+                >
+                  {saving ? 'Saving...' : 'Looks Good! Save Plan →'}
+                </button>
+              </div>
             </div>
           )}
         </div>
