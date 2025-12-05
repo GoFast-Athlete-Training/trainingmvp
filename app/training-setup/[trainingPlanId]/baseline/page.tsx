@@ -15,7 +15,6 @@ export default function TrainingSetupBaselinePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<any>(null);
-  const [athlete, setAthlete] = useState<any>(null);
   
   // Form state
   const [fiveKPace, setFiveKPace] = useState('');
@@ -30,17 +29,15 @@ export default function TrainingSetupBaselinePage() {
         return;
       }
 
-      // Load plan and athlete data
+      // Load plan and fitness data
       try {
-        const [planResponse, athleteResponse] = await Promise.all([
-          api.get(`/training-plan/${trainingPlanId}`),
-          api.get('/athlete/profile'),
-        ]);
+        // Load plan - required
+        const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
 
         if (planResponse.data.success) {
           setPlan(planResponse.data.trainingPlan);
           
-          // Pre-fill with existing values if set
+          // Pre-fill with existing values if set on plan
           if (planResponse.data.trainingPlan.current5KPace) {
             const paceParts = planResponse.data.trainingPlan.current5KPace.split(':');
             if (paceParts.length === 2) {
@@ -54,22 +51,28 @@ export default function TrainingSetupBaselinePage() {
           }
         }
 
-        if (athleteResponse.data.success) {
-          setAthlete(athleteResponse.data.athlete);
-          
-          // Pre-fill 5K pace from athlete profile if available and not already set on plan
-          if (athleteResponse.data.athlete.fiveKPace && !planResponse.data.trainingPlan?.current5KPace) {
-            const paceParts = athleteResponse.data.athlete.fiveKPace.split(':');
-            if (paceParts.length === 2) {
-              setFiveKPaceMinutes(paceParts[0]);
-              setFiveKPaceSeconds(paceParts[1]);
-              setFiveKPace(athleteResponse.data.athlete.fiveKPace);
+        // Try to load fitness data - it's ok if this fails or is null
+        try {
+          const fitnessResponse = await api.get('/athlete/fitness');
+          if (fitnessResponse.data?.success && fitnessResponse.data?.fitness) {
+            // Pre-fill 5K pace from athlete fitness if available and not already set on plan
+            const athleteFiveKPace = fitnessResponse.data.fitness?.fiveKPace;
+            if (athleteFiveKPace && !planResponse.data?.trainingPlan?.current5KPace) {
+              const paceParts = athleteFiveKPace.split(':');
+              if (paceParts.length === 2) {
+                setFiveKPaceMinutes(paceParts[0]);
+                setFiveKPaceSeconds(paceParts[1]);
+                setFiveKPace(athleteFiveKPace);
+              }
             }
           }
+        } catch (fitnessErr) {
+          // It's totally fine if fitness data doesn't exist or fetch fails
+          console.log('No fitness data available, user will input their own');
         }
       } catch (err: any) {
         console.error('Load error:', err);
-        setError(err.response?.data?.error || 'Failed to load data');
+        setError(err.response?.data?.error || 'Failed to load training plan');
       } finally {
         setLoading(false);
       }
@@ -113,16 +116,14 @@ export default function TrainingSetupBaselinePage() {
       });
 
       if (response.data.success) {
-        // Also update athlete profile with 5K pace if not already set
-        if (!athlete?.fiveKPace) {
-          try {
-            await api.put('/athlete/profile', {
-              fiveKPace: fiveKPace,
-            });
-          } catch (err) {
-            console.warn('Failed to update athlete profile:', err);
-            // Don't fail the whole flow if athlete update fails
-          }
+        // Also update athlete fitness with 5K pace
+        try {
+          await api.put('/athlete/fitness', {
+            fiveKPace: fiveKPace,
+          });
+        } catch (err) {
+          console.warn('Failed to update athlete fitness:', err);
+          // Don't fail the whole flow if athlete update fails
         }
         
         // Route to review page
@@ -174,9 +175,6 @@ export default function TrainingSetupBaselinePage() {
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 What's your current 5K pace? *
               </label>
-              <p className="text-xs text-gray-500 mb-3">
-                Your fastest sustainable pace for a 5K race (this helps us predict your race pace)
-              </p>
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">Minutes</label>
@@ -191,7 +189,6 @@ export default function TrainingSetupBaselinePage() {
                         setFiveKPaceMinutes(val);
                       }
                     }}
-                    placeholder="06"
                     className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
                   />
                 </div>
@@ -209,7 +206,6 @@ export default function TrainingSetupBaselinePage() {
                         setFiveKPaceSeconds(val);
                       }
                     }}
-                    placeholder="25"
                     className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg text-center"
                   />
                 </div>
@@ -228,9 +224,6 @@ export default function TrainingSetupBaselinePage() {
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 What's your current weekly mileage? *
               </label>
-              <p className="text-xs text-gray-500 mb-3">
-                How many miles do you currently run per week? (We'll build up gradually from here)
-              </p>
               <div className="flex items-center gap-4">
                 <input
                   type="number"
@@ -243,7 +236,6 @@ export default function TrainingSetupBaselinePage() {
                       setWeeklyMileage(val);
                     }
                   }}
-                  placeholder="25"
                   className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-orange-500 focus:outline-none text-lg"
                 />
                 <div className="text-sm text-gray-600 font-semibold">miles/week</div>
