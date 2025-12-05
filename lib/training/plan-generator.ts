@@ -280,7 +280,7 @@ Return ONLY the JSON object, nothing else.`;
         },
       ],
       temperature: 0.7,
-      max_tokens: 4000,
+      max_tokens: 8000, // Increased for longer plans (was 4000, but JSON can be large)
     });
 
     const content = response.choices[0]?.message?.content;
@@ -288,9 +288,30 @@ Return ONLY the JSON object, nothing else.`;
       throw new Error('No response from OpenAI');
     }
 
-    // Clean JSON response
-    const cleaned = content.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned) as GeneratedPlan;
+    // Clean JSON response - remove markdown code blocks
+    let cleaned = content.replace(/```json|```/g, '').trim();
+    
+    // Try to extract JSON if it's wrapped in other text
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+
+    // Fix common JSON issues
+    // Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Try to parse JSON with better error handling
+    let parsed: GeneratedPlan;
+    try {
+      parsed = JSON.parse(cleaned) as GeneratedPlan;
+    } catch (parseError: any) {
+      console.error('❌ JSON Parse Error:', parseError.message);
+      console.error('❌ JSON Position:', parseError.message.match(/position (\d+)/)?.[1]);
+      console.error('❌ JSON Content (first 500 chars):', cleaned.substring(0, 500));
+      console.error('❌ JSON Content (around error):', cleaned.substring(Math.max(0, (parseError.message.match(/position (\d+)/)?.[1] || 0) - 100), (parseError.message.match(/position (\d+)/)?.[1] || 0) + 100));
+      throw new Error(`Failed to parse AI response as JSON: ${parseError.message}. This usually means the AI returned malformed JSON. Please try again.`);
+    }
 
     // Validate structure
     if (!parsed.phases || !Array.isArray(parsed.phases)) {
