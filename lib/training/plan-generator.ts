@@ -377,7 +377,7 @@ F. CRITICAL OUTPUT RULES:
 - DO NOT create adaptive metrics, summaries, or preferred days
 
 VALIDATION REQUIREMENTS:
-- Each week MUST have exactly 7 days
+- Week 1 MUST have exactly ${daysRemainingInWeek} days (dayNumbers: ${week1DayNumbers.join(', ')}) because plan starts on ${startDayName}
 - Each day MUST include warmup/workout/cooldown arrays
 - A run day cannot have empty arrays (must have at least 1 lap in warmup, workout, and cooldown)
 - Rest days must have ALL arrays empty
