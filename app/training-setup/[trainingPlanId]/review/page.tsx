@@ -58,6 +58,11 @@ export default function TrainingSetupReviewPage() {
         const response = await api.get(`/training-plan/${trainingPlanId}`);
         if (response.data.success) {
           const loadedPlan = response.data.trainingPlan;
+          console.log('📋 REVIEW: Loaded plan data:', {
+            preferredDays: loadedPlan.preferredDays,
+            current5KPace: loadedPlan.current5KPace,
+            currentWeeklyMileage: loadedPlan.currentWeeklyMileage,
+          });
           setPlan(loadedPlan);
           
           // Set start date if already set, otherwise default to today
@@ -317,6 +322,31 @@ export default function TrainingSetupReviewPage() {
                   </div>
                 )}
 
+                {/* Preferred Training Days Section */}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-600">Preferred Training Days</p>
+                    {plan.preferredDays && plan.preferredDays.length > 0 ? (
+                      <p className="text-lg font-bold text-gray-800">
+                        {(() => {
+                          const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                          return plan.preferredDays
+                            .sort((a, b) => a - b)
+                            .map(d => dayNames[d])
+                            .join('/');
+                        })()}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-500 mt-1 italic">Not set</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => router.push(`/training-setup/${trainingPlanId}/preferences`)}
+                    className="ml-4 text-orange-600 hover:text-orange-700 text-sm font-semibold underline"
+                  >
+                    Edit
+                  </button>
+                </div>
 
                 {/* Weeks Until Race (calculated, read-only) */}
                 {weeksUntilRace !== null && (
@@ -369,7 +399,16 @@ export default function TrainingSetupReviewPage() {
             </button>
             <button
               onClick={handleGenerate}
-              disabled={generating || !plan.goalTime || !startDate || !plan.race}
+              disabled={
+                generating || 
+                !plan.goalTime || 
+                !startDate || 
+                !plan.race ||
+                !plan.current5KPace ||
+                !plan.currentWeeklyMileage ||
+                !plan.preferredDays ||
+                plan.preferredDays.length < 5
+              }
               className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 px-6 rounded-xl font-bold hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 shadow-lg"
             >
               {generating ? 'Generating Plan...' : 'Generate My Plan →'}
@@ -377,12 +416,15 @@ export default function TrainingSetupReviewPage() {
           </div>
 
           {/* Validation Messages */}
-          {(!plan.race || !plan.goalTime || !startDate) && (
+          {(!plan.race || !plan.goalTime || !startDate || !plan.current5KPace || !plan.currentWeeklyMileage || !plan.preferredDays || plan.preferredDays.length < 5) && (
             <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-sm font-semibold text-yellow-800 mb-2">Please complete all required fields:</p>
               <ul className="text-sm text-yellow-700 list-disc list-inside space-y-1">
                 {!plan.race && <li>Select a race (click Edit next to Race above)</li>}
                 {!plan.goalTime && <li>Set your goal time (click Edit next to Goal Time above)</li>}
+                {!plan.current5KPace && <li>Set your baseline 5K pace (go back to Set Baseline step)</li>}
+                {!plan.currentWeeklyMileage && <li>Set your current weekly mileage (go back to Set Baseline step)</li>}
+                {(!plan.preferredDays || plan.preferredDays.length < 5) && <li>Set your preferred training days - at least 5 days required (go back to Preferences step)</li>}
                 {!startDate && <li>Choose your start date</li>}
               </ul>
             </div>
