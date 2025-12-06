@@ -4,6 +4,11 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'GoFast Training',
   description: 'Your personalized training plan',
+  icons: {
+    icon: '/logo.jpg',
+    shortcut: '/logo.jpg',
+    apple: '/logo.jpg',
+  },
 };
 
 export default function RootLayout({

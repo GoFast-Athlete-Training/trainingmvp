@@ -1,0 +1,16 @@
+#!/bin/sh
+# Pre-push hook - Check for database conflicts before pushing
+
+echo "🔍 Running pre-push checks..."
+
+# Check for database conflicts
+if [ -f scripts/detect-database-conflicts.sh ]; then
+  ./scripts/detect-database-conflicts.sh
+  if [ $? -ne 0 ]; then
+    echo "❌ Pre-push check failed - database conflicts detected"
+    exit 1
+  fi
+fi
+
+echo "✅ Pre-push checks passed"
+
