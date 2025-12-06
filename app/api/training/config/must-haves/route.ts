@@ -37,18 +37,19 @@ export async function POST(request: NextRequest) {
   try {
     await getAthleteIdFromRequest(request); // Auth check
     const body = await request.json();
-    const { requiredPaths } = body;
+    const { name, fields } = body;
 
-    if (!requiredPaths) {
+    if (!name || !fields) {
       return NextResponse.json(
-        { success: false, error: 'requiredPaths is required' },
+        { success: false, error: 'Name and fields are required' },
         { status: 400 }
       );
     }
 
     const item = await prisma.mustHaves.create({
       data: {
-        requiredPaths: requiredPaths as any,
+        name,
+        fields: fields as any,
       },
     });
 

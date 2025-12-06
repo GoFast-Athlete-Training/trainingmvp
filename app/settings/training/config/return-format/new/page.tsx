@@ -6,13 +6,14 @@ import api from '@/lib/api';
 
 export default function NewReturnFormatPage() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [schema, setSchema] = useState('{}');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    if (!schema) {
-      setError('Schema is required');
+    if (!name || !schema) {
+      setError('Name and schema are required');
       return;
     }
 
@@ -29,6 +30,7 @@ export default function NewReturnFormatPage() {
 
     try {
       const response = await api.post('/api/training/config/return-formats', {
+        name,
         schema: parsedSchema,
       });
 
@@ -66,6 +68,17 @@ export default function NewReturnFormatPage() {
           )}
 
           <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Training Plan Generation Format"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Schema (JSON)</label>
               <textarea

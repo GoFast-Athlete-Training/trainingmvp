@@ -6,21 +6,22 @@ import api from '@/lib/api';
 
 export default function NewMustHavesPage() {
   const router = useRouter();
-  const [requiredPaths, setRequiredPaths] = useState('{}');
+  const [name, setName] = useState('');
+  const [fields, setFields] = useState('{}');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    if (!requiredPaths) {
-      setError('Required paths are required');
+    if (!name || !fields) {
+      setError('Name and fields are required');
       return;
     }
 
-    let parsedPaths;
+    let parsedFields;
     try {
-      parsedPaths = JSON.parse(requiredPaths);
+      parsedFields = JSON.parse(fields);
     } catch (e) {
-      setError('Required paths must be valid JSON');
+      setError('Fields must be valid JSON');
       return;
     }
 
@@ -29,7 +30,8 @@ export default function NewMustHavesPage() {
 
     try {
       const response = await api.post('/api/training/config/must-haves', {
-        requiredPaths: parsedPaths,
+        name,
+        fields: parsedFields,
       });
 
       if (response.data.success) {
@@ -69,10 +71,21 @@ export default function NewMustHavesPage() {
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Required Paths (JSON)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Plan Generation Must Haves"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Fields (JSON)</label>
               <textarea
-                value={requiredPaths}
-                onChange={(e) => setRequiredPaths(e.target.value)}
+                value={fields}
+                onChange={(e) => setFields(e.target.value)}
                 rows={12}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                 placeholder='{"goalTime": "plan.goalTime", "currentPace": "athlete.fiveKPace"}'

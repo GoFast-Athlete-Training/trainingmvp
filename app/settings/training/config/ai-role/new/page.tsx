@@ -6,14 +6,14 @@ import api from '@/lib/api';
 
 export default function NewAIRolePage() {
   const router = useRouter();
-  const [title, setTitle] = useState('');
-  const [systemRole, setSystemRole] = useState('');
+  const [name, setName] = useState('');
+  const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    if (!title || !systemRole) {
-      setError('Title and system role are required');
+    if (!name || !content) {
+      setError('Name and content are required');
       return;
     }
 
@@ -22,8 +22,8 @@ export default function NewAIRolePage() {
 
     try {
       const response = await api.post('/api/training/config/ai-roles', {
-        title,
-        systemRole,
+        name,
+        content,
       });
 
       if (response.data.success) {
@@ -60,21 +60,21 @@ export default function NewAIRolePage() {
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
               <input
                 type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., Professional Running Coach"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">System Role</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Content</label>
               <textarea
-                value={systemRole}
-                onChange={(e) => setSystemRole(e.target.value)}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
                 rows={8}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                 placeholder="You are a professional running coach. Generate training plans. Always return valid JSON only."

@@ -37,17 +37,18 @@ export async function POST(request: NextRequest) {
   try {
     await getAthleteIdFromRequest(request); // Auth check
     const body = await request.json();
-    const { schema } = body;
+    const { name, schema } = body;
 
-    if (!schema) {
+    if (!name || !schema) {
       return NextResponse.json(
-        { success: false, error: 'schema is required' },
+        { success: false, error: 'Name and schema are required' },
         { status: 400 }
       );
     }
 
     const item = await prisma.returnJsonFormat.create({
       data: {
+        name,
         schema: schema as any,
       },
     });

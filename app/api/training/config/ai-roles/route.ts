@@ -37,19 +37,19 @@ export async function POST(request: NextRequest) {
   try {
     await getAthleteIdFromRequest(request); // Auth check
     const body = await request.json();
-    const { title, systemRole } = body;
+    const { name, content } = body;
 
-    if (!title || !systemRole) {
+    if (!name || !content) {
       return NextResponse.json(
-        { success: false, error: 'Title and systemRole are required' },
+        { success: false, error: 'Name and content are required' },
         { status: 400 }
       );
     }
 
     const item = await prisma.aIRole.create({
       data: {
-        title,
-        systemRole,
+        name,
+        content,
       },
     });
 
