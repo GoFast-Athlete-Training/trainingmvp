@@ -1,0 +1,20 @@
+#!/bin/sh
+# Pre-commit hook - Block dangerous commands
+
+# Check for --accept-data-loss in commit message or staged files
+if git diff --cached --name-only | xargs grep -l "accept-data-loss\|--accept-data-loss" 2>/dev/null; then
+  echo "❌ ERROR: Found '--accept-data-loss' in staged files!"
+  echo "This flag is FORBIDDEN on shared databases."
+  echo "Use 'prisma migrate dev' instead."
+  exit 1
+fi
+
+# Check commit message
+if git log -1 --pretty=%B | grep -i "accept.*data.*loss\|--accept-data-loss"; then
+  echo "❌ ERROR: Commit message contains '--accept-data-loss'!"
+  echo "This flag is FORBIDDEN on shared databases."
+  exit 1
+fi
+
+echo "✅ Pre-commit checks passed"
+
