@@ -336,3 +336,71 @@ model GoFastCompany {
 
   @@map("go_fast_companies")
 }
+
+// Training Prompt Configuration Models
+model TrainingGenPrompt {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  aiRoleId        String?
+  ruleSetId       String?
+  mustHavesId     String?
+  returnFormatId  String?
+
+  aiRole          AIRole?           @relation(fields: [aiRoleId], references: [id], onDelete: SetNull)
+  ruleSet         RuleSet?          @relation(fields: [ruleSetId], references: [id], onDelete: SetNull)
+  mustHaves       MustHaves?        @relation(fields: [mustHavesId], references: [id], onDelete: SetNull)
+  returnFormat    ReturnJsonFormat? @relation(fields: [returnFormatId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("training_gen_prompts")
+}
+
+model AIRole {
+  id          String   @id @default(cuid())
+  title       String
+  systemRole  String   // full system directive
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prompts     TrainingGenPrompt[]
+
+  @@map("ai_roles")
+}
+
+model RuleSet {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  rules       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prompts     TrainingGenPrompt[]
+
+  @@map("rule_sets")
+}
+
+model MustHaves {
+  id            String @id @default(cuid())
+  requiredPaths Json   // key → path string
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prompts       TrainingGenPrompt[]
+
+  @@map("must_haves")
+}
+
+model ReturnJsonFormat {
+  id          String   @id @default(cuid())
+  schema      Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prompts     TrainingGenPrompt[]
+
+  @@map("return_json_formats")
+}
