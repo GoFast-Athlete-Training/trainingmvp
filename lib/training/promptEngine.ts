@@ -13,17 +13,17 @@ function getOpenAIClient() {
 
 /**
  * Resolve MustHaves paths from training plan data
- * @param mustHaves MustHaves object with requiredPaths JSON
+ * @param mustHaves MustHaves object with fields JSON
  * @param planData Training plan data object
  * @returns Resolved must-haves object
  */
 function resolveMustHaves(mustHaves: any, planData: any): Record<string, any> {
-  if (!mustHaves || !mustHaves.requiredPaths) {
+  if (!mustHaves || !mustHaves.fields) {
     return {};
   }
 
   const resolved: Record<string, any> = {};
-  const paths = mustHaves.requiredPaths as Record<string, string>;
+  const paths = mustHaves.fields as Record<string, string>;
 
   for (const [key, path] of Object.entries(paths)) {
     try {
@@ -51,8 +51,8 @@ function buildPrompt(
   let prompt = '';
 
   // Add AI Role system directive
-  if (aiRole?.systemRole) {
-    prompt += `${aiRole.systemRole}\n\n`;
+  if (aiRole?.content) {
+    prompt += `${aiRole.content}\n\n`;
   }
 
   // Add rule set
@@ -170,7 +170,7 @@ export async function runTrainingPlanGenerator(
     messages: [
       {
         role: 'system',
-        content: prompt.aiRole?.systemRole || 'You are a professional running coach. Generate training plans. Always return valid JSON only.',
+        content: prompt.aiRole?.content || 'You are a professional running coach. Generate training plans. Always return valid JSON only.',
       },
       {
         role: 'user',
