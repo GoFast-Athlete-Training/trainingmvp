@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         id: p.id,
         name: p.name,
         description: p.description,
-        aiRole: p.aiRole ? { id: p.aiRole.id, title: p.aiRole.title } : null,
+        aiRole: p.aiRole ? { id: p.aiRole.id, name: p.aiRole.name } : null,
         ruleSet: p.ruleSet ? { id: p.ruleSet.id, name: p.ruleSet.name } : null,
         mustHaves: p.mustHaves ? { id: p.mustHaves.id } : null,
         returnFormat: p.returnFormat ? { id: p.returnFormat.id } : null,
