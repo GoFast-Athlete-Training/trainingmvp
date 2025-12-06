@@ -58,7 +58,7 @@ export default function NewMustHavesPage() {
           </button>
           <h1 className="text-3xl font-bold text-gray-900">New Must Haves</h1>
           <p className="text-gray-600 mt-2">
-            Define required paths as key → path mappings (e.g., {"goalTime": "plan.goalTime"})
+            Define required paths as key → path mappings (e.g., {'{'} "goalTime": "plan.goalTime" {'}'})
           </p>
         </div>
 
