@@ -1,6 +1,0 @@
-ALTER TABLE "training_plan_phases" 
-  ADD COLUMN IF NOT EXISTS "phaseDescription" TEXT,
-  ADD COLUMN IF NOT EXISTS "phaseTotalMilesTarget" DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS "longRunProgression" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
-  ADD COLUMN IF NOT EXISTS "qualityWorkoutsPerWeek" INTEGER DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS "runTypesEnabled" JSONB;

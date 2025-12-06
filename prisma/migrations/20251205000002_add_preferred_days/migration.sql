@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "TrainingPlan" ADD COLUMN IF NOT EXISTS "preferredDays" INTEGER[] DEFAULT ARRAY[]::INTEGER[];
-

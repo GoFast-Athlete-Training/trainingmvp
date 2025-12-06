@@ -101,8 +101,8 @@ export async function updateFiveKPace(
     throw new Error('Athlete not found');
   }
 
-  // Use fiveKPace if available, fallback to myCurrentPace (legacy)
-  const current5k = parsePaceToSeconds(athlete.fiveKPace || athlete.myCurrentPace || '8:00');
+  // Use fiveKPace (canonical field)
+  const current5k = parsePaceToSeconds(athlete.fiveKPace || '8:00');
   
   // New 5K = old 5K - (qualityScore * 0.8 seconds)
   // Higher quality = faster predicted time

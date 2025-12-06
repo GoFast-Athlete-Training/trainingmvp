@@ -1,13 +1,35 @@
-// This schema mirrors the existing GoFast backend schema
-// We only include the models we need for training
+// ------------------------------------------------------
+// Datasource + Generator (authoritative)
+// ------------------------------------------------------
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+//////////////////////////////////////////////////////////
+//  CORE CANON — ATHLETE + COMPANY (v1.0)
+//////////////////////////////////////////////////////////
+
+model GoFastCompany {
+  id        String   @id @default(cuid())
+  name      String?
+  slug      String?  @unique
+  address   String?
+  city      String?
+  state     String?
+  zip       String?
+  domain    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  athletes Athlete[]
+
+  @@map("go_fast_companies")
 }
 
 model Athlete {
@@ -17,11 +39,11 @@ model Athlete {
   firebaseId String  @unique
   email      String?
 
-  // Company Link (Single-tenant) - REQUIRED
+  // Tenancy — core container
   companyId String
-  company   GoFastCompany @relation(fields: [companyId], references: [id])
+  company   GoFastCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  // Universal profile
+  // Profile
   firstName    String?
   lastName     String?
   gofastHandle String?   @unique
@@ -35,21 +57,10 @@ model Athlete {
   bio          String?
   instagram    String?
 
-  // Profile Identity (can be updated)
-  fiveKPace String? // mm:ss format - THE SOURCE OF TRUTH for CURRENT 5K pace
+  // Canon Fitness Baseline (source of truth for all training)
+  fiveKPace String? // mm:ss
 
-  // Legacy training fields (deprecated, keep for migration)
-  myCurrentPace       String?
-  myWeeklyMileage     Int?
-  myTrainingGoal      String?
-  myTrainingStartDate DateTime?
-  myTargetRace        String?
-  preferredDistance   String?
-  myPaceRange         String?
-  timePreference      String?
-  myRunningGoals      String?
-
-  // Garmin PKCE Integration
+  // Garmin
   garmin_user_id          String?   @unique
   garmin_access_token     String?
   garmin_refresh_token    String?
@@ -70,16 +81,20 @@ model Athlete {
   strava_refresh_token String?
   strava_expires_at    Int?
 
-  // System fields
+  // System
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
   trainingPlans        TrainingPlan[]
-  athleteTrainingPlans AthleteTrainingPlan[] // Junction table for multiple plans
+  athleteTrainingPlans AthleteTrainingPlan[]
   executedDays         TrainingDayExecuted[]
   activities           AthleteActivity[]
 }
+
+//////////////////////////////////////////////////////////
+//  ATHLETE ACTIVITIES (GARMIN INTEGRATION)
+//////////////////////////////////////////////////////////
 
 model AthleteActivity {
   id               String @id @default(cuid())
@@ -118,133 +133,121 @@ model AthleteActivity {
   @@map("athlete_activities")
 }
 
-// Race - Global catalogue of races (registry pattern)
-// Registry pattern: One race (Boston Marathon 2025) exists once, many TrainingPlans can reference it
+//////////////////////////////////////////////////////////
+//  PHASE 3: TRAINING ENGINE (CANONICAL)
+//////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////
+//  RACE REGISTRY (GLOBAL)
+//////////////////////////////////////////////////////////
+
 model Race {
   id        String   @id @default(cuid())
   name      String
-  raceType  String   // "marathon", "half", "5k", "10k", "10m" - enum from config
-  miles     Float    // Derived from raceType using config/race-types.ts
+  raceType  String // "marathon", "half", "10k", etc.
+  miles     Float // canonical distance in miles
   date      DateTime
   city      String?
   state     String?
   country   String?
-  createdBy String? // Optional: athleteId who first created it (for tracking, not ownership)
-
-  // Timestamps
+  createdBy String? // athleteId who added it
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations - Direct 1-to-many with TrainingPlan
   trainingPlans TrainingPlan[]
 
-  // Unique constraint: prevent duplicate races (same name + date)
   @@unique([name, date])
   @@map("race_registry")
 }
 
-// Junction table: Athlete <-> TrainingPlan (many-to-many)
-// For future "My Training Plans" selection screen. MVP1: only created when plan is generated.
-model AthleteTrainingPlan {
-  id             String   @id @default(cuid())
-  athleteId      String
-  trainingPlanId String
-  assignedAt     DateTime @default(now())
-
-  // Relations
-  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-
-  @@unique([athleteId, trainingPlanId])
-  @@map("athlete_training_plans")
-}
+//////////////////////////////////////////////////////////
+//  TRAINING PLAN (TOP-LEVEL CONTAINER)
+//////////////////////////////////////////////////////////
 
 model TrainingPlan {
-  id        String @id @default(cuid())
-  athleteId String // Original creator/owner
-  raceId    String? // Direct FK to Race (many TrainingPlans can reference same Race)
+  id        String  @id @default(cuid())
+  athleteId String
+  raceId    String?
 
-  // PLAN IDENTITY
-  name String // Renamed from trainingPlanName
+  // Identity
+  name String
 
-  // CYCLE-LEVEL GOALS
-  goalTime String? // Renamed from trainingPlanGoalTime, e.g., "3:30:00" for marathon
-  goalPace5K String? // DEPRECATED: Keep for backward compatibility, use goalRacePace instead
-  goalRacePace Int? // Goal race pace in seconds per mile (derived from goalTime + race.miles)
-  predictedRacePace Int? // Predicted race pace in seconds per mile (derived from athlete.fiveKPace + race adjustments)
+  // Goals & metrics
+  goalTime          String? // "3:30:00"
+  goalRacePace      Int? // seconds per mile
+  predictedRacePace Int? // derived from Athlete.fiveKPace + model adjustments
 
-  // BASELINE METRICS (collected during setup, used for gradual progression)
-  current5KPace String? // Current 5K pace in mm:ss format (baseline fitness)
-  currentWeeklyMileage Int? // Current weekly mileage (baseline volume)
+  // Baseline
+  current5KPace        String?
+  currentWeeklyMileage Int?
 
-  // PLAN PREFERENCES
-  preferredDays Int[] // Preferred training days (1=Monday, 7=Sunday), e.g., [1,3,5] for Mon/Wed/Fri
+  // Preferences
+  preferredDays Int[] // e.g., [1,3,5]
 
-  // PLAN STRUCTURE
-  startDate DateTime // Renamed from trainingPlanStartDate
-  totalWeeks Int // Renamed from trainingPlanTotalWeeks
+  // Structure
+  startDate  DateTime
+  totalWeeks Int
 
-  // STATUS
-  status String @default("draft")
-
-  // Timestamps
+  // System
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
   athlete              Athlete               @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  race                 Race?                  @relation(fields: [raceId], references: [id], onDelete: SetNull)
-  athleteTrainingPlans AthleteTrainingPlan[] // Junction table entries
+  race                 Race?                 @relation(fields: [raceId], references: [id], onDelete: SetNull)
   phases               TrainingPlanPhase[]
   weeks                TrainingPlanWeek[]
   days                 TrainingPlanDay[]
-  // Note: No @@map - uses Prisma default PascalCase table name "TrainingPlan" to match gofastapp-mvp
+  athleteTrainingPlans AthleteTrainingPlan[]
 
-  // Indexes for fast lookups
-  @@index([athleteId, status]) // Fast lookup of active plans by athlete
-  @@index([raceId]) // Fast lookup of all plans for a race
+  @@index([athleteId])
+  @@index([raceId])
+  @@map("training_plans")
 }
 
-// Phase: Base / Build / Peak / Taper
+//////////////////////////////////////////////////////////
+//  PHASE (Base / Build / Peak / Taper)
+//////////////////////////////////////////////////////////
+
 model TrainingPlanPhase {
   id     String @id @default(cuid())
   planId String
 
-  // Phase Identity
-  name String // "base" | "build" | "peak" | "taper"
-  weekCount Int // How many weeks in this phase
-  totalMiles Float? // Sum of miles across all weeks in this phase (computed optional)
+  name       String // "base" | "build" | "peak" | "taper"
+  weekCount  Int
+  totalMiles Float?
 
-  // Phase Configuration (new fields)
-  phaseDescription String? // User-editable description of the phase
-  phaseTotalMilesTarget Float? // Optional user-set target total miles for the phase
-  longRunProgression Int[] @default([]) // Array of long run distances, e.g. [10, 12, 14, 12]
-  qualityWorkoutsPerWeek Int @default(1) // 0, 1, or 2 quality workouts per week
-  runTypesEnabled Json? // { easy: boolean, tempo: boolean, intervals: boolean, longRun: boolean }
+  // Config
+  phaseDescription       String?
+  phaseTotalMilesTarget  Float?
+  longRunProgression     Int[]   @default([])
+  qualityWorkoutsPerWeek Int     @default(1)
+  runTypesEnabled        Json?
 
   // Relations
-  plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan  TrainingPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
   weeks TrainingPlanWeek[]
   days  TrainingPlanDay[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([planId, name]) // One phase per name per plan (can't have duplicate "base" phases)
+  @@unique([planId, name])
   @@map("training_plan_phases")
 }
 
-// Week: Belongs to both plan and phase
+//////////////////////////////////////////////////////////
+//  WEEK (Derived placement inside phases)
+//////////////////////////////////////////////////////////
+
 model TrainingPlanWeek {
   id      String @id @default(cuid())
   planId  String
   phaseId String
 
-  // Week Identity
-  weekNumber Int // Global week number (1, 2, 3...) within the entire plan
-  miles      Float? // Computed from days
+  weekNumber Int
+  miles      Float?
 
-  // Relations
   plan  TrainingPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   phase TrainingPlanPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
   days  TrainingPlanDay[]
@@ -252,26 +255,28 @@ model TrainingPlanWeek {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([planId, weekNumber]) // One week per plan per week number
+  @@unique([planId, weekNumber])
   @@map("training_plan_weeks")
 }
 
-// Day: Belongs to plan, phase, and week
-// DATE-DRIVEN MODEL: date is authoritative, dayOfWeek is derived from date
+//////////////////////////////////////////////////////////
+//  DAY (DATE-DRIVEN; authoritative entry)
+//////////////////////////////////////////////////////////
+
 model TrainingPlanDay {
   id      String @id @default(cuid())
   planId  String
   phaseId String
   weekId  String
 
-  // Day Identity (DATE-DRIVEN)
-  date      DateTime // Actual calendar date (authoritative)
-  dayOfWeek Int // 1-7 (1=Monday, 7=Sunday) - computed from date
+  // Identity
+  date      DateTime // authoritative
+  dayOfWeek Int // derived
 
-  // Structured Workout (Lap arrays)
-  warmup  Json // Lap[]
-  workout Json // Lap[]
-  cooldown Json // Lap[]
+  // Laps (structured workout blocks)
+  warmup   Json
+  workout  Json
+  cooldown Json
 
   notes String?
 
@@ -283,101 +288,99 @@ model TrainingPlanDay {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([planId, date]) // One day per plan per date (date-driven identity)
-  @@index([date]) // Fast date lookups
-  @@index([planId, date]) // Fast plan + date lookups
+  @@unique([planId, date])
+  @@index([date])
   @@map("training_plan_days")
 }
+
+//////////////////////////////////////////////////////////
+//  ATHLETE ↔ PLAN (multi-plan future)
+//////////////////////////////////////////////////////////
+
+model AthleteTrainingPlan {
+  id             String @id @default(cuid())
+  athleteId      String
+  trainingPlanId String
+
+  assignedAt DateTime @default(now())
+
+  athlete      Athlete      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  trainingPlan TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([athleteId, trainingPlanId])
+  @@map("athlete_training_plans")
+}
+
+//////////////////////////////////////////////////////////
+//  EXECUTED DAYS (links Garmin → planned schedule)
+//////////////////////////////////////////////////////////
 
 model TrainingDayExecuted {
   id        String @id @default(cuid())
   athleteId String
 
-  // THE LINK - shell container for AthleteActivity
-  activityId String? @unique
+  activityId String? @unique // Garmin/Strava activity
 
-  // Optional metadata
   weekIndex Int
   dayIndex  Int
   date      DateTime
 
-  // Snapshot/computed fields
   plannedData Json?
   analysis    Json?
   feedback    Json?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
 
   @@map("training_days_executed")
 }
 
 //////////////////////////////////////////////////////////
-//  GOFAST COMPANY (SINGLE-TENANT CONTAINER)
+//  TRAINING PROMPT ENGINE (AI configuration)
 //////////////////////////////////////////////////////////
 
-model GoFastCompany {
-  id        String   @id @default(cuid())
-  name      String?
-  slug      String?  @unique
-  address   String?
-  city      String?
-  state     String?
-  zip       String?
-  domain    String?
+model TrainingGenPrompt {
+  id             String  @id @default(cuid())
+  name           String
+  description    String?
+  aiRoleId       String
+  ruleSetId      String
+  mustHavesId    String
+  returnFormatId String
+
+  aiRole       AIRole           @relation(fields: [aiRoleId], references: [id])
+  ruleSet      RuleSet          @relation(fields: [ruleSetId], references: [id])
+  mustHaves    MustHaves        @relation(fields: [mustHavesId], references: [id])
+  returnFormat ReturnJsonFormat @relation(fields: [returnFormatId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  athletes Athlete[]
-
-  @@map("go_fast_companies")
-}
-
-// Training Prompt Configuration Models
-model TrainingGenPrompt {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  aiRoleId        String
-  ruleSetId       String
-  mustHavesId     String
-  returnFormatId  String
-
-  aiRole          AIRole           @relation(fields: [aiRoleId], references: [id])
-  ruleSet         RuleSet          @relation(fields: [ruleSetId], references: [id])
-  mustHaves       MustHaves        @relation(fields: [mustHavesId], references: [id])
-  returnFormat    ReturnJsonFormat @relation(fields: [returnFormatId], references: [id])
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
   @@map("training_gen_prompts")
 }
 
 model AIRole {
-  id          String   @id @default(cuid())
-  name        String
-  content     String   // the system role instructions
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  content   String // system role prompt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  prompts     TrainingGenPrompt[]
+  prompts TrainingGenPrompt[]
 
   @@map("ai_roles")
 }
 
 model RuleSet {
-  id          String   @id @default(cuid())
-  name        String
-  rules       Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  rules     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  prompts     TrainingGenPrompt[]
+  prompts TrainingGenPrompt[]
 
   @@map("rule_sets")
 }
@@ -385,11 +388,11 @@ model RuleSet {
 model MustHaves {
   id        String   @id @default(cuid())
   name      String
-  fields    Json     // array of strings or structured object describing required data
+  fields    Json // required fields for AI generation
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  prompts   TrainingGenPrompt[]
+  prompts TrainingGenPrompt[]
 
   @@map("must_haves")
 }
@@ -397,11 +400,11 @@ model MustHaves {
 model ReturnJsonFormat {
   id        String   @id @default(cuid())
   name      String
-  schema    Json     // the JSON structure that GPT must return
+  schema    Json // expected AI JSON output
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  prompts   TrainingGenPrompt[]
+  prompts TrainingGenPrompt[]
 
   @@map("return_json_formats")
 }
