@@ -1,6 +1,5 @@
--- Fix Athlete_companyId_fkey foreign key constraint
--- The constraint was incorrectly pointing to "GoFastCompany" table (PascalCase)
--- but the actual table is "go_fast_companies" (snake_case with @@map)
+-- Fix Athlete_companyId_fkey to point to go_fast_companies (not GoFastCompany)
+-- The constraint was incorrectly created pointing to "GoFastCompany" table which doesn't exist
 
 -- Drop the incorrect constraint
 ALTER TABLE "Athlete" DROP CONSTRAINT IF EXISTS "Athlete_companyId_fkey";
