@@ -341,6 +341,7 @@ model GoFastCompany {
 model TrainingGenPrompt {
   id              String   @id @default(cuid())
   name            String
+  description     String?
   aiRoleId        String
   ruleSetId       String
   mustHavesId     String
