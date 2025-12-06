@@ -79,6 +79,8 @@ model Athlete {
   athleteTrainingPlans AthleteTrainingPlan[] // Junction table for multiple plans
   executedDays         TrainingDayExecuted[]
   activities           AthleteActivity[]
+
+  @@map("athletes")
 }
 
 model AthleteActivity {
