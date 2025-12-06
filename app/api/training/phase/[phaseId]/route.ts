@@ -10,11 +10,11 @@ import { prisma } from '@/lib/prisma';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { phaseId: string } }
+  { params }: { params: Promise<{ phaseId: string }> }
 ) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
-    const phaseId = params.phaseId;
+    const { phaseId } = await params;
 
     const phase = await prisma.trainingPlanPhase.findFirst({
       where: {
@@ -92,11 +92,11 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { phaseId: string } }
+  { params }: { params: Promise<{ phaseId: string }> }
 ) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
-    const phaseId = params.phaseId;
+    const { phaseId } = await params;
     const body = await request.json();
 
     const {

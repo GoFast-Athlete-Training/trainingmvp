@@ -5,7 +5,7 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { weekIndex: string } }
+  { params }: { params: Promise<{ weekIndex: string }> }
 ) {
   try {
     // Get athleteId from Firebase token
@@ -17,7 +17,8 @@ export async function GET(
       return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
     }
     
-    const weekIndex = parseInt(params.weekIndex);
+    const { weekIndex: weekIndexStr } = await params;
+    const weekIndex = parseInt(weekIndexStr);
 
     const activePlan = await prisma.trainingPlan.findFirst({
       where: {

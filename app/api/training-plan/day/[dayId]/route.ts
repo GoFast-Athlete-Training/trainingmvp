@@ -7,11 +7,11 @@ import { getStartOfDay, getEndOfDay } from '@/lib/training/dates';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { dayId: string } }
+  { params }: { params: Promise<{ dayId: string }> }
 ) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
-    const dayId = params.dayId;
+    const { dayId } = await params;
 
     const plannedDay = await prisma.trainingPlanDay.findUnique({
       where: { id: dayId },

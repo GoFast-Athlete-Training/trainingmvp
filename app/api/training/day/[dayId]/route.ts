@@ -5,7 +5,7 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { dayId: string } }
+  { params }: { params: Promise<{ dayId: string }> }
 ) {
   try {
     // Get athleteId from Firebase token
@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
     }
     
-    const dayId = params.dayId;
+    const { dayId } = await params;
 
     const plannedDay = await prisma.trainingPlanDay.findUnique({
       where: { id: dayId },

@@ -7,12 +7,12 @@ import { getStartOfDay, getEndOfDay } from '@/lib/training/dates';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; weekIndex: string } }
+  { params }: { params: Promise<{ id: string; weekIndex: string }> }
 ) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
-    const planId = params.id;
-    const weekIndex = parseInt(params.weekIndex);
+    const { id: planId, weekIndex: weekIndexStr } = await params;
+    const weekIndex = parseInt(weekIndexStr);
 
     if (isNaN(weekIndex)) {
       return NextResponse.json({ success: false, error: 'Invalid weekIndex' }, { status: 400 });

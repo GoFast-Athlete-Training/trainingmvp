@@ -6,11 +6,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
-    const planId = params.id;
+    const { id: planId } = await params;
 
     const plan = await prisma.trainingPlan.findFirst({
       where: {
