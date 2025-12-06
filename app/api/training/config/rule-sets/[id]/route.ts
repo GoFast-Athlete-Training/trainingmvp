@@ -5,23 +5,33 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 
 /**
- * GET /api/training/config/rule-sets
- * List all rule sets
+ * GET /api/training/config/rule-sets/[id]
+ * Get a specific rule set by ID
  */
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     await getAthleteIdFromRequest(request); // Auth check
 
-    const items = await prisma.ruleSet.findMany({
-      orderBy: { createdAt: 'desc' },
+    const item = await prisma.ruleSet.findUnique({
+      where: { id: params.id },
     });
+
+    if (!item) {
+      return NextResponse.json(
+        { success: false, error: 'Rule set not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      items,
+      item,
     });
   } catch (error: any) {
-    console.error('❌ GET RULE SETS: Error:', error);
+    console.error('❌ GET RULE SET: Error:', error);
     return NextResponse.json(
       { success: false, error: 'Server error', details: error?.message },
       { status: error.message?.includes('Unauthorized') ? 401 : 500 }
@@ -30,10 +40,13 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/training/config/rule-sets
- * Create new rule set
+ * PUT /api/training/config/rule-sets/[id]
+ * Update a rule set
  */
-export async function POST(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     await getAthleteIdFromRequest(request); // Auth check
     const body = await request.json();
@@ -57,7 +70,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const item = await prisma.ruleSet.create({
+    const item = await prisma.ruleSet.update({
+      where: { id: params.id },
       data: {
         name,
         rules: rules as any,
@@ -69,7 +83,34 @@ export async function POST(request: NextRequest) {
       item,
     });
   } catch (error: any) {
-    console.error('❌ CREATE RULE SET: Error:', error);
+    console.error('❌ UPDATE RULE SET: Error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Server error', details: error?.message },
+      { status: error.message?.includes('Unauthorized') ? 401 : 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/training/config/rule-sets/[id]
+ * Delete a rule set
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await getAthleteIdFromRequest(request); // Auth check
+
+    await prisma.ruleSet.delete({
+      where: { id: params.id },
+    });
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (error: any) {
+    console.error('❌ DELETE RULE SET: Error:', error);
     return NextResponse.json(
       { success: false, error: 'Server error', details: error?.message },
       { status: error.message?.includes('Unauthorized') ? 401 : 500 }
