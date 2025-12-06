@@ -41,6 +41,7 @@ export async function PUT(request: NextRequest) {
       birthday: body.birthday ? new Date(body.birthday) : undefined,
       primarySport: body.primarySport,
       instagram: body.instagram,
+      bio: body.bio,
       fiveKPace: body.fiveKPace,
     });
 
@@ -56,6 +57,7 @@ export async function PUT(request: NextRequest) {
         birthday: updated.birthday,
         primarySport: updated.primarySport,
         instagram: updated.instagram,
+        bio: updated.bio,
         fiveKPace: updated.fiveKPace,
       },
     });

@@ -245,7 +245,7 @@ export default function TrainingHub() {
         {/* Top right buttons */}
         <div className="fixed top-4 right-4 z-10 flex gap-2">
           <button
-            onClick={() => router.push('/settings/training')}
+            onClick={() => router.push('/settings')}
             className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-semibold hover:bg-white/30 transition border border-white/30"
             title="Training Settings"
           >
@@ -569,9 +569,9 @@ export default function TrainingHub() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => router.push('/settings/training')}
+              onClick={() => router.push('/settings')}
               className="bg-gray-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 transition shadow-md"
-              title="Training Settings"
+              title="Settings"
             >
               ⚙️ Settings
             </button>

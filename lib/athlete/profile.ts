@@ -10,6 +10,7 @@ export interface AthleteProfile {
   birthday?: Date;
   primarySport?: string;
   instagram?: string;
+  bio?: string;
   fiveKPace?: string; // mm:ss format
   garmin_user_id?: string;
   garmin_is_connected?: boolean;
@@ -31,6 +32,7 @@ export async function getAthleteProfile(athleteId: string) {
       birthday: true,
       primarySport: true,
       instagram: true,
+      bio: true,
       fiveKPace: true,
       garmin_user_id: true,
       garmin_is_connected: true,
@@ -65,6 +67,7 @@ export async function updateAthleteProfile(athleteId: string, data: Partial<Athl
       birthday: data.birthday,
       primarySport: data.primarySport,
       instagram: data.instagram,
+      bio: data.bio,
       fiveKPace: data.fiveKPace,
       // DO NOT update legacy fields: myCurrentPace, myTrainingGoal, myTargetRace
     },
