@@ -5,87 +5,83 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 
 /**
- * Get training plan(s) assigned to the athlete via junction table
- * Returns the most recent plan with its current state (what's bolted on)
- * Architecture: TrainingPlan is master container, we check what's assigned/bolted on
+ * Get training plan with setup progress
+ * All plans are active - this shows what steps need to be completed
  */
 export async function GET(request: NextRequest) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
 
-    // Get most recent plan assigned to this athlete via junction table
-    // Don't filter by status - just look at what's assigned
+    // Get most recent plan assigned to this athlete
     const assignment = await prisma.athleteTrainingPlan.findFirst({
-      where: {
-        athleteId,
-        // Don't filter by isActive - just get the most recent assignment
-      },
+      where: { athleteId },
       include: {
         trainingPlan: {
-          include: {
-            race: true, // Direct relation
-          },
+          include: { race: true },
         },
       },
-      orderBy: {
-        assignedAt: 'desc',
-      },
+      orderBy: { assignedAt: 'desc' },
     });
 
-    // If no assignment, check for plans directly owned by athlete (legacy)
     let plan = assignment?.trainingPlan || undefined;
     if (!plan) {
-      const foundPlan = await prisma.trainingPlan.findFirst({
-        where: {
-          athleteId,
-        },
-        include: {
-          race: true, // Direct relation
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-      plan = foundPlan || undefined;
+      plan = await prisma.trainingPlan.findFirst({
+        where: { athleteId },
+        include: { race: true },
+        orderBy: { createdAt: 'desc' },
+      }) || undefined;
     }
 
     if (!plan) {
       return NextResponse.json({
         success: true,
-        hasDraftPlan: false,
-        draftPlan: null,
+        hasPlan: false,
+        plan: null,
       });
     }
 
-    // Determine what's bolted on (what's missing)
+    // Check what steps are needed (based on what's missing)
     const hasRace = !!plan.race;
     const hasGoalTime = !!plan.goalTime;
+    const hasBaseline = !!(plan.current5KPace && plan.currentWeeklyMileage);
+    const hasPreferences = !!(plan.preferredDays && plan.preferredDays.length > 0);
+    const hasStartDate = !!plan.startDate;
+    const planDayCount = await prisma.trainingPlanDay.count({
+      where: { planId: plan.id },
+    });
+    const hasGeneratedDays = planDayCount > 0;
 
-    // Determine next step
+    // Determine next step needed
     let nextStep: string | null = null;
     let nextStepUrl: string | null = null;
-
     if (!hasRace) {
       nextStep = 'Select Race';
       nextStepUrl = `/training-setup/start?planId=${plan.id}`;
     } else if (!hasGoalTime) {
       nextStep = 'Set Goal Time';
       nextStepUrl = `/training-setup/${plan.id}`;
-    } else {
-      nextStep = 'Review & Generate';
+    } else if (!hasBaseline) {
+      nextStep = 'Set Baseline';
+      nextStepUrl = `/training-setup/${plan.id}/baseline`;
+    } else if (!hasPreferences) {
+      nextStep = 'Set Preferences';
+      nextStepUrl = `/training-setup/${plan.id}/preferences`;
+    } else if (!hasStartDate) {
+      nextStep = 'Set Start Date';
+      nextStepUrl = `/training-setup/${plan.id}/review`;
+    } else if (!hasGeneratedDays) {
+      nextStep = 'Generate Plan';
       nextStepUrl = `/training-setup/${plan.id}/review`;
     }
 
     return NextResponse.json({
       success: true,
-      hasDraftPlan: true,
-      draftPlan: {
+      hasPlan: true,
+      plan: {
         id: plan.id,
         name: plan.name,
         goalTime: plan.goalTime,
         goalPace5K: plan.goalPace5K,
-        // TODO: status removed - will be handled via execution-based lifecycle
-        // status: plan.status, // Just metadata, not source of truth
         race: plan.race
           ? {
               id: plan.race.id,
@@ -95,17 +91,20 @@ export async function GET(request: NextRequest) {
               date: plan.race.date,
             }
           : null,
-        nextStep,
-        nextStepUrl,
         progress: {
           hasRace,
           hasGoalTime,
-          isComplete: hasRace && hasGoalTime,
+          hasBaseline,
+          hasPreferences,
+          hasStartDate,
+          hasGeneratedDays,
         },
+        nextStep,
+        nextStepUrl,
       },
     });
   } catch (error: any) {
-    console.error('❌ GET DRAFT PLAN: Error:', error);
+    console.error('❌ GET PLAN: Error:', error);
     return NextResponse.json(
       { success: false, error: 'Server error', details: error?.message },
       { status: error.message?.includes('Unauthorized') ? 401 : 500 }

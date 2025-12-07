@@ -54,7 +54,6 @@ interface DraftPlan {
   id: string;
   name: string;
   goalTime: string | null;
-  status: string;
   race: {
     id: string;
     name: string;

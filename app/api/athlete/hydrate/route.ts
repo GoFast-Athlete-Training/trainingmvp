@@ -72,9 +72,9 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    console.log('✅ HYDRATE API: Athlete found, loading latest training plan (active or draft)...');
+    console.log('✅ HYDRATE API: Athlete found, loading latest training plan...');
     
-    // MVP1: Load latest active OR draft plan (do NOT require AthleteTrainingPlan junction table)
+    // MVP1: Load latest plan (do NOT require AthleteTrainingPlan junction table)
     let trainingPlanId = null;
     try {
       // TODO: status removed - will be handled via execution-based lifecycle
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
         trainingPlanId = plan.id;
         console.log('✅ HYDRATE API: Found training plan ID:', trainingPlanId);
       } else {
-        console.log('✅ HYDRATE API: No training plan found (active or draft)');
+        console.log('✅ HYDRATE API: No training plan found');
       }
     } catch (err: any) {
       console.error('❌ HYDRATE API: Error loading training plan:', err?.message);

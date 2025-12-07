@@ -65,41 +65,81 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if plan has been generated (has TrainingPlanDay records)
-    const planDayCount = await prisma.trainingPlanDay.count({
-      where: {
-        planId: activePlan.id,
-      },
-    });
-
-    // Check if plan is complete (has all required fields)
+    // DATE-BASED MODEL: All plans are active, date determines plan state
+    const today = new Date();
+    const planStart = new Date(activePlan.startDate);
+    const raceDate = activePlan.race ? new Date(activePlan.race.date) : null;
+    
+    // Plan state based on dates:
+    // - "upcoming" if today < startDate
+    // - "current" if today >= startDate && today <= raceDate
+    // - "complete" if today > raceDate (race has passed)
+    let planState: 'upcoming' | 'current' | 'complete' = 'current';
+    if (raceDate) {
+      if (today < planStart) {
+        planState = 'upcoming';
+      } else if (today > raceDate) {
+        planState = 'complete';
+      } else {
+        planState = 'current';
+      }
+    } else if (today < planStart) {
+      planState = 'upcoming';
+    }
+    
+    const isCurrentPlan = planState === 'current';
+    
+    // Check what steps are needed (based on what's missing)
     const hasRace = !!activePlan.race;
     const hasGoalTime = !!activePlan.goalTime;
     const hasBaseline = !!(activePlan.current5KPace && activePlan.currentWeeklyMileage);
     const hasPreferences = !!(activePlan.preferredDays && activePlan.preferredDays.length > 0);
     const hasStartDate = !!activePlan.startDate;
-    const isPlanComplete = hasRace && hasGoalTime && hasBaseline && hasPreferences && hasStartDate;
+    const planDayCount = await prisma.trainingPlanDay.count({
+      where: { planId: activePlan.id },
+    });
+    const hasGeneratedDays = planDayCount > 0;
+    
+    // Determine next step needed
+    let nextStep: string | null = null;
+    let nextStepUrl: string | null = null;
+    if (!hasRace) {
+      nextStep = 'Select Race';
+      nextStepUrl = `/training-setup/start?planId=${activePlan.id}`;
+    } else if (!hasGoalTime) {
+      nextStep = 'Set Goal Time';
+      nextStepUrl = `/training-setup/${activePlan.id}`;
+    } else if (!hasBaseline) {
+      nextStep = 'Set Baseline';
+      nextStepUrl = `/training-setup/${activePlan.id}/baseline`;
+    } else if (!hasPreferences) {
+      nextStep = 'Set Preferences';
+      nextStepUrl = `/training-setup/${activePlan.id}/preferences`;
+    } else if (!hasStartDate) {
+      nextStep = 'Set Start Date';
+      nextStepUrl = `/training-setup/${activePlan.id}/review`;
+    } else if (!hasGeneratedDays) {
+      nextStep = 'Generate Plan';
+      nextStepUrl = `/training-setup/${activePlan.id}/review`;
+    }
 
-    // STATE 2: Draft/Incomplete plan (exists but not fully set up or not generated)
-    // TODO: status removed - will be handled via execution-based lifecycle
-    if (!isPlanComplete || planDayCount === 0) {
+    // If plan doesn't have generated days, return setup state
+    if (!hasGeneratedDays) {
       return NextResponse.json({
         todayWorkout: null,
         planStatus: {
-          hasPlan: false, // Not an active plan yet
-          totalWeeks: 0,
+          hasPlan: true, // Plan exists
+          totalWeeks: activePlan.totalWeeks,
           currentWeek: 0,
           phase: '',
         },
         raceReadiness: null,
-        planState: 'draft', // State 2: Plan exists but incomplete
-        draftPlan: {
+        planState: 'setup', // Plan exists but needs setup
+        plan: {
           id: activePlan.id,
           name: activePlan.name,
           goalTime: activePlan.goalTime,
           goalPace5K: activePlan.goalPace5K,
-          // TODO: status removed - will be handled via execution-based lifecycle
-          // status: activePlan.status,
           race: activePlan.race
             ? {
                 id: activePlan.race.id,
@@ -115,37 +155,38 @@ export async function GET(request: NextRequest) {
             hasBaseline,
             hasPreferences,
             hasStartDate,
-            isComplete: isPlanComplete && planDayCount > 0,
+            hasGeneratedDays,
           },
+          nextStep,
+          nextStepUrl,
         },
       });
     }
 
-    // STATE 3: Active plan in execution (complete and has days)
-    // Get today's workout
-    const today = new Date();
-    const startOfDay = getStartOfDay(today);
-    const endOfDay = getEndOfDay(today);
-
-    const todayPlanned = await prisma.trainingPlanDay.findFirst({
-      where: {
-        planId: activePlan.id,
-        date: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-        plan: {
-          athleteId,
-        },
-      },
-      include: {
-        phase: true,
-        week: true,
-      },
-    });
-
+    // Plan has generated days - get today's workout (only if current)
     let todayWorkout = null;
-    if (todayPlanned) {
+    if (isCurrentPlan) {
+      const startOfDay = getStartOfDay(today);
+      const endOfDay = getEndOfDay(today);
+
+      const todayPlanned = await prisma.trainingPlanDay.findFirst({
+        where: {
+          planId: activePlan.id,
+          date: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+          plan: {
+            athleteId,
+          },
+        },
+        include: {
+          phase: true,
+          week: true,
+        },
+      });
+
+      if (todayPlanned) {
       const todayExecuted = await prisma.trainingDayExecuted.findFirst({
         where: {
           athleteId,
@@ -174,15 +215,19 @@ export async function GET(request: NextRequest) {
         warmup: todayPlanned.warmup,
         workout: todayPlanned.workout,
         cooldown: todayPlanned.cooldown,
-        notes: todayPlanned.notes,
-        status,
-      };
+          notes: todayPlanned.notes,
+          status,
+        };
+      }
     }
 
     // Calculate current week (1-based to match weekNumber in database)
-    const planStart = new Date(activePlan.startDate);
-    const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
-    const currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekNumber starts at 1
+    // Only calculate if plan is current or complete
+    let currentWeek = 0;
+    if (planState === 'current' || planState === 'complete') {
+      const daysSinceStart = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
+      currentWeek = Math.floor(daysSinceStart / 7) + 1; // +1 because weekNumber starts at 1
+    }
 
     // Get race readiness (using goalPace5K from plan)
     const goal5kPace = activePlan.goalPace5K || null;
@@ -208,7 +253,7 @@ export async function GET(request: NextRequest) {
         phase: todayPlanned?.phase.name || 'base',
       },
       raceReadiness,
-      planState: 'active', // State 3: Plan is active and in execution
+      planState, // 'upcoming' | 'current' | 'complete' based on dates
     });
   } catch (error) {
     console.error('Error loading hub data:', error);

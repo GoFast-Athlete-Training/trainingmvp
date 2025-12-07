@@ -9,7 +9,8 @@ import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToS
 import { calculateTrainingDayDateFromWeek, getDayOfWeek } from '@/lib/training/dates';
 
 /**
- * Generate training plan from existing draft TrainingPlan
+ * Generate training plan from existing TrainingPlan
+ * TODO: Schema is source of truth - no "draft" concept exists in schema
  * Hydrate-id-first pattern: Uses existing trainingPlanId
  */
 export async function POST(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Load existing draft plan
+    // Load existing plan
     const existingPlan = await prisma.trainingPlan.findUnique({
       where: { id: trainingPlanId },
       include: {
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     
     if (planDayCount > 0) {
       return NextResponse.json(
-        { success: false, error: 'Can only generate from draft plans (plans without generated days)' },
+        { success: false, error: 'Can only generate from plans without generated days' },
         { status: 400 }
       );
     }
@@ -243,7 +244,7 @@ export async function PUT(request: NextRequest) {
     
     if (planDayCount > 0) {
       return NextResponse.json(
-        { success: false, error: 'Can only confirm draft plans (plans without generated days)' },
+        { success: false, error: 'Can only confirm plans without generated days' },
         { status: 400 }
       );
     }

@@ -5,7 +5,8 @@ import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
 
 /**
- * Create a new draft TrainingPlan
+ * Create a new TrainingPlan
+ * TODO: Schema is source of truth - no "draft" concept exists in schema
  * Hydrate-id-first pattern: Creates plan immediately, returns ID for subsequent steps
  */
 export async function POST(request: NextRequest) {
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // No existing draft plan - create new one
+    // No existing plan - create new one
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let totalWeeks = 16; // Default
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
       planName = `${race.name} Training Plan`;
     }
 
-    // Create draft TrainingPlan
+    // Create TrainingPlan
     console.log('💾 TRAINING PLAN CREATE: Creating training plan...');
     const trainingPlan = await prisma.trainingPlan.create({
       data: {
