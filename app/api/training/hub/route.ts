@@ -163,61 +163,98 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // TODO: Execution not implemented yet - comment out todayPlanned logic
     // Plan has generated days - get today's workout (only if current)
-    let todayWorkout = null;
-    if (isCurrentPlan) {
-      const startOfDay = getStartOfDay(today);
-      const endOfDay = getEndOfDay(today);
-
-      const todayPlanned = await prisma.trainingPlanDay.findFirst({
-        where: {
-          planId: activePlan.id,
-          date: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-          plan: {
-            athleteId,
-          },
-        },
-        include: {
-          phase: true,
-          week: true,
+    // todayPlanned = the planned workout for today from TrainingPlanDay table
+    // let todayWorkout = null;
+    // let todayPlanned = null;
+    // if (isCurrentPlan) {
+    //   const startOfDay = getStartOfDay(today);
+    //   const endOfDay = getEndOfDay(today);
+    //
+    //   todayPlanned = await prisma.trainingPlanDay.findFirst({
+    //     where: {
+    //       planId: activePlan.id,
+    //       date: {
+    //         gte: startOfDay,
+    //         lte: endOfDay,
+    //       },
+    //       plan: {
+    //         athleteId,
+    //       },
+    //     },
+    //     include: {
+    //       phase: true,
+    //       week: true,
+    //     },
+    //   });
+    //
+    //   if (todayPlanned) {
+    //     const todayExecuted = await prisma.trainingDayExecuted.findFirst({
+    //       where: {
+    //         athleteId,
+    //         date: {
+    //           gte: startOfDay,
+    //           lte: endOfDay,
+    //         },
+    //       },
+    //     });
+    //
+    //     const workout = todayPlanned.workout as any[];
+    //     const isRestDay = !workout || workout.length === 0 || 
+    //       workout.every((lap: any) => lap.paceGoal === null && lap.distanceMiles < 2);
+    //     
+    //     const status = isRestDay
+    //       ? 'rest'
+    //       : todayExecuted
+    //       ? 'completed'
+    //       : 'pending';
+    //
+    //     todayWorkout = {
+    //       id: todayPlanned.id,
+    //       date: todayPlanned.date,
+    //       dayOfWeek: todayPlanned.dayOfWeek,
+    //       warmup: todayPlanned.warmup,
+    //       workout: todayPlanned.workout,
+    //       cooldown: todayPlanned.cooldown,
+    //       notes: todayPlanned.notes,
+    //       status,
+    //     };
+    //   }
+    // }
+    
+    // Calculate current phase based on phaseStartDate and phaseEndDate
+    // Phase 1 starts at plan startDate (phaseStartDate)
+    // Phase n+1 starts when phase n ends (phaseEndDate of phase n = phaseStartDate of phase n+1)
+    let currentPhase = 'base';
+    if (isCurrentPlan || planState === 'complete') {
+      // Get all phases ordered by their sequence (base -> build -> peak -> taper)
+      const phases = await prisma.trainingPlanPhase.findMany({
+        where: { planId: activePlan.id },
+        orderBy: {
+          // Order by phaseStartDate to get correct sequence
+          phaseStartDate: 'asc',
         },
       });
-
-      if (todayPlanned) {
-      const todayExecuted = await prisma.trainingDayExecuted.findFirst({
-        where: {
-          athleteId,
-          date: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-        },
-      });
-
-      // Check if it's a rest day
-      const workout = todayPlanned.workout as any[];
-      const isRestDay = !workout || workout.length === 0 || 
-        workout.every((lap: any) => lap.paceGoal === null && lap.distanceMiles < 2);
       
-      const status = isRestDay
-        ? 'rest'
-        : todayExecuted
-        ? 'completed'
-        : 'pending';
-
-      todayWorkout = {
-        id: todayPlanned.id,
-        date: todayPlanned.date,
-        dayOfWeek: todayPlanned.dayOfWeek,
-        warmup: todayPlanned.warmup,
-        workout: todayPlanned.workout,
-        cooldown: todayPlanned.cooldown,
-          notes: todayPlanned.notes,
-          status,
-        };
+      if (phases.length > 0) {
+        // Find which phase today falls within using phaseStartDate and phaseEndDate
+        for (const phase of phases) {
+          const phaseStart = new Date(phase.phaseStartDate);
+          const phaseEnd = new Date(phase.phaseEndDate);
+          
+          // Check if today falls within this phase's date range
+          if (today >= phaseStart && today <= phaseEnd) {
+            currentPhase = phase.name;
+            break;
+          }
+        }
+        
+        // If we didn't find a phase, default to last phase if past all phases
+        if (currentPhase === 'base' && today > planStart) {
+          const lastPhase = phases[phases.length - 1];
+          currentPhase = lastPhase.name;
+        }
       }
     }
 
@@ -245,12 +282,12 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      todayWorkout,
+      todayWorkout: null, // TODO: Execution not implemented yet
       planStatus: {
         hasPlan: true,
         totalWeeks: activePlan.totalWeeks,
         currentWeek: Math.min(currentWeek, activePlan.totalWeeks),
-        phase: todayPlanned?.phase.name || 'base',
+        phase: currentPhase, // Time-based: calculated from phase dates
       },
       raceReadiness,
       planState, // 'upcoming' | 'current' | 'complete' based on dates

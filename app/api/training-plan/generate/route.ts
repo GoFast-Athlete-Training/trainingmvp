@@ -287,14 +287,26 @@ export async function PUT(request: NextRequest) {
       // Race is already linked via raceId FK (no junction table needed)
       const raceId = race.id;
 
-      // Create phases (with weekCount only, no weeks array)
+      // Calculate phase dates using progressive logic and week boundaries
+      const { calculatePhaseDates } = await import('@/lib/training/phase-date-calculator');
+      const phaseDates = calculatePhaseDates(
+        planStartDate,
+        generatedPlan.phases.map((p: { name: string; weekCount: number }) => ({ name: p.name, weekCount: p.weekCount }))
+      );
+
+      // Create phases with calculated dates
       const phaseMap = new Map<string, string>(); // phase name -> phase id
-      for (const phaseData of generatedPlan.phases) {
+      for (let i = 0; i < generatedPlan.phases.length; i++) {
+        const phaseData = generatedPlan.phases[i];
+        const dates = phaseDates[i];
+        
         const phase = await tx.trainingPlanPhase.create({
           data: {
             planId: trainingPlanId,
             name: phaseData.name,
             weekCount: phaseData.weekCount,
+            phaseStartDate: dates.phaseStartDate,
+            phaseEndDate: dates.phaseEndDate,
             totalMiles: null, // Will be computed later as weeks are generated
           },
         });

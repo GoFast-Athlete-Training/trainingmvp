@@ -218,6 +218,10 @@ model TrainingPlanPhase {
   weekCount  Int
   totalMiles Float?
 
+  // Date boundaries (time-based phase calculation)
+  phaseStartDate DateTime // Phase 1 matches plan startDate, phase n+1 starts when phase n ends
+  phaseEndDate   DateTime // End date of this phase (start date of next phase)
+
   // Config
   phaseDescription       String?
   phaseTotalMilesTarget  Float?
