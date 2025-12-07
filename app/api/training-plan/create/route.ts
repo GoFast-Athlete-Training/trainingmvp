@@ -141,7 +141,8 @@ export async function POST(request: NextRequest) {
         goalTime: null, // Will be set in next step
         startDate: today,
         totalWeeks: totalWeeks,
-        status: 'draft',
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: 'draft',
         raceId: raceId || null, // Direct FK - no junction table needed
       },
     });
@@ -154,7 +155,8 @@ export async function POST(request: NextRequest) {
       trainingPlan: {
         id: trainingPlan.id,
         name: trainingPlan.name,
-        status: trainingPlan.status,
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: trainingPlan.status,
         totalWeeks: trainingPlan.totalWeeks,
       },
     });

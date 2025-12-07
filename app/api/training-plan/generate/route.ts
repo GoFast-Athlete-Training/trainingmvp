@@ -48,9 +48,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (existingPlan.status !== 'draft') {
+    // Check if plan has been generated (has days) - if so, it's not a draft
+    const planDayCount = await prisma.trainingPlanDay.count({
+      where: { planId: existingPlan.id },
+    });
+    
+    if (planDayCount > 0) {
       return NextResponse.json(
-        { success: false, error: 'Can only generate from draft plans' },
+        { success: false, error: 'Can only generate from draft plans (plans without generated days)' },
         { status: 400 }
       );
     }
@@ -231,9 +236,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (existingPlan.status !== 'draft') {
+    // Check if plan has been generated (has days) - if so, it's not a draft
+    const planDayCount = await prisma.trainingPlanDay.count({
+      where: { planId: trainingPlanId },
+    });
+    
+    if (planDayCount > 0) {
       return NextResponse.json(
-        { success: false, error: 'Can only confirm draft plans' },
+        { success: false, error: 'Can only confirm draft plans (plans without generated days)' },
         { status: 400 }
       );
     }
@@ -264,11 +274,10 @@ export async function PUT(request: NextRequest) {
 
     // Save plan to database
     const result = await prisma.$transaction(async (tx) => {
-      // Update plan status to active and set pace fields
+      // Update plan with pace fields (no status field - lifecycle is derived from executions)
       const updatedPlan = await tx.trainingPlan.update({
         where: { id: trainingPlanId },
         data: {
-          status: 'active',
           goalRacePace: goalRacePaceSec,
           predictedRacePace: predictedRacePaceSec,
         },

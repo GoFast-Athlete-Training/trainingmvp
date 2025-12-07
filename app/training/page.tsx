@@ -166,7 +166,8 @@ export default function TrainingHub() {
           id: data.draftPlan.id,
           name: data.draftPlan.name,
           goalTime: data.draftPlan.goalTime,
-          status: data.draftPlan.status,
+          // TODO: status removed - will be handled via execution-based lifecycle
+          // status: data.draftPlan.status,
           race: data.draftPlan.race
             ? {
                 id: data.draftPlan.race.id,
@@ -208,11 +209,12 @@ export default function TrainingHub() {
       const hasActivePlan = planState === 'active' && data.planStatus?.hasPlan === true;
       setHasPlan(hasActivePlan);
       
-      console.log('📊 TRAINING PAGE: Plan status:', {
-        hasPlan: hasActivePlan,
-        hasDraftPlan: !!data.draftPlan,
-        planStatus: data.planStatus,
-      });
+      // TODO: status removed - will be handled via execution-based lifecycle
+      // console.log('📊 TRAINING PAGE: Plan status:', {
+      //   hasPlan: hasActivePlan,
+      //   hasDraftPlan: !!data.draftPlan,
+      //   planStatus: data.planStatus,
+      // });
     } catch (error: any) {
       console.error('❌ TRAINING PAGE: Error loading hub data:', error);
       if (error.response?.status === 401) {

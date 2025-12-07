@@ -84,7 +84,8 @@ export async function GET(request: NextRequest) {
         name: plan.name,
         goalTime: plan.goalTime,
         goalPace5K: plan.goalPace5K,
-        status: plan.status, // Just metadata, not source of truth
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: plan.status, // Just metadata, not source of truth
         race: plan.race
           ? {
               id: plan.race.id,

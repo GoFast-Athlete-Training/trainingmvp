@@ -61,12 +61,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (plan.status !== 'active') {
-      return NextResponse.json(
-        { success: false, error: 'Can only generate weeks for active plans' },
-        { status: 400 }
-      );
-    }
+    // TODO: status removed - will be handled via execution-based lifecycle
+    // if (plan.status !== 'active') {
+    //   return NextResponse.json(
+    //     { success: false, error: 'Can only generate weeks for active plans' },
+    //     { status: 400 }
+    //   );
+    // }
 
     // Check if week already exists
     const existingWeek = plan.weeks.find(w => w.weekNumber === weekNumber);

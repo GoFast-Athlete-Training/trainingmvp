@@ -23,7 +23,8 @@ export async function GET(
     const activePlan = await prisma.trainingPlan.findFirst({
       where: {
         athleteId,
-        status: 'active',
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: 'active',
       },
     });
 

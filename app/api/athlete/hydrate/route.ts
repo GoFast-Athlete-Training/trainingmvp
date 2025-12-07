@@ -77,31 +77,17 @@ export async function POST(request: Request) {
     // MVP1: Load latest active OR draft plan (do NOT require AthleteTrainingPlan junction table)
     let trainingPlanId = null;
     try {
-      // First try active plan
+      // TODO: status removed - will be handled via execution-based lifecycle
+      // For now, just get the latest plan
       let plan = await prisma.trainingPlan.findFirst({
         where: { 
           athleteId: athlete.id,
-          status: 'active'
         },
         select: {
           id: true,
         },
         orderBy: { createdAt: 'desc' },
       });
-
-      // If no active plan, try draft plan
-      if (!plan) {
-        plan = await prisma.trainingPlan.findFirst({
-          where: { 
-            athleteId: athlete.id,
-            status: 'draft'
-          },
-          select: {
-            id: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-      }
 
       if (plan) {
         trainingPlanId = plan.id;

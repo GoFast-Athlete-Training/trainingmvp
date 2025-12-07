@@ -104,7 +104,7 @@ export default function PlanGeneratorSandboxPage() {
                 <option value="">Select a training plan...</option>
                 {trainingPlans.map((plan) => (
                   <option key={plan.id} value={plan.id}>
-                    {plan.name} ({plan.status})
+                    {plan.name} {/* TODO: status removed - will be handled via execution-based lifecycle */}
                   </option>
                 ))}
               </select>

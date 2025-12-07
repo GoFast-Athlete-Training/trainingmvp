@@ -81,7 +81,8 @@ export async function GET(request: NextRequest) {
     const isPlanComplete = hasRace && hasGoalTime && hasBaseline && hasPreferences && hasStartDate;
 
     // STATE 2: Draft/Incomplete plan (exists but not fully set up or not generated)
-    if (!isPlanComplete || planDayCount === 0 || activePlan.status === 'draft') {
+    // TODO: status removed - will be handled via execution-based lifecycle
+    if (!isPlanComplete || planDayCount === 0) {
       return NextResponse.json({
         todayWorkout: null,
         planStatus: {
@@ -97,7 +98,8 @@ export async function GET(request: NextRequest) {
           name: activePlan.name,
           goalTime: activePlan.goalTime,
           goalPace5K: activePlan.goalPace5K,
-          status: activePlan.status,
+          // TODO: status removed - will be handled via execution-based lifecycle
+          // status: activePlan.status,
           race: activePlan.race
             ? {
                 id: activePlan.race.id,

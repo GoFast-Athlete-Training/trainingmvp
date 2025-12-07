@@ -54,12 +54,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Only allow updates to draft plans
-    if (existingPlan.status !== 'draft') {
-      return NextResponse.json(
-        { success: false, error: 'Can only update draft plans' },
-        { status: 400 }
-      );
-    }
+    // TODO: status removed - will be handled via execution-based lifecycle
+    // if (existingPlan.status !== 'draft') {
+    //   return NextResponse.json(
+    //     { success: false, error: 'Can only update draft plans' },
+    //     { status: 400 }
+    //   );
+    // }
 
     // Build update data (only allow specific fields)
     // Map old field names to new field names for backward compatibility
@@ -226,7 +227,8 @@ export async function POST(request: NextRequest) {
         name: updatedPlan.name,
         goalTime: updatedPlan.goalTime,
         goalPace5K: updatedPlan.goalPace5K,
-        status: updatedPlan.status,
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: updatedPlan.status,
         totalWeeks: updatedPlan.totalWeeks,
         race: race
           ? {

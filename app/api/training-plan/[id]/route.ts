@@ -48,7 +48,8 @@ export async function GET(
         preferredDays: plan.preferredDays,
         startDate: plan.startDate,
         totalWeeks: plan.totalWeeks,
-        status: plan.status,
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: plan.status,
         race: race
           ? {
               id: race.id,

@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
       plans: plans.map((p) => ({
         id: p.id,
         name: p.name,
-        status: p.status,
+        // TODO: status removed - will be handled via execution-based lifecycle
+        // status: p.status,
         goalTime: p.goalTime,
         startDate: p.startDate,
         totalWeeks: p.totalWeeks,
