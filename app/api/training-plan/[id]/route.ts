@@ -40,7 +40,7 @@ export async function GET(
         id: plan.id,
         name: plan.name,
         goalTime: plan.goalTime,
-        goalPace5K: plan.goalPace5K, // Deprecated, kept for backward compatibility
+        goalPace5K: plan.goalPace5K,
         goalRacePace: plan.goalRacePace,
         predictedRacePace: plan.predictedRacePace,
         current5KPace: plan.current5KPace,
