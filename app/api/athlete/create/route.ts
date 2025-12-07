@@ -50,30 +50,10 @@ export async function POST(request: Request) {
     const firstName = nameParts[0] || undefined;
     const lastName = nameParts.slice(1).join(' ').trim() || undefined;
 
-    // Ensure GoFast company exists (self-healing)
-    console.log('🏢 ATHLETE CREATE: Ensuring GoFast company exists...');
-    let gofastCompany;
-    try {
-      gofastCompany = await prisma.goFastCompany.upsert({
-      where: { slug: "gofast" },
-      update: {},
-      create: {
-        name: "GoFast",
-        slug: "gofast",
-        address: "2604 N. George Mason Dr.",
-        city: "Arlington",
-        state: "VA",
-        zip: "22207",
-        domain: "gofastcrushgoals.com",
-      },
-    });
-      console.log('✅ ATHLETE CREATE: Company found/created:', gofastCompany.id);
-    } catch (err: any) {
-      console.error('❌ ATHLETE CREATE: Company upsert failed:', err);
-      throw new Error(`Company creation failed: ${err?.message || 'Unknown error'}`);
-    }
+    // Master GoFast Company ID - all athletes are assigned to this company
+    const GOFAST_COMPANY_ID = "cmiu1z4dq0000nw4zfzd974uy";
 
-    // Upsert athlete with dynamic company association
+    // Upsert athlete with automatic company assignment
     console.log('👤 ATHLETE CREATE: Upserting athlete with firebaseId:', firebaseId);
     let athlete;
     try {
@@ -85,7 +65,7 @@ export async function POST(request: Request) {
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         photoURL: picture || undefined,
-        companyId: gofastCompany.id,
+        companyId: GOFAST_COMPANY_ID, // Always assign to master GoFast company
       },
       create: {
         firebaseId,
@@ -93,7 +73,7 @@ export async function POST(request: Request) {
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         photoURL: picture || undefined,
-        companyId: gofastCompany.id,
+        companyId: GOFAST_COMPANY_ID, // Automatically assign to master GoFast company
       },
     });
       console.log('✅ ATHLETE CREATE: Athlete found/created:', athlete.id);
