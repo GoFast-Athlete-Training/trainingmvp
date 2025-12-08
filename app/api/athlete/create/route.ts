@@ -20,9 +20,35 @@ export async function POST(request: Request) {
     const token = authHeader.substring(7);
     console.log('🔑 ATHLETE CREATE: Received token (first 20 chars):', token.substring(0, 20) + '...');
     
-    const adminAuth = getAdminAuth();
+    let adminAuth;
+    try {
+      adminAuth = getAdminAuth();
+    } catch (err: any) {
+      console.error('❌ ATHLETE CREATE: Failed to get Firebase Admin Auth');
+      console.error('❌ ATHLETE CREATE: Error:', err?.message);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Firebase Admin initialization failed',
+        details: err?.message || 'Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars'
+      }, { status: 500 });
+    }
+
     if (!adminAuth) {
-      return NextResponse.json({ success: false, error: 'Auth unavailable' }, { status: 500 });
+      console.error('❌ ATHLETE CREATE: Firebase Admin Auth is null');
+      console.error('❌ ATHLETE CREATE: Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars');
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      console.error('❌ ATHLETE CREATE: Env vars present:', {
+        projectId: !!projectId,
+        clientEmail: !!clientEmail,
+        privateKey: !!privateKey,
+      });
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Auth unavailable',
+        details: 'Firebase Admin SDK not initialized. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY environment variables.'
+      }, { status: 500 });
     }
 
     let decodedToken;
@@ -33,6 +59,7 @@ export async function POST(request: Request) {
       console.error('❌ ATHLETE CREATE: Token verification failed');
       console.error('❌ ATHLETE CREATE: Error code:', err?.code);
       console.error('❌ ATHLETE CREATE: Error message:', err?.message);
+      console.error('❌ ATHLETE CREATE: Error name:', err?.name);
       return NextResponse.json({ 
         success: false, 
         error: 'Invalid token',
@@ -81,7 +108,18 @@ export async function POST(request: Request) {
       console.error('❌ ATHLETE CREATE: Athlete upsert failed:', err);
       console.error('❌ ATHLETE CREATE: Error code:', err?.code);
       console.error('❌ ATHLETE CREATE: Error meta:', err?.meta);
-      throw new Error(`Athlete creation failed: ${err?.message || 'Unknown error'}`);
+      
+      // Check for Prisma unique constraint violations (email already exists)
+      if (err?.code === 'P2002') {
+        console.error('❌ ATHLETE CREATE: Unique constraint violation');
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Email already exists',
+          details: err?.meta?.target ? `Field ${err.meta.target.join(', ')} already exists` : err?.message
+        }, { status: 409 });
+      }
+      
+      throw err; // Re-throw to be caught by outer catch
     }
 
     // Format response like gofastapp-mvp
@@ -111,8 +149,19 @@ export async function POST(request: Request) {
     });
   } catch (err: any) {
     console.error('❌ ATHLETE CREATE: Error:', err);
-    console.error('❌ ATHLETE CREATE: Error stack:', err?.stack);
+    console.error('❌ ATHLETE CREATE: Error code:', err?.code);
     console.error('❌ ATHLETE CREATE: Error name:', err?.name);
+    console.error('❌ ATHLETE CREATE: Error stack:', err?.stack);
+    
+    // Check for Prisma unique constraint violations (if not already handled)
+    if (err?.code === 'P2002') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Email already exists',
+        details: err?.meta?.target ? `Field ${err.meta.target.join(', ')} already exists` : err?.message
+      }, { status: 409 });
+    }
+    
     return NextResponse.json({ 
       success: false, 
       error: 'Server error', 

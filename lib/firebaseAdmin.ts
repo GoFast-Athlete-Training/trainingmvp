@@ -4,51 +4,57 @@ import { getAuth, Auth } from "firebase-admin/auth";
 let app: App | null = null;
 let adminAuth: Auth | null = null;
 
-function safeGetServiceAccount() {
-  const env = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!env) return null;
-
-  try {
-    const json = JSON.parse(env);
-    return {
-      projectId: json.project_id || json.projectId,
-      clientEmail: json.client_email || json.clientEmail,
-      privateKey: (json.private_key || json.privateKey)?.replace(/\\n/g, "\n"),
-    };
-  } catch (err) {
-    console.error("❌ FIREBASE: Invalid FIREBASE_SERVICE_ACCOUNT JSON", err);
-    return null;
-  }
-}
-
 export function initAdmin() {
-  if (typeof window !== "undefined") return;
+  if (typeof window !== "undefined") return null;
 
-  if (app) return app;
+  if (app && adminAuth) return app;
 
   const existing = getApps();
   if (existing.length > 0) {
     app = existing[0];
     adminAuth = getAuth(app);
+    console.log("✅ Firebase Admin: Using existing app instance");
     return app;
   }
 
-  const serviceAccount = safeGetServiceAccount();
+  // Use individual env vars (like GoFastCompany) instead of service account JSON
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-  if (!serviceAccount) {
-    console.warn("⚠️ FIREBASE ADMIN DISABLED: No service account provided");
+  if (!projectId || !clientEmail || !privateKey) {
+    console.error("❌ FIREBASE ADMIN: Missing required env vars");
+    console.error("❌ FIREBASE ADMIN: Required: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY");
+    console.error("❌ FIREBASE ADMIN: Present:", {
+      projectId: !!projectId,
+      clientEmail: !!clientEmail,
+      privateKey: !!privateKey,
+    });
     return null;
   }
 
-  app = initializeApp({
-    credential: cert(serviceAccount as any),
-    projectId: serviceAccount.projectId,
-  });
+  try {
+    // Replace escaped newlines in private key
+    const cleanPrivateKey = privateKey.replace(/\\n/g, "\n");
 
-  adminAuth = getAuth(app);
-  console.log("✅ Firebase Admin initialized:", serviceAccount.projectId);
+    app = initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey: cleanPrivateKey,
+      }),
+    });
 
-  return app;
+    adminAuth = getAuth(app);
+    console.log("✅ Firebase Admin initialized:", projectId);
+    return app;
+  } catch (err: any) {
+    console.error("❌ FIREBASE ADMIN: Failed to initialize:", err?.message);
+    console.error("❌ FIREBASE ADMIN: Error stack:", err?.stack);
+    app = null;
+    adminAuth = null;
+    return null;
+  }
 }
 
 export function getAdminAuth() {
@@ -56,7 +62,22 @@ export function getAdminAuth() {
     throw new Error("Firebase Admin cannot run client-side");
   }
 
-  if (!adminAuth) initAdmin();
+  if (!adminAuth) {
+    const app = initAdmin();
+    if (!app || !adminAuth) {
+      console.error("❌ FIREBASE ADMIN: Failed to initialize");
+      console.error("❌ FIREBASE ADMIN: Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars");
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      console.error("❌ FIREBASE ADMIN: Env vars present:", {
+        projectId: !!projectId,
+        clientEmail: !!clientEmail,
+        privateKey: !!privateKey,
+      });
+      return null;
+    }
+  }
   return adminAuth;
 }
 

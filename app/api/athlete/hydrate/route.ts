@@ -19,13 +19,34 @@ export async function POST(request: Request) {
     }
 
     console.log('✅ HYDRATE API: Bearer token found, initializing Firebase Admin...');
-    const adminAuth = getAdminAuth();
+    let adminAuth;
+    try {
+      adminAuth = getAdminAuth();
+    } catch (err: any) {
+      console.error('❌ HYDRATE API: Failed to get Firebase Admin Auth');
+      console.error('❌ HYDRATE API: Error:', err?.message);
+      return NextResponse.json({ 
+        success: false,
+        error: 'Firebase Admin initialization failed',
+        details: err?.message || 'Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars'
+      }, { status: 500 });
+    }
+
     if (!adminAuth) {
-      console.error('❌ HYDRATE API: Firebase Admin not initialized - check FIREBASE_SERVICE_ACCOUNT env var');
+      console.error('❌ HYDRATE API: Firebase Admin not initialized');
+      console.error('❌ HYDRATE API: Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars');
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      console.error('❌ HYDRATE API: Env vars present:', {
+        projectId: !!projectId,
+        clientEmail: !!clientEmail,
+        privateKey: !!privateKey,
+      });
       return NextResponse.json({ 
         success: false,
         error: 'Authentication service unavailable. Please check server configuration.',
-        details: 'Firebase Admin SDK not initialized'
+        details: 'Firebase Admin SDK not initialized. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY environment variables.'
       }, { status: 500 });
     }
 
@@ -37,7 +58,19 @@ export async function POST(request: Request) {
       console.log('✅ HYDRATE API: Token verified, Firebase UID:', decodedToken.uid);
     } catch (err: any) {
       console.error('❌ HYDRATE API: Token verification failed:', err?.message);
-      console.error('❌ HYDRATE API: Token error details:', err);
+      console.error('❌ HYDRATE API: Error code:', err?.code);
+      console.error('❌ HYDRATE API: Error name:', err?.name);
+      
+      // Check if it's a Firebase Admin initialization error
+      if (err?.message?.includes('Firebase Admin env vars missing') || err?.message?.includes('Firebase Admin')) {
+        console.error('❌ HYDRATE API: Firebase Admin initialization failed');
+        return NextResponse.json({ 
+          success: false,
+          error: 'Firebase Admin initialization failed',
+          details: err?.message || 'Check Firebase environment variables'
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
         success: false,
         error: 'Invalid or expired token',
