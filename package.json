@@ -4,15 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate --schema=../packages/shared-prisma-schema/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate",
-    "db:generate": "prisma generate",
+    "postinstall": "prisma generate --schema=../packages/shared-prisma-schema/schema.prisma",
+    "db:generate": "prisma generate --schema=../packages/shared-prisma-schema/schema.prisma",
     "db:push": "prisma db push",
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@adam/shared-prisma-schema": "file:../packages/shared-prisma-schema",
     "@prisma/client": "^6.19.0",
     "@types/lodash": "^4.17.21",
     "axios": "^1.9.0",
