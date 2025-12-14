@@ -68,103 +68,51 @@ export async function POST(request: Request) {
       }, { status: 401 });
     }
 
-    const email = decodedToken?.email || null;
-    const displayName = decodedToken?.name || null;
-    const picture = decodedToken?.picture || null;
-    
-    // Parse displayName into firstName/lastName
-    const nameParts = displayName?.split(' ') || [];
-    const firstName = nameParts[0] || null;
-    const lastName = nameParts.slice(1).join(' ').trim() || null;
-
-    // Step 1: Check if athlete exists
-    let athlete = await prisma.athlete.findUnique({
+    // Auth check passed - now get athlete data
+    // If athlete doesn't exist, return 404 (frontend will redirect to signup)
+    const athlete = await prisma.athlete.findUnique({
       where: { firebaseId },
       select: {
         id: true,
         firebaseId: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        fiveKPace: true,
+        companyId: true,
+        gofastHandle: true,
+        photoURL: true,
+        city: true,
+        state: true,
+        primarySport: true,
       },
     });
 
-    let isNewUser = false;
-
-    if (athlete) {
-      // Athlete exists - hydration complete
-      console.log('✅ HYDRATE: Athlete found:', athlete.id);
-    } else {
-      // Athlete doesn't exist - create it (idempotent hydration)
-      console.log('👤 HYDRATE: Athlete not found, creating...');
-      isNewUser = true;
-
-      // Get company (required field)
-      const company = await prisma.goFastCompany.findFirst({
-        select: { id: true },
-      });
-
-      if (!company) {
-        console.error('❌ HYDRATE: No company found - cannot create athlete');
-        return NextResponse.json({ 
-          success: false,
-          error: 'Server configuration error',
-          details: 'No company found in database'
-        }, { status: 500 });
-      }
-
-      try {
-        athlete = await prisma.athlete.create({
-          data: {
-            firebaseId,
-            email: email || undefined,
-            firstName: firstName || undefined,
-            lastName: lastName || undefined,
-            photoURL: picture || undefined,
-            companyId: company.id,
-          },
-          select: {
-            id: true,
-            firebaseId: true,
-          },
-        });
-        console.log('✅ HYDRATE: Athlete created:', athlete.id);
-      } catch (err: any) {
-        console.error('❌ HYDRATE: Failed to create athlete:', err?.message);
-        console.error('❌ HYDRATE: Error code:', err?.code);
-        
-        // If unique constraint violation, athlete might have been created concurrently
-        if (err?.code === 'P2002') {
-          console.log('⚠️ HYDRATE: Concurrent creation detected, retrying lookup...');
-          athlete = await prisma.athlete.findUnique({
-            where: { firebaseId },
-            select: {
-              id: true,
-              firebaseId: true,
-            },
-          });
-          
-          if (!athlete) {
-            return NextResponse.json({ 
-              success: false,
-              error: 'Failed to create athlete',
-              details: err?.message
-            }, { status: 500 });
-          }
-          
-          isNewUser = false; // Was created concurrently
-        } else {
-          return NextResponse.json({ 
-            success: false,
-            error: 'Failed to create athlete',
-            details: err?.message
-          }, { status: 500 });
-        }
-      }
+    if (!athlete) {
+      // Firebase ID exists but no athlete record - send to signup
+      console.log('👤 HYDRATE: Athlete not found for firebaseId:', firebaseId);
+      return NextResponse.json({ 
+        success: false,
+        error: 'Athlete not found' 
+      }, { status: 404 });
     }
 
-    // Return minimal stable payload
+    console.log('✅ HYDRATE: Athlete found:', athlete.id);
+
+    // Get training plan ID if exists (most recent plan)
+    const trainingPlan = await prisma.training_plans.findFirst({
+      where: { athleteId: athlete.id },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Return full athlete object with trainingPlanId
     return NextResponse.json({ 
       success: true,
-      athleteId: athlete?.id || null,
-      isNewUser,
+      athlete: {
+        ...athlete,
+        trainingPlanId: trainingPlan?.id || null,
+      },
     });
   } catch (err: any) {
     console.error('❌ HYDRATE: Unexpected error:', err?.message);
