@@ -149,7 +149,6 @@ export default function TrainingSetupReviewPage() {
 
     setGenerating(true);
     setError(null);
-    setGeneratedPlan(null); // Clear previous generation
 
     try {
       // First, ALWAYS update the plan with the start date (required before generation)
