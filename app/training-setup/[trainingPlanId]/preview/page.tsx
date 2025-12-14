@@ -12,6 +12,7 @@ export default function TrainingPlanPreviewPage() {
   const trainingPlanId = params.trainingPlanId as string;
 
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
@@ -23,18 +24,46 @@ export default function TrainingPlanPreviewPage() {
         return;
       }
 
-      // Load preview from Redis
+      // First try to load existing preview from Redis
       try {
         const response = await api.get(`/training-plan/preview/${trainingPlanId}`);
         if (response.data.success) {
           setPreview(response.data.preview);
-        } else {
-          setError(response.data.error || 'Failed to load preview');
+          setLoading(false);
+          return;
         }
       } catch (err: any) {
-        console.error('Load preview error:', err);
-        setError(err.response?.data?.error || 'Failed to load preview');
+        // Preview doesn't exist yet, that's okay - we'll generate it
+        console.log('📋 PREVIEW: No existing preview found, will generate');
+      }
+
+      // No preview found - generate it now
+      setGenerating(true);
+      try {
+        console.log('🔄 PREVIEW: Generating plan...');
+        const generateResponse = await api.post('/training-plan/generate', {
+          trainingPlanId,
+        });
+
+        if (generateResponse.data.success) {
+          // Wait a moment for Redis to store
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Now fetch the preview
+          const previewResponse = await api.get(`/training-plan/preview/${trainingPlanId}`);
+          if (previewResponse.data.success) {
+            setPreview(previewResponse.data.preview);
+          } else {
+            setError(previewResponse.data.error || 'Failed to load generated preview');
+          }
+        } else {
+          setError(generateResponse.data.error || generateResponse.data.details || 'Failed to generate plan');
+        }
+      } catch (err: any) {
+        console.error('Generate/load preview error:', err);
+        setError(err.response?.data?.error || err.response?.data?.details || 'Failed to generate preview');
       } finally {
+        setGenerating(false);
         setLoading(false);
       }
     });
@@ -71,12 +100,17 @@ export default function TrainingPlanPreviewPage() {
     }
   };
 
-  if (loading) {
+  if (loading || generating) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-xl text-white">Loading preview...</p>
+          <p className="text-xl text-white">
+            {generating ? 'Generating your training plan...' : 'Loading preview...'}
+          </p>
+          {generating && (
+            <p className="text-white/80 mt-2">This may take a minute. Please don't close this page.</p>
+          )}
         </div>
       </div>
     );
