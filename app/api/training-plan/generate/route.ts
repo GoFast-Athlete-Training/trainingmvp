@@ -278,6 +278,17 @@ export async function PUT(request: NextRequest) {
     const planStartDate = existingPlan.startDate;
     const goalTime = existingPlan.goalTime!;
 
+    // Log what we're receiving
+    console.log('💾 SAVE: Received plan structure:', {
+      hasPhases: !!generatedPlan.phases,
+      phasesCount: generatedPlan.phases?.length,
+      hasWeek: !!generatedPlan.week,
+      hasWeeks: !!generatedPlan.weeks,
+      weeksCount: generatedPlan.weeks?.length,
+      weekNumber: generatedPlan.week?.weekNumber,
+      totalWeeks: generatedPlan.totalWeeks,
+    });
+
     // Calculate paces
     const { calculateGoalRacePace } = await import('@/lib/training/goal-race-pace');
     const { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToString } = await import('@/lib/training/pace-prediction');
