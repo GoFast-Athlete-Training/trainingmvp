@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import api from '@/lib/api';
@@ -9,7 +9,9 @@ import api from '@/lib/api';
 export default function TrainingPlanPreviewPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const trainingPlanId = params.trainingPlanId as string;
+  const startDateParam = searchParams.get('startDate');
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -22,6 +24,43 @@ export default function TrainingPlanPreviewPage() {
       if (!user) {
         router.push('/signup');
         return;
+      }
+
+      // First, update plan with start date if provided (from review page)
+      if (startDateParam) {
+        try {
+          const startDateObj = new Date(startDateParam);
+          startDateObj.setUTCHours(0, 0, 0, 0);
+          
+          // Load plan to calculate weeks
+          const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
+          if (planResponse.data.success) {
+            const plan = planResponse.data.trainingPlan;
+            const race = plan.race || plan.race_registry;
+            
+            let calculatedWeeks = plan.totalWeeks || 16;
+            if (race?.date) {
+              const raceDate = new Date(race.date);
+              raceDate.setUTCHours(0, 0, 0, 0);
+              const diffMs = raceDate.getTime() - startDateObj.getTime();
+              const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+              calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
+            }
+            
+            // Update plan with start date and weeks
+            await api.post('/training-plan/update', {
+              trainingPlanId,
+              updates: {
+                startDate: startDateObj.toISOString(),
+                totalWeeks: calculatedWeeks,
+              },
+            });
+            console.log('✅ PREVIEW: Plan updated with start date and weeks');
+          }
+        } catch (err: any) {
+          console.error('❌ PREVIEW: Failed to update plan:', err);
+          // Continue anyway - generation endpoint will validate
+        }
       }
 
       // First try to load existing preview from Redis
@@ -69,7 +108,7 @@ export default function TrainingPlanPreviewPage() {
     });
 
     return () => unsubscribe();
-  }, [router, trainingPlanId]);
+  }, [router, trainingPlanId, startDateParam]);
 
   const handleConfirm = async () => {
     if (!preview) {

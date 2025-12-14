@@ -140,51 +140,15 @@ export default function TrainingSetupReviewPage() {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
     if (!startDate) {
       setError('Please select a start date');
       return;
     }
 
-    setError(null);
-
-    try {
-      // First, ALWAYS update the plan with the start date (required before generation)
-      const startDateObj = new Date(startDate);
-      startDateObj.setUTCHours(0, 0, 0, 0);
-      
-      // Calculate total weeks if race date exists
-      let calculatedWeeks = plan?.totalWeeks || 16; // Default to 16 if no race date
-      const race = plan?.race || plan?.race_registry;
-      if (race?.date) {
-        const raceDate = new Date(race.date);
-        raceDate.setUTCHours(0, 0, 0, 0);
-        const diffMs = raceDate.getTime() - startDateObj.getTime();
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
-      }
-      
-      // ALWAYS update plan with start date (and weeks if calculated)
-      const updateResponse = await api.post('/training-plan/update', {
-        trainingPlanId,
-        updates: {
-          startDate: startDateObj.toISOString(),
-          totalWeeks: calculatedWeeks,
-        },
-      });
-
-      if (!updateResponse.data.success) {
-        setError(updateResponse.data.error || 'Failed to update plan with start date');
-        return;
-      }
-      
-      // Navigate to preview page immediately - it will handle generation
-      console.log('✅ REVIEW: Plan updated, navigating to preview page');
-      router.push(`/training-setup/${trainingPlanId}/preview`);
-    } catch (err: any) {
-      console.error('❌ REVIEW: Update error:', err);
-      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to update plan');
-    }
+    // Navigate immediately with start date - preview page will handle update and generation
+    console.log('✅ REVIEW: Navigating to preview page immediately');
+    router.push(`/training-setup/${trainingPlanId}/preview?startDate=${encodeURIComponent(startDate)}`);
   };
 
   // Confirmation now happens on preview page
