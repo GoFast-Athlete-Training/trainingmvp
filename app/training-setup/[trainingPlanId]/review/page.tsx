@@ -39,7 +39,6 @@ export default function TrainingSetupReviewPage() {
   const trainingPlanId = params.trainingPlanId as string;
 
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<any>(null);
   const [startDate, setStartDate] = useState('');
@@ -147,7 +146,6 @@ export default function TrainingSetupReviewPage() {
       return;
     }
 
-    setGenerating(true);
     setError(null);
 
     try {
@@ -177,7 +175,6 @@ export default function TrainingSetupReviewPage() {
 
       if (!updateResponse.data.success) {
         setError(updateResponse.data.error || 'Failed to update plan with start date');
-        setGenerating(false);
         return;
       }
       
@@ -187,7 +184,6 @@ export default function TrainingSetupReviewPage() {
     } catch (err: any) {
       console.error('❌ REVIEW: Update error:', err);
       setError(err.response?.data?.error || err.response?.data?.details || 'Failed to update plan');
-      setGenerating(false);
     }
   };
 
@@ -413,7 +409,6 @@ export default function TrainingSetupReviewPage() {
             <button
               onClick={handleGenerate}
               disabled={
-                generating || 
                 !plan.goalTime || 
                 !startDate || 
                 !(plan.race || plan.race_registry) ||
@@ -424,7 +419,7 @@ export default function TrainingSetupReviewPage() {
               }
               className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 px-6 rounded-xl font-bold hover:from-orange-600 hover:to-red-600 transition disabled:opacity-50 shadow-lg"
             >
-              {generating ? 'Generating...' : 'Generate Preview →'}
+              Generate Preview →
             </button>
           </div>
 
@@ -440,14 +435,6 @@ export default function TrainingSetupReviewPage() {
                 {(!plan.preferredDays || plan.preferredDays.length < 5) && <li>Set your preferred training days - at least 5 days required (go back to Preferences step)</li>}
                 {!startDate && <li>Choose your start date</li>}
               </ul>
-            </div>
-          )}
-
-          {generating && (
-            <div className="mt-6 text-center">
-              <p className="text-gray-600">
-                Generating your plan... This may take a minute. Please don't close this page.
-              </p>
             </div>
           )}
 
