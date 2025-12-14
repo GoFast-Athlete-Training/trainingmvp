@@ -77,13 +77,19 @@ export async function POST(request: Request) {
     const firstName = nameParts[0] || undefined;
     const lastName = nameParts.slice(1).join(' ').trim() || undefined;
 
-    // Master GoFast Company ID - all athletes are assigned to this company
-    const GOFAST_COMPANY_ID = "cmiu1z4dq0000nw4zfzd974uy";
+    // Step 1: Resolve Canonical Company (DB Source of Truth)
+    const company = await prisma.goFastCompany.findFirst();
+    if (!company) {
+      console.error("❌ ATHLETE CREATE: No GoFastCompany found");
+      throw new Error("No GoFastCompany found. Athlete creation requires a company.");
+    }
+    console.log('✅ ATHLETE CREATE: Using company:', company.id, company.name || company.slug);
 
     // Upsert athlete with automatic company assignment
     console.log('👤 ATHLETE CREATE: Upserting athlete with firebaseId:', firebaseId);
     let athlete;
     try {
+      // companyId is always derived from GoFastCompany (ultra container)
       athlete = await prisma.athlete.upsert({
       where: { firebaseId },
       update: {
@@ -92,7 +98,7 @@ export async function POST(request: Request) {
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         photoURL: picture || undefined,
-        companyId: GOFAST_COMPANY_ID, // Always assign to master GoFast company
+        companyId: company.id,
       },
       create: {
         firebaseId,
@@ -100,7 +106,7 @@ export async function POST(request: Request) {
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         photoURL: picture || undefined,
-        companyId: GOFAST_COMPANY_ID, // Automatically assign to master GoFast company
+        companyId: company.id,
       },
     });
       console.log('✅ ATHLETE CREATE: Athlete found/created:', athlete.id);

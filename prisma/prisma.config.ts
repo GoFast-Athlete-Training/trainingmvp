@@ -1,6 +1,6 @@
 import { defineConfig } from '@prisma/config';
 
 export default defineConfig({
-  schema: './prisma/shared-schema.prisma',
+  schema: '../gofastapp-mvp/packages/shared-db/prisma/schema.prisma',
 });
 
