@@ -17,25 +17,31 @@ export async function GET(
     const athleteId = await getAthleteIdFromRequest(request);
     const { id: trainingPlanId } = await params;
 
-    // Verify plan exists and belongs to athlete
+    // Verify plan exists and belongs to athlete (security check only - NOT loading preview data)
+    console.log(`🔒 GET PREVIEW: Verifying plan ownership for ${trainingPlanId} (NOT loading preview from DB)`);
     const plan = await prisma.training_plans.findFirst({
       where: {
         id: trainingPlanId,
         athleteId,
       },
+      select: {
+        id: true, // Only select ID for verification, NOT preview data
+      },
     });
 
     if (!plan) {
+      console.error(`❌ GET PREVIEW: Plan ${trainingPlanId} not found or unauthorized`);
       return NextResponse.json(
         { success: false, error: 'Training plan not found' },
         { status: 404 }
       );
     }
 
-    // Get preview from Redis
-    console.log(`🔍 GET PREVIEW: Looking for preview for plan ${trainingPlanId}`);
+    // Get preview from Redis ONLY (NOT from database)
+    console.log(`🔍 GET PREVIEW: Loading preview from Redis for plan ${trainingPlanId}`);
+    console.log(`🔑 GET PREVIEW: Redis key will be: preview:${trainingPlanId}`);
     const preview = await getPreview(trainingPlanId);
-    console.log(`📋 GET PREVIEW: Preview result:`, preview ? 'found' : 'not found');
+    console.log(`📋 GET PREVIEW: Preview result from Redis:`, preview ? '✅ FOUND' : '❌ NOT FOUND');
 
     if (!preview) {
       console.error(`❌ GET PREVIEW: No preview found for plan ${trainingPlanId}`);
