@@ -18,6 +18,7 @@ export default function TrainingPlanPreviewPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
+  const [planStartDate, setPlanStartDate] = useState<Date | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -61,6 +62,17 @@ export default function TrainingPlanPreviewPage() {
           console.error('❌ PREVIEW: Failed to update plan:', err);
           // Continue anyway - generation endpoint will validate
         }
+      }
+
+      // Load plan to get start date
+      try {
+        const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
+        if (planResponse.data.success && planResponse.data.trainingPlan.startDate) {
+          const startDate = new Date(planResponse.data.trainingPlan.startDate);
+          setPlanStartDate(startDate);
+        }
+      } catch (err: any) {
+        console.error('Failed to load plan start date:', err);
       }
 
       // First try to load existing preview from Redis
@@ -204,27 +216,59 @@ export default function TrainingPlanPreviewPage() {
                     <p className="text-sm text-gray-600">Phases</p>
                     <p className="text-lg font-bold text-gray-800">{preview.phases?.length || 0}</p>
                   </div>
-                  {preview.generatedAt && (
+                  {planStartDate && (
                     <div className="col-span-2">
-                      <p className="text-sm text-gray-600">Generated</p>
-                      <p className="text-sm font-semibold text-gray-800">{new Date(preview.generatedAt).toLocaleString()}</p>
+                      <p className="text-sm text-gray-600">Start Date</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {planStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Phases Overview */}
-              {preview.phases && preview.phases.length > 0 && (
+              {/* Phases Timeline - Horizontal */}
+              {preview.phases && preview.phases.length > 0 && planStartDate && (
                 <div className="bg-gray-50 rounded-xl p-6">
                   <h3 className="text-xl font-bold text-gray-800 mb-4">Training Phases</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {preview.phases.map((phase: any, index: number) => (
-                      <div key={index} className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                        <h4 className="font-semibold text-gray-800 capitalize mb-1">{phase.name || `Phase ${index + 1}`}</h4>
-                        <p className="text-sm text-gray-600">{phase.weekCount || 0} weeks</p>
-                        {phase.weeks && Array.isArray(phase.weeks) && (
-                          <p className="text-xs text-gray-500 mt-1">Weeks {phase.weeks.join(', ')}</p>
-                        )}
+                  <div className="space-y-3">
+                    {preview.phases.reduce((acc: any[], phase: any, index: number) => {
+                      const startWeek = acc.reduce((sum, p) => sum + (p.weekCount || 0), 0) + 1;
+                      const endWeek = startWeek + (phase.weekCount || 0) - 1;
+                      const startDate = new Date(planStartDate);
+                      startDate.setDate(startDate.getDate() + (startWeek - 1) * 7);
+                      const endDate = new Date(planStartDate);
+                      endDate.setDate(endDate.getDate() + (endWeek - 1) * 7 + 6);
+                      
+                      acc.push({
+                        ...phase,
+                        startWeek,
+                        endWeek,
+                        startDate,
+                        endDate,
+                      });
+                      return acc;
+                    }, []).map((phase: any, index: number) => (
+                      <div key={index} className="bg-white rounded-lg p-4 border-l-4 border-orange-500">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-800 capitalize text-lg">
+                              {phase.name || `Phase ${index + 1}`}
+                            </h4>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {phase.weekCount || 0} weeks • Weeks {phase.startWeek}-{phase.endWeek}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-gray-800">
+                              {phase.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                            <p className="text-xs text-gray-500">to</p>
+                            <p className="text-sm font-semibold text-gray-800">
+                              {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -235,51 +279,69 @@ export default function TrainingPlanPreviewPage() {
               {preview.weeks && Array.isArray(preview.weeks) && preview.weeks.length > 0 ? (
                 <div className="space-y-6">
                   <h3 className="text-2xl font-bold text-gray-800">All Training Weeks</h3>
-                  {preview.weeks.map((week: any, weekIndex: number) => (
-                    <div key={weekIndex} className="bg-white rounded-xl p-6 border-2 border-orange-200">
-                      <h4 className="text-xl font-bold text-gray-800 mb-4">
-                        Week {week.weekNumber || weekIndex + 1}
-                        {week.phase && <span className="text-sm font-normal text-gray-600 ml-2">({week.phase})</span>}
-                      </h4>
-                      
-                      {week.days && Array.isArray(week.days) && week.days.length > 0 ? (
-                        <div className="space-y-3">
-                          {week.days.map((day: any, dayIndex: number) => {
-                            const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-                            const totalMiles = 
-                              (day.warmup?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                              (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                              (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
-                            
-                            return (
-                              <div key={dayIndex} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
-                                  <span className="text-sm font-bold text-orange-600">{totalMiles.toFixed(1)} miles</span>
-                                </div>
-                                {day.notes && (
-                                  <p className="text-sm text-gray-700 italic mb-2">{day.notes}</p>
-                                )}
-                                <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
-                                  <div>
-                                    <span className="font-semibold">Warmup:</span> {day.warmup?.length || 0} laps
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold">Workout:</span> {day.workout?.length || 0} laps
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold">Cooldown:</span> {day.cooldown?.length || 0} laps
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
+                  {preview.weeks.map((week: any, weekIndex: number) => {
+                    // Calculate week start date
+                    const weekStartDate = planStartDate ? (() => {
+                      const date = new Date(planStartDate);
+                      date.setDate(date.getDate() + (week.weekNumber - 1) * 7);
+                      return date;
+                    })() : null;
+                    
+                    return (
+                      <div key={weekIndex} className="bg-white rounded-xl p-6 border-2 border-orange-200">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-xl font-bold text-gray-800">
+                            Week {week.weekNumber || weekIndex + 1}
+                            {week.phase && <span className="text-sm font-normal text-gray-600 ml-2">({week.phase})</span>}
+                          </h4>
+                          {weekStartDate && (
+                            <p className="text-sm text-gray-600">
+                              {weekStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {' '}
+                              {new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-gray-500 italic">No days scheduled for this week</p>
-                      )}
-                    </div>
-                  ))}
+                        
+                        {week.days && Array.isArray(week.days) && week.days.length > 0 ? (
+                          <div className="space-y-2">
+                            {week.days.map((day: any, dayIndex: number) => {
+                              const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                              const totalMiles = 
+                                (day.warmup?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
+                                (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
+                                (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
+                              
+                              // Extract type from notes or infer from mileage
+                              let dayType = day.notes || '';
+                              if (!dayType && totalMiles === 0) {
+                                dayType = 'Rest';
+                              } else if (!dayType) {
+                                if (totalMiles >= 8) dayType = 'Long Run';
+                                else if (totalMiles >= 5) dayType = 'Moderate';
+                                else dayType = 'Easy';
+                              }
+                              
+                              return (
+                                <div key={dayIndex} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
+                                      {dayType && (
+                                        <span className="ml-2 text-sm text-gray-600">{dayType}</span>
+                                      )}
+                                    </div>
+                                    <span className="text-sm font-bold text-orange-600">{totalMiles.toFixed(1)} miles</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 italic">No days scheduled for this week</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : preview.week ? (
                 // Fallback: Show single week if weeks array doesn't exist
@@ -289,7 +351,7 @@ export default function TrainingPlanPreviewPage() {
                   </h4>
                   
                   {preview.week.days && Array.isArray(preview.week.days) && preview.week.days.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {preview.week.days.map((day: any, dayIndex: number) => {
                         const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
                         const totalMiles = 
@@ -297,25 +359,26 @@ export default function TrainingPlanPreviewPage() {
                           (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
                           (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
                         
+                        // Extract type from notes or infer from mileage
+                        let dayType = day.notes || '';
+                        if (!dayType && totalMiles === 0) {
+                          dayType = 'Rest';
+                        } else if (!dayType) {
+                          if (totalMiles >= 8) dayType = 'Long Run';
+                          else if (totalMiles >= 5) dayType = 'Moderate';
+                          else dayType = 'Easy';
+                        }
+                        
                         return (
-                          <div key={dayIndex} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
+                          <div key={dayIndex} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
+                                {dayType && (
+                                  <span className="ml-2 text-sm text-gray-600">{dayType}</span>
+                                )}
+                              </div>
                               <span className="text-sm font-bold text-orange-600">{totalMiles.toFixed(1)} miles</span>
-                            </div>
-                            {day.notes && (
-                              <p className="text-sm text-gray-700 italic mb-2">{day.notes}</p>
-                            )}
-                            <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
-                              <div>
-                                <span className="font-semibold">Warmup:</span> {day.warmup?.length || 0} laps
-                              </div>
-                              <div>
-                                <span className="font-semibold">Workout:</span> {day.workout?.length || 0} laps
-                              </div>
-                              <div>
-                                <span className="font-semibold">Cooldown:</span> {day.cooldown?.length || 0} laps
-                              </div>
                             </div>
                           </div>
                         );
