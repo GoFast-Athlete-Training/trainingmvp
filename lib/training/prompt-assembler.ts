@@ -4,6 +4,8 @@ export interface AssembledPrompt {
   systemMessage: string;
   userPrompt: string;
   returnFormatSchema: any;
+  returnFormatExample: any | null;
+  instructions: Array<{ title: string; content: string }>;
   mustHaveFields: Record<string, string>;
 }
 
@@ -29,6 +31,9 @@ export async function loadAndAssemblePrompt(promptId: string): Promise<Assembled
       },
       mustHaves: true,
       returnFormat: true,
+      instructions: {
+        orderBy: { order: 'asc' },
+      },
     },
   });
 
@@ -36,8 +41,14 @@ export async function loadAndAssemblePrompt(promptId: string): Promise<Assembled
     throw new Error(`TrainingGenPrompt with id ${promptId} not found`);
   }
 
-  // System message = AI Role content
-  const systemMessage = prompt.aiRole.content;
+  // System message = AI Role content + Prompt Instructions (execution guardrails)
+  let systemMessage = prompt.aiRole.content;
+  
+  // Append instructions (execution guardrails) to system message
+  if (prompt.instructions && prompt.instructions.length > 0) {
+    const instructionTexts = prompt.instructions.map(inst => inst.content).join('\n\n');
+    systemMessage += '\n\n' + instructionTexts;
+  }
 
   // Build user prompt from Rule Set topics and rules
   let userPrompt = '';
@@ -59,6 +70,15 @@ export async function loadAndAssemblePrompt(promptId: string): Promise<Assembled
 
   // Return Format schema for validation
   const returnFormatSchema = prompt.returnFormat.schema as any;
+  
+  // Return Format example (complete JSON example)
+  const returnFormatExample = prompt.returnFormat.example as any | null;
+
+  // Prompt Instructions (for reference, already added to system message)
+  const instructions = prompt.instructions.map(inst => ({
+    title: inst.title,
+    content: inst.content,
+  }));
 
   // Must Haves fields (input requirements)
   const mustHaveFields = prompt.mustHaves.fields as Record<string, string>;
@@ -67,6 +87,8 @@ export async function loadAndAssemblePrompt(promptId: string): Promise<Assembled
     systemMessage,
     userPrompt,
     returnFormatSchema,
+    returnFormatExample,
+    instructions,
     mustHaveFields,
   };
 }
@@ -147,11 +169,21 @@ Inputs:
 - Week 1 should target approximately ${Math.round(inputs.currentWeeklyMileage * (daysRemainingInWeek / 7))} miles (proportional to ${daysRemainingInWeek} days remaining in week)
 `;
 
-  // Add return format instructions
-  const returnFormatSection = `
+  // Add return format instructions - use example if available, otherwise schema
+  let returnFormatSection = '';
+  if (assembledPrompt.returnFormatExample) {
+    // Use database-provided example (complete and correct JSON)
+    returnFormatSection = `
+You must return EXACT JSON ONLY (no markdown, no explanation) matching this structure and format:
+${JSON.stringify(assembledPrompt.returnFormatExample, null, 2)}
+`;
+  } else {
+    // Fallback to schema if no example provided
+    returnFormatSection = `
 You must return EXACT JSON ONLY (no markdown, no explanation) matching this structure:
 ${JSON.stringify(returnFormatSchema, null, 2)}
 `;
+  }
 
   finalPrompt = inputSection + '\n' + finalPrompt + '\n' + returnFormatSection;
 
