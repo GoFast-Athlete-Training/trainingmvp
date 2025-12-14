@@ -477,21 +477,38 @@ CRITICAL: The JSON structure must be EXACTLY this format (no variations):
     { "name": "peak", "weekCount": 4 },
     { "name": "taper", "weekCount": 3 }
   ],
-  "week": {
-    "weekNumber": 1,
-    "days": [
-      ${week1DayNumbers.map(d => `{ "dayNumber": ${d}, "warmup": [], "workout": [], "cooldown": [] }`).join(',\n      ')}
-    ]
-  }
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "days": [
+        ${week1DayNumbers.map(d => `{ "dayNumber": ${d}, "warmup": [], "workout": [], "cooldown": [] }`).join(',\n        ')}
+      ]
+    },
+    {
+      "weekNumber": 2,
+      "days": [
+        { "dayNumber": 1, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 2, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 3, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 4, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 5, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 6, "warmup": [], "workout": [], "cooldown": [] },
+        { "dayNumber": 7, "warmup": [], "workout": [], "cooldown": [] }
+      ]
+    }
+    // ... continue for ALL ${inputs.totalWeeks} weeks
+  ]
 }
+NOTE: You MUST generate ALL ${inputs.totalWeeks} weeks in the "weeks" array. Each week must have weekNumber (1 through ${inputs.totalWeeks}) and exactly 7 days (dayNumber 1-7).
 `;
 
   try {
     const openai = getOpenAIClient();
     
     // Use database-driven system message (AI Role content)
+    // Updated to generate ALL weeks for preview
     const systemMessage = assembledPrompt.systemMessage + 
-      '\n\nCRITICAL: You MUST return ONLY phases (with name and weekCount) and week 1. DO NOT generate weeks 2, 3, 4, etc. DO NOT include "weeks" array inside phases. Return ONLY valid JSON matching the return format schema provided.';
+      '\n\nCRITICAL: You MUST return phases (with name and weekCount) AND a "weeks" array containing ALL weeks (1 through totalWeeks). Each week must have weekNumber and days array. DO NOT include "weeks" array inside phases. Return ONLY valid JSON matching the return format schema provided.';
 
     console.log('🤖 PLAN GENERATOR: Calling OpenAI with database-driven prompt...');
     
