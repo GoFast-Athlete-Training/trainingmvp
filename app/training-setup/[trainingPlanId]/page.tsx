@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -19,6 +19,14 @@ export default function TrainingSetupGoalTimePage() {
   const [hours, setHours] = useState('');
   const [minutes, setMinutes] = useState('');
   const [seconds, setSeconds] = useState('');
+  
+  // Refs for auto-focusing next field
+  const hoursRef = useRef<HTMLInputElement>(null);
+  const minutesRef = useRef<HTMLInputElement>(null);
+  const secondsRef = useRef<HTMLInputElement>(null);
+  const shortHoursRef = useRef<HTMLInputElement>(null);
+  const shortMinutesRef = useRef<HTMLInputElement>(null);
+  const shortSecondsRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -229,6 +237,7 @@ export default function TrainingSetupGoalTimePage() {
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Hours</label>
                     <input
+                      ref={hoursRef}
                       type="number"
                       min="0"
                       max="23"
@@ -237,6 +246,17 @@ export default function TrainingSetupGoalTimePage() {
                         const val = e.target.value.replace(/[^0-9]/g, '');
                         if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 23)) {
                           setHours(val);
+                          // Auto-advance to minutes when 2 digits entered
+                          if (val.length === 2 && minutesRef.current) {
+                            minutesRef.current.focus();
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Tab or Enter moves to next field
+                        if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && minutesRef.current) {
+                          e.preventDefault();
+                          minutesRef.current.focus();
                         }
                       }}
                       placeholder="3"
@@ -247,6 +267,7 @@ export default function TrainingSetupGoalTimePage() {
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Minutes</label>
                     <input
+                      ref={minutesRef}
                       type="number"
                       min="0"
                       max="59"
@@ -255,6 +276,20 @@ export default function TrainingSetupGoalTimePage() {
                         const val = e.target.value.replace(/[^0-9]/g, '');
                         if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
                           setMinutes(val);
+                          // Auto-advance to seconds when 2 digits entered
+                          if (val.length === 2 && secondsRef.current) {
+                            secondsRef.current.focus();
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Tab or Enter moves to next field, Shift+Tab goes back
+                        if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && secondsRef.current) {
+                          e.preventDefault();
+                          secondsRef.current.focus();
+                        } else if (e.key === 'Tab' && e.shiftKey && hoursRef.current) {
+                          e.preventDefault();
+                          hoursRef.current.focus();
                         }
                       }}
                       placeholder="30"
@@ -265,6 +300,7 @@ export default function TrainingSetupGoalTimePage() {
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Seconds</label>
                     <input
+                      ref={secondsRef}
                       type="number"
                       min="0"
                       max="59"
@@ -273,6 +309,18 @@ export default function TrainingSetupGoalTimePage() {
                         const val = e.target.value.replace(/[^0-9]/g, '');
                         if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
                           setSeconds(val);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Shift+Tab goes back to minutes
+                        if (e.key === 'Tab' && e.shiftKey && minutesRef.current) {
+                          e.preventDefault();
+                          minutesRef.current.focus();
+                        }
+                        // Enter submits the form
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSave();
                         }
                       }}
                       placeholder="00"
@@ -287,6 +335,7 @@ export default function TrainingSetupGoalTimePage() {
                     <div className="flex-1">
                       <label className="block text-xs text-gray-500 mb-1">Hours (optional)</label>
                       <input
+                        ref={shortHoursRef}
                         type="number"
                         min="0"
                         max="23"
@@ -295,6 +344,16 @@ export default function TrainingSetupGoalTimePage() {
                           const val = e.target.value.replace(/[^0-9]/g, '');
                           if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 23)) {
                             setHours(val);
+                            // Auto-advance to minutes when 2 digits entered
+                            if (val.length === 2 && shortMinutesRef.current) {
+                              shortMinutesRef.current.focus();
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && shortMinutesRef.current) {
+                            e.preventDefault();
+                            shortMinutesRef.current.focus();
                           }
                         }}
                         placeholder="0"
@@ -305,6 +364,7 @@ export default function TrainingSetupGoalTimePage() {
                     <div className="flex-1">
                       <label className="block text-xs text-gray-500 mb-1">Minutes</label>
                       <input
+                        ref={shortMinutesRef}
                         type="number"
                         min="0"
                         max="59"
@@ -313,6 +373,19 @@ export default function TrainingSetupGoalTimePage() {
                           const val = e.target.value.replace(/[^0-9]/g, '');
                           if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
                             setMinutes(val);
+                            // Auto-advance to seconds when 2 digits entered
+                            if (val.length === 2 && shortSecondsRef.current) {
+                              shortSecondsRef.current.focus();
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && shortSecondsRef.current) {
+                            e.preventDefault();
+                            shortSecondsRef.current.focus();
+                          } else if (e.key === 'Tab' && e.shiftKey && shortHoursRef.current) {
+                            e.preventDefault();
+                            shortHoursRef.current.focus();
                           }
                         }}
                         placeholder="25"
@@ -323,6 +396,7 @@ export default function TrainingSetupGoalTimePage() {
                     <div className="flex-1">
                       <label className="block text-xs text-gray-500 mb-1">Seconds</label>
                       <input
+                        ref={shortSecondsRef}
                         type="number"
                         min="0"
                         max="59"
@@ -331,6 +405,16 @@ export default function TrainingSetupGoalTimePage() {
                           const val = e.target.value.replace(/[^0-9]/g, '');
                           if (val === '' || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
                             setSeconds(val);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Tab' && e.shiftKey && shortMinutesRef.current) {
+                            e.preventDefault();
+                            shortMinutesRef.current.focus();
+                          }
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSave();
                           }
                         }}
                         placeholder="00"

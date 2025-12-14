@@ -87,9 +87,10 @@ export default function TrainingSetupReviewPage() {
             setStartDate(todayStr);
           }
           
-          // Calculate weeks until race if race date exists
-          if (loadedPlan.race_registry.date) {
-            calculateWeeksUntilRace(loadedPlan.race_registry.date, loadedPlan.startDate || new Date());
+          // Calculate weeks until race if race date exists (API returns 'race' not 'race_registry')
+          const race = loadedPlan.race || loadedPlan.race_registry;
+          if (race?.date) {
+            calculateWeeksUntilRace(race.date, loadedPlan.startDate || new Date());
           }
         } else {
           setError(response.data.error || 'Failed to load plan');
@@ -136,8 +137,9 @@ export default function TrainingSetupReviewPage() {
   // Handle start date change
   const handleStartDateChange = (dateStr: string) => {
     setStartDate(dateStr);
-    if (plan?.race_registry.date) {
-      calculateWeeksUntilRace(plan.race_registry.date, dateStr);
+    const race = plan?.race || plan?.race_registry;
+    if (race?.date) {
+      calculateWeeksUntilRace(race.date, dateStr);
     }
   };
 
@@ -158,8 +160,9 @@ export default function TrainingSetupReviewPage() {
       
       // Calculate total weeks if race date exists
       let calculatedWeeks = plan?.totalWeeks || 16; // Default to 16 if no race date
-      if (plan?.race_registry.date) {
-        const raceDate = new Date(plan.race_registry.date);
+      const race = plan?.race || plan?.race_registry;
+      if (race?.date) {
+        const raceDate = new Date(race.date);
         raceDate.setUTCHours(0, 0, 0, 0);
         const diffMs = raceDate.getTime() - startDateObj.getTime();
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -299,10 +302,17 @@ export default function TrainingSetupReviewPage() {
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-gray-600">Race</p>
                     <p className="text-lg font-bold text-gray-800">
-                      {plan.race_registry?.name || 'Not set'}
+                      {(plan?.race || plan?.race_registry)?.name || 'Not set'}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {plan.race_registry?.raceType?.toUpperCase() || plan.race_registry?.distance?.toUpperCase()} {plan.race_registry?.miles ? `(${plan.race_registry.miles} miles)` : ''} • {plan.race_registry?.date ? formatRaceDate(plan.race_registry.date) : 'Unknown date'}
+                      {(() => {
+                        const race = plan?.race || plan?.race_registry;
+                        if (!race) return 'No race selected';
+                        const raceType = race.raceType?.toUpperCase() || race.distance?.toUpperCase();
+                        const miles = race.miles ? `(${race.miles} miles)` : '';
+                        const date = race.date ? formatRaceDate(race.date) : 'Unknown date';
+                        return `${raceType} ${miles} • ${date}`;
+                      })()}
                     </p>
                   </div>
                   <button
