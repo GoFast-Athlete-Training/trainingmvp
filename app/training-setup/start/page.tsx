@@ -216,12 +216,24 @@ export default function TrainingSetupStartPage() {
         country: raceCountry || null,
       });
 
+      console.log('📡 STEP 1: Race creation response:', createRaceResponse.data);
+
       if (!createRaceResponse.data.success) {
-        setError(createRaceResponse.data.error || 'Failed to create race');
+        const errorMsg = createRaceResponse.data.error || createRaceResponse.data.details || 'Failed to create race';
+        console.error('❌ STEP 1: Race creation failed:', errorMsg);
+        setError(errorMsg);
+        setCreating(false);
         return;
       }
 
-      const raceId = createRaceResponse.data.race_registry.id;
+      // API returns 'race' not 'race_registry'
+      const raceId = createRaceResponse.data.race?.id;
+      if (!raceId) {
+        console.error('❌ STEP 1: Race ID not found in response:', createRaceResponse.data);
+        setError('Race was created but ID was not returned. Please try again.');
+        setCreating(false);
+        return;
+      }
       console.log('✅ STEP 1: Race created/found:', raceId);
 
       // Step 2: Update existing plan or create new one
