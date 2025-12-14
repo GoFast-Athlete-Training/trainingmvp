@@ -169,12 +169,30 @@ export async function generateTrainingPlanAI(
 
   const assembledPrompt = await loadAndAssemblePrompt(inputs.promptId);
   
-  console.log('✅ PLAN GENERATOR: Prompt loaded', {
+  console.log('✅ PLAN GENERATOR: Prompt loaded from database', {
     hasSystemMessage: !!assembledPrompt.systemMessage,
+    systemMessageLength: assembledPrompt.systemMessage?.length || 0,
     hasUserPrompt: !!assembledPrompt.userPrompt,
-    hasReturnFormat: !!assembledPrompt.returnFormatSchema,
+    userPromptLength: assembledPrompt.userPrompt?.length || 0,
+    hasReturnFormatSchema: !!assembledPrompt.returnFormatSchema,
+    hasReturnFormatExample: !!assembledPrompt.returnFormatExample,
+    instructionsCount: assembledPrompt.instructions?.length || 0,
     hasMustHaves: !!assembledPrompt.mustHaveFields,
   });
+  
+  // Log instructions being used
+  if (assembledPrompt.instructions && assembledPrompt.instructions.length > 0) {
+    console.log('📋 PLAN GENERATOR: Using instructions from database:', 
+      assembledPrompt.instructions.map(inst => `"${inst.title}"`).join(', ')
+    );
+  }
+  
+  // Log return format being used
+  if (assembledPrompt.returnFormatExample) {
+    console.log('📋 PLAN GENERATOR: Using return format EXAMPLE from database (complete JSON)');
+  } else {
+    console.log('⚠️ PLAN GENERATOR: No return format example found, using schema only');
+  }
 
   // Determine day of week the plan starts on
   const today = new Date();
@@ -222,18 +240,21 @@ export async function generateTrainingPlanAI(
     // All execution guardrails come from PromptInstruction records in database
     const systemMessage = assembledPrompt.systemMessage;
 
-    console.log('🤖 PLAN GENERATOR: Calling OpenAI with database-driven prompt...');
+    console.log('🤖 PLAN GENERATOR: Calling OpenAI with fully database-driven prompt');
+    console.log('📊 PLAN GENERATOR: System message length:', systemMessage.length);
+    console.log('📊 PLAN GENERATOR: User prompt length:', prompt.length);
+    console.log('📊 PLAN GENERATOR: System message preview:', systemMessage.substring(0, 200) + '...');
     
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: systemMessage,
+          content: systemMessage, // AI Role + Instructions (all from database)
         },
         {
           role: 'user',
-          content: prompt,
+          content: prompt, // Inputs + Rule Set + Return Format Example (all from database)
         },
       ],
       temperature: 0.7,
