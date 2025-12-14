@@ -7,6 +7,7 @@ import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
 import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
 import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToString } from '@/lib/training/pace-prediction';
 import { calculateTrainingDayDateFromWeek, getDayOfWeek } from '@/lib/training/dates';
+import { setPreview } from '@/lib/redis';
 
 /**
  * Generate training plan from existing TrainingPlan
@@ -186,18 +187,28 @@ export async function POST(request: NextRequest) {
     console.log('✅ GENERATE: Plan generated successfully:', {
       phasesCount: plan.phases.length,
       hasWeek: !!plan.week,
+      hasWeeks: !!plan.weeks,
+      weeksCount: plan.weeks?.length,
       weekNumber: plan.week?.weekNumber,
       totalWeeks: plan.totalWeeks,
     });
 
-    // Return generated plan for review (don't save yet)
+    // Store preview in Redis for the preview page (include all weeks if available)
+    const previewData = {
+      phases: plan.phases,
+      week: plan.week, // Single week (backward compat)
+      weeks: plan.weeks || (plan.week ? [plan.week] : []), // All weeks array
+      totalWeeks: plan.totalWeeks,
+      generatedAt: new Date().toISOString(),
+    };
+    
+    await setPreview(trainingPlanId, previewData);
+    console.log('✅ GENERATE: Preview stored in Redis');
+
+    // Return success (preview is stored in Redis, frontend will navigate to preview page)
     return NextResponse.json({
       success: true,
-      plan: {
-        phases: plan.phases,
-        week: plan.week,
-        totalWeeks: plan.totalWeeks,
-      },
+      previewKey: trainingPlanId, // Frontend uses this to navigate to preview page
     });
   } catch (error: any) {
     console.error('❌ GENERATE PLAN: Error:', error);
@@ -337,58 +348,106 @@ export async function PUT(request: NextRequest) {
         throw new Error('Could not determine phase for week 1');
       }
 
-      // Create Week 1 only
-      const week1Data = generatedPlan.week;
-      let week1Miles = 0;
-      for (const dayData of week1Data.days) {
-        const warmupMiles = dayData.warmup.reduce((sum: number, lap: any) => sum + lap.distanceMiles, 0);
-        const workoutMiles = dayData.workout.reduce((sum: number, lap: any) => sum + lap.distanceMiles, 0);
-        const cooldownMiles = dayData.cooldown.reduce((sum: number, lap: any) => sum + lap.distanceMiles, 0);
-        week1Miles += warmupMiles + workoutMiles + cooldownMiles;
+      // Handle all weeks (use weeks array if available, otherwise fallback to single week)
+      const weeksToSave = generatedPlan.weeks && Array.isArray(generatedPlan.weeks) && generatedPlan.weeks.length > 0
+        ? generatedPlan.weeks
+        : (generatedPlan.week ? [generatedPlan.week] : []);
+
+      if (weeksToSave.length === 0) {
+        throw new Error('No weeks data provided in generated plan');
       }
 
-      const week1 = await tx.training_plan_weeks.create({
-        data: {
-          planId: trainingPlanId,
-          phaseId: week1PhaseId,
-          weekNumber: 1,
-          miles: week1Miles > 0 ? week1Miles : null,
-        },
-      });
+      console.log(`💾 SAVE: Saving ${weeksToSave.length} weeks to database`);
 
-      // Create days for week 1
-      for (const dayData of week1Data.days) {
-        const allowPartialFirstWeek = true; // Always allow partial first week
-        const computedDate = calculateTrainingDayDateFromWeek(
-          planStartDate,
-          1,
-          dayData.dayNumber,
-          allowPartialFirstWeek
-        );
+      // Track phase miles for updating phase totals
+      const phaseMilesMap = new Map<string, number>();
+
+      // Process each week
+      for (const weekData of weeksToSave) {
+        const weekNumber = weekData.weekNumber || weeksToSave.indexOf(weekData) + 1;
         
-        const dayOfWeek = getDayOfWeek(computedDate);
+        // Determine which phase this week belongs to
+        let currentWeek = 1;
+        let weekPhaseId: string | null = null;
+        let weekPhaseName: string | null = null;
+        for (const phaseData of generatedPlan.phases) {
+          if (weekNumber >= currentWeek && weekNumber < currentWeek + phaseData.weekCount) {
+            weekPhaseId = phaseMap.get(phaseData.name)!;
+            weekPhaseName = phaseData.name;
+            break;
+          }
+          currentWeek += phaseData.weekCount;
+        }
 
-        await tx.training_plan_days.create({
+        if (!weekPhaseId || !weekPhaseName) {
+          console.warn(`⚠️ SAVE: Could not determine phase for week ${weekNumber}, using week 1 phase`);
+          weekPhaseId = week1PhaseId;
+          weekPhaseName = week1PhaseName;
+        }
+
+        // Calculate total miles for this week
+        let weekMiles = 0;
+        if (weekData.days && Array.isArray(weekData.days)) {
+          for (const dayData of weekData.days) {
+            const warmupMiles = (dayData.warmup || []).reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0);
+            const workoutMiles = (dayData.workout || []).reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0);
+            const cooldownMiles = (dayData.cooldown || []).reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0);
+            weekMiles += warmupMiles + workoutMiles + cooldownMiles;
+          }
+        }
+
+        // Create week record
+        const week = await tx.training_plan_weeks.create({
           data: {
             planId: trainingPlanId,
-            phaseId: week1PhaseId,
-            weekId: week1.id,
-            date: computedDate,
-            dayOfWeek: dayOfWeek,
-            warmup: dayData.warmup as any,
-            workout: dayData.workout as any,
-            cooldown: dayData.cooldown as any,
-            notes: dayData.notes || null,
+            phaseId: weekPhaseId,
+            weekNumber: weekNumber,
+            miles: weekMiles > 0 ? weekMiles : null,
           },
         });
+
+        // Track phase miles
+        const currentPhaseMiles = phaseMilesMap.get(weekPhaseId) || 0;
+        phaseMilesMap.set(weekPhaseId, currentPhaseMiles + weekMiles);
+
+        // Create days for this week
+        if (weekData.days && Array.isArray(weekData.days)) {
+          for (const dayData of weekData.days) {
+            const allowPartialFirstWeek = weekNumber === 1; // Only allow partial for week 1
+            const computedDate = calculateTrainingDayDateFromWeek(
+              planStartDate,
+              weekNumber,
+              dayData.dayNumber,
+              allowPartialFirstWeek
+            );
+            
+            const dayOfWeek = getDayOfWeek(computedDate);
+
+            await tx.training_plan_days.create({
+              data: {
+                planId: trainingPlanId,
+                phaseId: weekPhaseId,
+                weekId: week.id,
+                date: computedDate,
+                dayOfWeek: dayOfWeek,
+                warmup: (dayData.warmup || []) as any,
+                workout: (dayData.workout || []) as any,
+                cooldown: (dayData.cooldown || []) as any,
+                notes: dayData.notes || null,
+              },
+            });
+          }
+        }
       }
 
-      // Update phase totalMiles for week 1's phase (only week 1 exists so far)
-      if (week1Miles > 0) {
-        await tx.training_plan_phases.update({
-          where: { id: week1PhaseId },
-          data: { totalMiles: week1Miles },
-        });
+      // Update phase totalMiles for all phases
+      for (const [phaseId, totalMiles] of phaseMilesMap.entries()) {
+        if (totalMiles > 0) {
+          await tx.training_plan_phases.update({
+            where: { id: phaseId },
+            data: { totalMiles: totalMiles },
+          });
+        }
       }
 
       // Junction table removed - plans are linked directly via athleteId
