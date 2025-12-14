@@ -33,9 +33,12 @@ export async function GET(
     }
 
     // Get preview from Redis
+    console.log(`🔍 GET PREVIEW: Looking for preview for plan ${trainingPlanId}`);
     const preview = await getPreview(trainingPlanId);
+    console.log(`📋 GET PREVIEW: Preview result:`, preview ? 'found' : 'not found');
 
     if (!preview) {
+      console.error(`❌ GET PREVIEW: No preview found for plan ${trainingPlanId}`);
       return NextResponse.json(
         { success: false, error: 'Preview not found. Please generate a new preview.' },
         { status: 404 }

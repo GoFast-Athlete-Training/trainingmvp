@@ -7,7 +7,7 @@ import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
 import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
 import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToString } from '@/lib/training/pace-prediction';
 import { calculateTrainingDayDateFromWeek, getDayOfWeek } from '@/lib/training/dates';
-import { setPreview } from '@/lib/redis';
+import { setPreview, getPreview } from '@/lib/redis';
 
 /**
  * Generate training plan from existing TrainingPlan
@@ -202,8 +202,30 @@ export async function POST(request: NextRequest) {
       generatedAt: new Date().toISOString(),
     };
     
-    await setPreview(trainingPlanId, previewData);
-    console.log('✅ GENERATE: Preview stored in Redis');
+    console.log('💾 GENERATE: Storing preview data:', {
+      planId: trainingPlanId,
+      hasPhases: !!previewData.phases,
+      phasesCount: previewData.phases?.length,
+      hasWeek: !!previewData.week,
+      hasWeeks: !!previewData.weeks,
+      weeksCount: previewData.weeks?.length,
+    });
+    
+    try {
+      await setPreview(trainingPlanId, previewData);
+      console.log('✅ GENERATE: Preview stored successfully');
+      
+      // Verify it was stored
+      const verifyPreview = await getPreview(trainingPlanId);
+      if (verifyPreview) {
+        console.log('✅ GENERATE: Verified preview exists after storage');
+      } else {
+        console.error('❌ GENERATE: Preview not found after storage - may be using memory cache');
+      }
+    } catch (error: any) {
+      console.error('❌ GENERATE: Failed to store preview:', error.message);
+      // Don't fail the request - preview might be in memory cache
+    }
 
     // Return success (preview is stored in Redis, frontend will navigate to preview page)
     return NextResponse.json({
