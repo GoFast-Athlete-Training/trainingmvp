@@ -33,13 +33,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Load training plan
-    const plan = await prisma.trainingPlan.findFirst({
+    const plan = await prisma.training_plans.findFirst({
       where: {
         id: trainingPlanId,
         athleteId,
       },
       include: {
-        race: true,
+        race_registry: true,
         phases: {
           orderBy: {
             // Order by phase order (base, build, peak, taper)
@@ -106,13 +106,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Load previous week execution data (if available)
-    const previousWeekDays = await prisma.trainingPlanDay.findMany({
+    const previousWeekDays = await prisma.training_plan_days.findMany({
       where: {
         weekId: previousWeek.id,
       },
     });
 
-    const previousWeekExecutions = await prisma.trainingDayExecuted.findMany({
+    const previousWeekExecutions = await prisma.training_days_executed.findMany({
       where: {
         athleteId,
         date: {
@@ -159,8 +159,8 @@ export async function POST(request: NextRequest) {
       phaseName: targetPhase.name,
       previousWeekMileage,
       previousWeekExecution,
-      raceName: plan.race?.name || 'Unknown Race',
-      raceDistance: plan.race?.raceType || 'marathon',
+      raceName: plan.race_registry?.name || 'Unknown Race',
+      raceDistance: plan.race_registry?.raceType || 'marathon',
       goalTime: plan.goalTime || '',
       fiveKPace: plan.current5KPace || athlete.fiveKPace || '7:00',
       predictedRacePace: plan.predictedRacePace ? paceToString(plan.predictedRacePace) : '7:30',
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Create week
-      const week = await tx.trainingPlanWeek.create({
+      const week = await tx.training_plan_weeks.create({
         data: {
           planId: trainingPlanId,
           phaseId: targetPhase.id,
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
         
         const dayOfWeek = getDayOfWeek(computedDate);
 
-        await tx.trainingPlanDay.create({
+        await tx.training_plan_days.create({
           data: {
             planId: trainingPlanId,
             phaseId: targetPhase.id,
@@ -221,11 +221,11 @@ export async function POST(request: NextRequest) {
       }
 
       // Update phase totalMiles
-      const phaseWeeks = await tx.trainingPlanWeek.findMany({
+      const phaseWeeks = await tx.training_plan_weeks.findMany({
         where: { phaseId: targetPhase.id },
       });
       const phaseTotalMiles = phaseWeeks.reduce((sum, w) => sum + (w.miles || 0), 0);
-      await tx.trainingPlanPhase.update({
+      await tx.training_plan_phases.update({
         where: { id: targetPhase.id },
         data: { totalMiles: phaseTotalMiles },
       });

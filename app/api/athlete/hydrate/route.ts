@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     try {
       // TODO: status removed - will be handled via execution-based lifecycle
       // For now, just get the latest plan
-      let plan = await prisma.trainingPlan.findFirst({
+      let plan = await prisma.training_plans.findFirst({
         where: { 
           athleteId: athlete.id,
         },

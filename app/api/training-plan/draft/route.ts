@@ -12,25 +12,12 @@ export async function GET(request: NextRequest) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
 
-    // Get most recent plan assigned to this athlete
-    const assignment = await prisma.athleteTrainingPlan.findFirst({
+    // Get most recent plan for this athlete (junction table removed - use direct query)
+    const plan = await prisma.training_plans.findFirst({
       where: { athleteId },
-      include: {
-        trainingPlan: {
-          include: { race: true },
-        },
-      },
-      orderBy: { assignedAt: 'desc' },
-    });
-
-    let plan = assignment?.trainingPlan || undefined;
-    if (!plan) {
-      plan = await prisma.trainingPlan.findFirst({
-        where: { athleteId },
-        include: { race: true },
-        orderBy: { createdAt: 'desc' },
-      }) || undefined;
-    }
+      include: { race_registry: true },
+      orderBy: { createdAt: 'desc' },
+    }) || undefined;
 
     if (!plan) {
       return NextResponse.json({
@@ -41,12 +28,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check what steps are needed (based on what's missing)
-    const hasRace = !!plan.race;
+    const hasRace = !!plan.race_registry;
     const hasGoalTime = !!plan.goalTime;
     const hasBaseline = !!(plan.current5KPace && plan.currentWeeklyMileage);
     const hasPreferences = !!(plan.preferredDays && plan.preferredDays.length > 0);
     const hasStartDate = !!plan.startDate;
-    const planDayCount = await prisma.trainingPlanDay.count({
+    const planDayCount = await prisma.training_plan_days.count({
       where: { planId: plan.id },
     });
     const hasGeneratedDays = planDayCount > 0;
@@ -82,13 +69,13 @@ export async function GET(request: NextRequest) {
         name: plan.name,
         goalTime: plan.goalTime,
         goalPace5K: plan.goalPace5K,
-        race: plan.race
+        race: plan.race_registry
           ? {
-              id: plan.race.id,
-              name: plan.race.name,
-              raceType: plan.race.raceType,
-              miles: plan.race.miles,
-              date: plan.race.date,
+              id: plan.race_registry.id,
+              name: plan.race_registry.name,
+              raceType: plan.race_registry.raceType,
+              miles: plan.race_registry.miles,
+              date: plan.race_registry.date,
             }
           : null,
         progress: {

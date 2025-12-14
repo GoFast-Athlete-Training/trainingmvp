@@ -19,7 +19,7 @@ export async function GET(
     
     const { dayId } = await params;
 
-    const plannedDay = await prisma.trainingPlanDay.findUnique({
+    const plannedDay = await prisma.training_plan_days.findUnique({
       where: { id: dayId },
       include: {
         plan: true,
@@ -36,7 +36,7 @@ export async function GET(
     const startOfDay = getStartOfDay(plannedDay.date);
     const endOfDay = getEndOfDay(plannedDay.date);
 
-    const executedDay = await prisma.trainingDayExecuted.findFirst({
+    const executedDay = await prisma.training_days_executed.findFirst({
       where: {
         athleteId,
         date: {
@@ -49,13 +49,13 @@ export async function GET(
     // Get activity if linked
     let activity = null;
     if (executedDay?.activityId) {
-      activity = await prisma.athleteActivity.findUnique({
+      activity = await prisma.athlete_activities.findUnique({
         where: { id: executedDay.activityId },
       });
     }
 
     // Check for auto-match candidates
-    const autoMatchCandidates = await prisma.athleteActivity.findMany({
+    const autoMatchCandidates = await prisma.athlete_activities.findMany({
       where: {
         athleteId,
         startTime: {

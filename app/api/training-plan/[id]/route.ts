@@ -12,13 +12,13 @@ export async function GET(
     const athleteId = await getAthleteIdFromRequest(request);
     const { id: planId } = await params;
 
-    const plan = await prisma.trainingPlan.findFirst({
+    const plan = await prisma.training_plans.findFirst({
       where: {
         id: planId,
         athleteId,
       },
       include: {
-        race: true, // Direct relation
+        race_registry: true, // Direct relation
         athlete: {
           select: {
             id: true,
@@ -32,7 +32,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Plan not found' }, { status: 404 });
     }
 
-    const race = plan.race || null;
+    const race = plan.race_registry || null;
 
     return NextResponse.json({
       success: true,

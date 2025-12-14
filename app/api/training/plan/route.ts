@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message || 'Unauthorized' }, { status: 401 });
     }
 
-    const activePlan = await prisma.trainingPlan.findFirst({
+    const activePlan = await prisma.training_plans.findFirst({
       where: {
         athleteId,
         // TODO: status removed - will be handled via execution-based lifecycle

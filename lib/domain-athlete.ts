@@ -42,7 +42,7 @@ export async function hydrateAthlete(athleteId: string) {
       },
       trainingPlans: {
         include: {
-          race: true, // Direct relation
+          race_registry: true, // Direct relation
         },
         orderBy: {
           createdAt: 'desc',

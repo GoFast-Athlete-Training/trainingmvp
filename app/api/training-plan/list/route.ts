@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
   try {
     const athleteId = await getAthleteIdFromRequest(request);
 
-    const plans = await prisma.trainingPlan.findMany({
+    const plans = await prisma.training_plans.findMany({
       where: {
         athleteId,
       },
       include: {
-        race: {
+        race_registry: {
           select: {
             id: true,
             name: true,
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         goalTime: p.goalTime,
         startDate: p.startDate,
         totalWeeks: p.totalWeeks,
-        race: p.race,
+        race: p.race_registry
       })),
     });
   } catch (error: any) {

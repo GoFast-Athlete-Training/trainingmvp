@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     // REGISTRY PATTERN: Find or create race (upsert)
     // Always returns race ID - frontend doesn't need to know if it was created or found
     // Use findFirst + create pattern since Prisma doesn't support compound unique constraints in upsert
-    let race = await prisma.race.findFirst({
+    let race = await prisma.race_registry.findFirst({
       where: {
         name: {
           equals: name,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (!race) {
       // Race doesn't exist - create it
-      race = await prisma.race.create({
+      race = await prisma.race_registry.create({
         data: {
           name,
           raceType: finalRaceType,
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           city: city || null,
           state: state || null,
           country: country || null,
-          createdBy: athleteId, // Optional tracking, not ownership
+          // createdBy field removed - not in schema
         },
       });
       console.log('✅ RACE CREATE: Race created:', race.id);

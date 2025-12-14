@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fuzzy search by name (case-insensitive, partial match)
-    const races = await prisma.race.findMany({
+    const races = await prisma.race_registry.findMany({
       where: {
         name: {
           contains: query,

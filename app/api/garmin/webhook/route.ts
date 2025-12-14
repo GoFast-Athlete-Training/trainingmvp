@@ -75,7 +75,7 @@ async function handleActivityWebhook(activities: any[], userId?: string) {
       }
 
       // Check if activity already exists
-      const existingActivity = await prisma.athleteActivity.findUnique({
+      const existingActivity = await prisma.athlete_activities.findUnique({
         where: { sourceActivityId: activity.activityId?.toString() || activity.id?.toString() }
       });
 
@@ -85,7 +85,7 @@ async function handleActivityWebhook(activities: any[], userId?: string) {
       }
 
       // Create activity record
-      await prisma.athleteActivity.create({
+      await prisma.athlete_activities.create({
         data: {
           athleteId: athlete.id,
           sourceActivityId: activity.activityId?.toString() || activity.id?.toString(),
@@ -136,7 +136,7 @@ async function handleActivityDetailsWebhook(activityDetails: any[], userId?: str
       const activityId = detail.activityId?.toString() || detail.id?.toString();
       
       // Update existing activity with detail data
-      await prisma.athleteActivity.updateMany({
+      await prisma.athlete_activities.updateMany({
         where: {
           athleteId: athlete.id,
           sourceActivityId: activityId

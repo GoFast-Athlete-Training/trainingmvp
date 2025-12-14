@@ -16,7 +16,7 @@ export async function GET(
     const athleteId = await getAthleteIdFromRequest(request);
     const { phaseId } = await params;
 
-    const phase = await prisma.trainingPlanPhase.findFirst({
+    const phase = await prisma.training_plan_phases.findFirst({
       where: {
         id: phaseId,
         plan: {
@@ -108,7 +108,7 @@ export async function PUT(
     } = body;
 
     // Verify phase belongs to athlete's plan
-    const existingPhase = await prisma.trainingPlanPhase.findFirst({
+    const existingPhase = await prisma.training_plan_phases.findFirst({
       where: {
         id: phaseId,
         plan: {
@@ -122,7 +122,7 @@ export async function PUT(
     }
 
     // Update phase
-    const updatedPhase = await prisma.trainingPlanPhase.update({
+    const updatedPhase = await prisma.training_plan_phases.update({
       where: { id: phaseId },
       data: {
         phaseDescription: phaseDescription || null,

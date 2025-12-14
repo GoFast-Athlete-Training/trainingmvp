@@ -66,7 +66,7 @@ export default function TrainingSetupStartPage() {
     try {
       const response = await api.post('/race/search', { query: query.trim() });
       if (response.data.success) {
-        const races = response.data.races || [];
+        const races = response.data.race_registry || [];
         setSearchResults(races);
       } else {
         setError(response.data.error || 'Failed to search races');
@@ -221,7 +221,7 @@ export default function TrainingSetupStartPage() {
         return;
       }
 
-      const raceId = createRaceResponse.data.race.id;
+      const raceId = createRaceResponse.data.race_registry.id;
       console.log('✅ STEP 1: Race created/found:', raceId);
 
       // Step 2: Update existing plan or create new one

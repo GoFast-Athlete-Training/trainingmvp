@@ -17,7 +17,7 @@ export async function computeGoFastScore(
   executedDayId: string
 ): Promise<GoFastScore> {
   // First get the executed day
-  const executed = await prisma.trainingDayExecuted.findUnique({
+  const executed = await prisma.training_days_executed.findUnique({
     where: { id: executedDayId },
   });
 
@@ -26,7 +26,7 @@ export async function computeGoFastScore(
   }
 
   // Then get the activity separately
-  const activity = await prisma.athleteActivity.findUnique({
+  const activity = await prisma.athlete_activities.findUnique({
     where: { id: executed.activityId },
   });
 

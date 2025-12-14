@@ -8,7 +8,7 @@ export async function autoMatchActivityToDay(
   athleteId: string,
   activityId: string
 ): Promise<string | null> {
-  const activity = await prisma.athleteActivity.findUnique({
+  const activity = await prisma.athlete_activities.findUnique({
     where: { id: activityId },
   });
 
@@ -23,7 +23,7 @@ export async function autoMatchActivityToDay(
   endOfDay.setHours(23, 59, 59, 999);
 
   // Find planned day for this date using new cascade structure
-  const plannedDay = await prisma.trainingPlanDay.findFirst({
+  const plannedDay = await prisma.training_plan_days.findFirst({
     where: {
       date: {
         gte: startOfDay,
@@ -47,7 +47,7 @@ export async function autoMatchActivityToDay(
   }
 
   // Check if already executed
-  const existing = await prisma.trainingDayExecuted.findFirst({
+  const existing = await prisma.training_days_executed.findFirst({
     where: {
       athleteId,
       date: {
@@ -62,7 +62,7 @@ export async function autoMatchActivityToDay(
   }
 
   // Create TrainingDayExecuted
-  const executed = await prisma.trainingDayExecuted.create({
+  const executed = await prisma.training_days_executed.create({
     data: {
       athleteId,
       activityId,
@@ -93,7 +93,7 @@ export async function getActivitiesForDay(
   const endOfDay = new Date(dayDate);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const activities = await prisma.athleteActivity.findMany({
+  const activities = await prisma.athlete_activities.findMany({
     where: {
       athleteId,
       startTime: {
@@ -118,7 +118,7 @@ export async function linkActivityToDay(
   dayId: string,
   activityId: string
 ): Promise<void> {
-  const plannedDay = await prisma.trainingPlanDay.findUnique({
+  const plannedDay = await prisma.training_plan_days.findUnique({
     where: { id: dayId },
     include: {
       plan: true,
@@ -131,7 +131,7 @@ export async function linkActivityToDay(
   }
 
   // Check if activity is already linked to another day
-  const activityAlreadyLinked = await prisma.trainingDayExecuted.findFirst({
+  const activityAlreadyLinked = await prisma.training_days_executed.findFirst({
     where: {
       activityId,
     },
@@ -147,7 +147,7 @@ export async function linkActivityToDay(
   const endOfDay = new Date(plannedDay.date);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const existingExecutedDay = await prisma.trainingDayExecuted.findFirst({
+  const existingExecutedDay = await prisma.training_days_executed.findFirst({
     where: {
       athleteId,
       date: {
@@ -159,7 +159,7 @@ export async function linkActivityToDay(
 
   if (existingExecutedDay) {
     // Update existing
-    await prisma.trainingDayExecuted.update({
+    await prisma.training_days_executed.update({
       where: { id: existingExecutedDay.id },
       data: {
         activityId,
@@ -173,7 +173,7 @@ export async function linkActivityToDay(
     });
   } else {
     // Create new
-    await prisma.trainingDayExecuted.create({
+    await prisma.training_days_executed.create({
       data: {
         athleteId,
         activityId,

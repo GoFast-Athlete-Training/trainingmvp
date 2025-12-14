@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // Verify race exists
     const { prisma } = await import('@/lib/prisma');
-    const race = await prisma.race.findUnique({
+    const race = await prisma.race_registry.findUnique({
       where: { id: raceId },
     });
 

@@ -32,12 +32,12 @@ export async function POST(request: NextRequest) {
 
     // UPSERT LOGIC: Find existing plan (any status) or create new one
     // Check for any existing plan for this athlete
-    const existingPlan = await prisma.trainingPlan.findFirst({
+    const existingPlan = await prisma.training_plans.findFirst({
       where: {
         athleteId,
       },
       include: {
-        race: true, // Direct relation
+        race_registry: true, // Direct relation
       },
       orderBy: {
         createdAt: 'desc',
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       // If raceId provided and not already attached, attach it
       if (raceId) {
         // Verify race exists
-        const race = await prisma.race.findUnique({
+        const race = await prisma.race_registry.findUnique({
           where: { id: raceId },
         });
 
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
           const totalWeeks = Math.max(8, Math.floor(daysUntilRace / 7));
 
           // Update plan with raceId directly
-          const updatedPlan = await prisma.trainingPlan.update({
+          const updatedPlan = await prisma.training_plans.update({
             where: { id: existingPlan.id },
             data: {
               raceId: raceId,
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     // If raceId provided, use it
     if (raceId) {
-      const race = await prisma.race.findUnique({
+      const race = await prisma.race_registry.findUnique({
         where: { id: raceId },
       });
 
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     // Create TrainingPlan
     console.log('💾 TRAINING PLAN CREATE: Creating training plan...');
-    const trainingPlan = await prisma.trainingPlan.create({
+    const trainingPlan = await prisma.training_plans.create({
       data: {
         athleteId,
         name: planName,

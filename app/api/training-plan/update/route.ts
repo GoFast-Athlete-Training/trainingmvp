@@ -32,10 +32,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify plan exists and belongs to athlete
-    const existingPlan = await prisma.trainingPlan.findUnique({
+    const existingPlan = await prisma.training_plans.findUnique({
       where: { id: trainingPlanId },
       include: {
-        race: true, // Direct relation now
+        race_registry: true, // Direct relation now
       },
     });
 
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     if (raceId) {
       console.log('📋 UPDATE: Attaching race:', raceId);
       // Verify race exists
-      const race = await prisma.race.findUnique({
+      const race = await prisma.race_registry.findUnique({
         where: { id: raceId },
       });
 
@@ -155,14 +155,14 @@ export async function POST(request: NextRequest) {
     const goalTimeValue = updates.goalTime || updates.trainingPlanGoalTime;
     if (goalTimeValue) {
       // Get race from direct relation (may have just been attached or already exists)
-      const planWithRace = await prisma.trainingPlan.findUnique({
+      const planWithRace = await prisma.training_plans.findUnique({
         where: { id: trainingPlanId },
         include: {
-          race: true, // Direct relation
+          race_registry: true, // Direct relation
         },
       });
 
-      const race = planWithRace?.race;
+      const race = planWithRace?.race_registry
       if (!race) {
         return NextResponse.json(
           { success: false, error: 'Race must be attached before setting goal time' },
@@ -206,16 +206,16 @@ export async function POST(request: NextRequest) {
 
     // Update plan
     console.log('📋 UPDATE: Updating plan with data:', updateData);
-    const updatedPlan = await prisma.trainingPlan.update({
+    const updatedPlan = await prisma.training_plans.update({
       where: { id: trainingPlanId },
       data: updateData,
       include: {
-        race: true, // Direct relation
+        race_registry: true, // Direct relation
       },
     });
 
     console.log('✅ UPDATE: Plan updated successfully');
-    const race = updatedPlan.race;
+    const race = updatedPlan.race_registry
     if (race) {
       console.log('✅ UPDATE: Race attached:', race.name, 'Date:', race.date);
     }

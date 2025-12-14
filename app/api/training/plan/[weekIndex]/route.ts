@@ -20,7 +20,7 @@ export async function GET(
     const { weekIndex: weekIndexStr } = await params;
     const weekIndex = parseInt(weekIndexStr);
 
-    const activePlan = await prisma.trainingPlan.findFirst({
+    const activePlan = await prisma.training_plans.findFirst({
       where: {
         athleteId,
         // TODO: status removed - will be handled via execution-based lifecycle
@@ -33,7 +33,7 @@ export async function GET(
     }
 
     // Get all days for this week using new cascade structure
-    const week = await prisma.trainingPlanWeek.findFirst({
+    const week = await prisma.training_plan_weeks.findFirst({
       where: {
         planId: activePlan.id,
         weekNumber: weekIndex,
@@ -65,7 +65,7 @@ export async function GET(
     const weekStart = getStartOfDay(plannedDays[0].date);
     const weekEnd = getEndOfDay(plannedDays[plannedDays.length - 1].date);
 
-    const executedDays = await prisma.trainingDayExecuted.findMany({
+    const executedDays = await prisma.training_days_executed.findMany({
       where: {
         athleteId,
         date: {

@@ -20,7 +20,7 @@ export async function GET(
     
     const { dayId } = await params;
 
-    const plannedDay = await prisma.trainingPlanDay.findUnique({
+    const plannedDay = await prisma.training_plan_days.findUnique({
       where: { id: dayId },
       include: {
         plan: true,
@@ -79,7 +79,7 @@ export async function POST(
     await linkActivityToDay(athleteId, dayId, activityId);
 
     // Get the executed day
-    const plannedDay = await prisma.trainingPlanDay.findUnique({
+    const plannedDay = await prisma.training_plan_days.findUnique({
       where: { id: dayId },
     });
 
@@ -87,7 +87,7 @@ export async function POST(
       return NextResponse.json({ error: 'Day not found' }, { status: 404 });
     }
 
-    const executedDay = await prisma.trainingDayExecuted.findFirst({
+    const executedDay = await prisma.training_days_executed.findFirst({
       where: {
         athleteId,
         activityId,
@@ -102,7 +102,7 @@ export async function POST(
     const score = await computeGoFastScore(athleteId, executedDay.id);
 
     // Update analysis
-    await prisma.trainingDayExecuted.update({
+    await prisma.training_days_executed.update({
       where: { id: executedDay.id },
       data: {
         analysis: score as any,

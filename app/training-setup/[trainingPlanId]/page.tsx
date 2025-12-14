@@ -49,11 +49,11 @@ export default function TrainingSetupGoalTimePage() {
           }
           
           // Set race type for validation
-          const raceType = response.data.trainingPlan.race?.raceType || response.data.trainingPlan.race?.distance;
+          const raceType = response.data.trainingPlan.race_registry.raceType || response.data.trainingPlan.race_registry.distance;
           setPlan((prev: any) => ({
             ...prev,
             race: {
-              ...prev?.race,
+              ...prev?.race_registry,
               raceType: raceType,
             }
           }));
@@ -73,7 +73,7 @@ export default function TrainingSetupGoalTimePage() {
 
   // Update goalTime string when components change
   useEffect(() => {
-    const raceType = plan?.race?.raceType?.toLowerCase() || plan?.race?.distance?.toLowerCase();
+    const raceType = plan?.race_registry.raceType?.toLowerCase() || plan?.race_registry.distance?.toLowerCase();
     const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     if (isLongRace) {
@@ -95,10 +95,10 @@ export default function TrainingSetupGoalTimePage() {
         setGoalTime(`${h}:${m}:${s}`);
       }
     }
-  }, [hours, minutes, seconds, plan?.race?.distance]);
+  }, [hours, minutes, seconds, plan?.race_registry.distance]);
 
   const handleSave = async () => {
-    const raceType = plan?.race?.raceType?.toLowerCase() || plan?.race?.distance?.toLowerCase();
+    const raceType = plan?.race_registry.raceType?.toLowerCase() || plan?.race_registry.distance?.toLowerCase();
     const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     // Validate inputs
@@ -187,7 +187,7 @@ export default function TrainingSetupGoalTimePage() {
             Set Your Goal Time 🎯
           </h1>
           <p className="text-gray-600 mb-8">
-            What's your goal time for {plan.race?.name || 'this race'}?
+            What's your goal time for {plan.race_registry?.name || 'this race'}?
           </p>
 
           {error && (
@@ -202,7 +202,7 @@ export default function TrainingSetupGoalTimePage() {
                 Goal Time *
               </label>
               
-              {((plan?.race?.raceType?.toLowerCase() === 'marathon' || plan?.race?.raceType?.toLowerCase() === 'half')) ? (
+              {((plan?.race_registry.raceType?.toLowerCase() === 'marathon' || plan?.race_registry.raceType?.toLowerCase() === 'half')) ? (
                 // Long race: HH:MM:SS format
                 <div className="flex items-center gap-2">
                   <div className="flex-1">

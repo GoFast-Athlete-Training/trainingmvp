@@ -28,10 +28,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Load existing plan
-    const existingPlan = await prisma.trainingPlan.findUnique({
+    const existingPlan = await prisma.training_plans.findUnique({
       where: { id: trainingPlanId },
       include: {
-        race: true, // Direct relation
+        race_registry: true, // Direct relation
       },
     });
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if plan has been generated (has days) - if so, it's not a draft
-    const planDayCount = await prisma.trainingPlanDay.count({
+    const planDayCount = await prisma.training_plan_days.count({
       where: { planId: existingPlan.id },
     });
     
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get race from direct relation (required)
-    const race = existingPlan.race;
+    const race = existingPlan.race_registry
     if (!race) {
       return NextResponse.json(
         { success: false, error: 'Race must be attached before generating plan' },
@@ -160,9 +160,16 @@ export async function POST(request: NextRequest) {
       ? paceToString(goalRacePaceSec) 
       : '7:30'; // Fallback
 
-    // Generate plan using new cascade structure (phases + week 1 only)
-    console.log('🤖 GENERATE: Calling AI to generate phases + week 1...');
+    // Load default TrainingGenPrompt (Marathon Plan Generator V1)
+    // TODO: Make this configurable per plan or race type
+    const defaultPromptId = 'cmj56dpdu0001ju04zpwkvrku'; // Marathon Plan Generator V1
+    
+    // Generate plan using database-driven prompt (phases + week 1 only)
+    console.log('🤖 GENERATE: Calling AI to generate phases + week 1 with database-driven prompt...', {
+      promptId: defaultPromptId,
+    });
     const plan = await generateTrainingPlanAI({
+      promptId: defaultPromptId, // Database-driven prompt configuration
       raceName: race.name,
       raceDistance: race.raceType, // Use raceType (migration should have populated this)
       raceMiles: race.miles, // Pass miles for accurate calculations
@@ -220,13 +227,13 @@ export async function PUT(request: NextRequest) {
     }
 
     // Verify plan exists and belongs to athlete
-    const existingPlan = await prisma.trainingPlan.findFirst({
+    const existingPlan = await prisma.training_plans.findFirst({
       where: {
         id: trainingPlanId,
         athleteId,
       },
       include: {
-        race: true,
+        race_registry: true,
       },
     });
 
@@ -238,7 +245,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if plan has been generated (has days) - if so, it's not a draft
-    const planDayCount = await prisma.trainingPlanDay.count({
+    const planDayCount = await prisma.training_plan_days.count({
       where: { planId: trainingPlanId },
     });
     
@@ -249,7 +256,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const race = existingPlan.race;
+    const race = existingPlan.race_registry
     if (!race) {
       return NextResponse.json(
         { success: false, error: 'Race not found on plan' },
@@ -276,7 +283,7 @@ export async function PUT(request: NextRequest) {
     // Save plan to database
     const result = await prisma.$transaction(async (tx) => {
       // Update plan with pace fields (no status field - lifecycle is derived from executions)
-      const updatedPlan = await tx.trainingPlan.update({
+      const updatedPlan = await tx.training_plans.update({
         where: { id: trainingPlanId },
         data: {
           goalRacePace: goalRacePaceSec,
@@ -300,7 +307,7 @@ export async function PUT(request: NextRequest) {
         const phaseData = generatedPlan.phases[i];
         const dates = phaseDates[i];
         
-        const phase = await tx.trainingPlanPhase.create({
+        const phase = await tx.training_plan_phases.create({
           data: {
             planId: trainingPlanId,
             name: phaseData.name,
@@ -340,7 +347,7 @@ export async function PUT(request: NextRequest) {
         week1Miles += warmupMiles + workoutMiles + cooldownMiles;
       }
 
-      const week1 = await tx.trainingPlanWeek.create({
+      const week1 = await tx.training_plan_weeks.create({
         data: {
           planId: trainingPlanId,
           phaseId: week1PhaseId,
@@ -361,7 +368,7 @@ export async function PUT(request: NextRequest) {
         
         const dayOfWeek = getDayOfWeek(computedDate);
 
-        await tx.trainingPlanDay.create({
+        await tx.training_plan_days.create({
           data: {
             planId: trainingPlanId,
             phaseId: week1PhaseId,
@@ -378,31 +385,13 @@ export async function PUT(request: NextRequest) {
 
       // Update phase totalMiles for week 1's phase (only week 1 exists so far)
       if (week1Miles > 0) {
-        await tx.trainingPlanPhase.update({
+        await tx.training_plan_phases.update({
           where: { id: week1PhaseId },
           data: { totalMiles: week1Miles },
         });
       }
 
-      // Ensure AthleteTrainingPlan junction entry exists
-      const existingJunction = await tx.athleteTrainingPlan.findUnique({
-        where: {
-          athleteId_trainingPlanId: {
-            athleteId,
-            trainingPlanId: trainingPlanId,
-          },
-        },
-      });
-
-      if (!existingJunction) {
-        await tx.athleteTrainingPlan.create({
-          data: {
-            athleteId,
-            trainingPlanId: trainingPlanId,
-            assignedAt: new Date(),
-          },
-        });
-      }
+      // Junction table removed - plans are linked directly via athleteId
 
       return updatedPlan.id;
     });

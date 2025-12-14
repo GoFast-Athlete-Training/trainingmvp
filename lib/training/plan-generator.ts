@@ -1,5 +1,66 @@
 import OpenAI from 'openai';
 import { TRAINING_PHASE_ORDER, validatePhaseOrder } from '@/config/training-phases';
+import { loadAndAssemblePrompt, buildTrainingPlanPrompt } from './prompt-assembler';
+
+/**
+ * Validate generated plan against Return Format schema
+ */
+function validateAgainstReturnFormat(plan: GeneratedPlan, schema: any): void {
+  // Basic structure validation
+  if (schema.type === 'object') {
+    const requiredFields = schema.required || [];
+    
+    // Check required top-level fields
+    for (const field of requiredFields) {
+      if (!(field in plan)) {
+        throw new Error(`Missing required field: ${field}`);
+      }
+    }
+
+    // Validate properties match schema
+    if (schema.properties) {
+      // Check totalWeeks
+      if (schema.properties.totalWeeks && typeof plan.totalWeeks !== schema.properties.totalWeeks.type) {
+        throw new Error(`totalWeeks must be ${schema.properties.totalWeeks.type}, got ${typeof plan.totalWeeks}`);
+      }
+
+      // Check phases array
+      if (schema.properties.phases) {
+        if (!Array.isArray(plan.phases)) {
+          throw new Error('phases must be an array');
+        }
+        // Validate each phase matches phase schema
+        if (schema.properties.phases.items) {
+          for (const phase of plan.phases) {
+            const phaseSchema = schema.properties.phases.items.properties || {};
+            if (phaseSchema.name && typeof phase.name !== phaseSchema.name.type) {
+              throw new Error(`Phase name must be ${phaseSchema.name.type}`);
+            }
+            if (phaseSchema.weekCount && typeof phase.weekCount !== phaseSchema.weekCount.type) {
+              throw new Error(`Phase weekCount must be ${phaseSchema.weekCount.type}`);
+            }
+          }
+        }
+      }
+
+      // Check week object
+      if (schema.properties.week) {
+        if (!plan.week) {
+          throw new Error('Missing required field: week');
+        }
+        const weekSchema = schema.properties.week.properties || {};
+        if (weekSchema.weekNumber && typeof plan.week.weekNumber !== weekSchema.weekNumber.type) {
+          throw new Error(`week.weekNumber must be ${weekSchema.weekNumber.type}`);
+        }
+        if (weekSchema.days) {
+          if (!Array.isArray(plan.week.days)) {
+            throw new Error('week.days must be an array');
+          }
+        }
+      }
+    }
+  }
+}
 
 function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) {
@@ -11,6 +72,7 @@ function getOpenAIClient() {
 }
 
 export interface TrainingInputs {
+  promptId: string; // TrainingGenPrompt ID - required for database-driven generation
   raceName: string;
   raceDistance: string; // raceType string (marathon, half, etc.) for display
   raceMiles?: number; // Optional: miles for accurate calculations
@@ -93,13 +155,31 @@ export interface GeneratedWeek {
 
 /**
  * Generate a complete training plan using OpenAI
- * Creates ALL weeks and days immediately (not incrementally)
+ * Uses database-driven TrainingGenPrompt for prompt assembly
+ * Creates phases + Week 1 only (progressive generation)
  */
 export async function generateTrainingPlanAI(
   inputs: TrainingInputs
 ): Promise<GeneratedPlan> {
+  // Load prompt configuration from database
+  console.log('📋 PLAN GENERATOR: Loading prompt configuration from database...', {
+    promptId: inputs.promptId,
+  });
+
+  const assembledPrompt = await loadAndAssemblePrompt(inputs.promptId);
+  
+  console.log('✅ PLAN GENERATOR: Prompt loaded', {
+    hasSystemMessage: !!assembledPrompt.systemMessage,
+    hasUserPrompt: !!assembledPrompt.userPrompt,
+    hasReturnFormat: !!assembledPrompt.returnFormatSchema,
+    hasMustHaves: !!assembledPrompt.mustHaveFields,
+  });
+
   // Determine day of week the plan starts on
+  const today = new Date();
+  const todayDateStr = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const startDate = new Date(inputs.planStartDate);
+  const startDateStr = startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const startDayOfWeek = startDate.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const startDayName = dayNames[startDayOfWeek];
@@ -108,32 +188,29 @@ export async function generateTrainingPlanAI(
   const startDayNumber = startDayOfWeek === 0 ? 7 : startDayOfWeek;
   
   // Calculate how many days are left in the week (for partial first week)
-  // If starting Monday (1), generate 7 days. If starting Friday (5), generate 3 days (Fri, Sat, Sun)
-  const daysRemainingInWeek = 8 - startDayNumber; // Monday=1 → 7 days, Friday=5 → 3 days, Sunday=7 → 1 day
-  
-  // Format dates for AI context
-  const today = new Date();
-  const todayYear = today.getFullYear();
-  const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
-  const todayDay = String(today.getDate()).padStart(2, '0');
-  const todayDateStr = `${todayMonth}/${todayDay}/${todayYear}`;
-  
-  const startYear = startDate.getFullYear();
-  const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
-  const startDay = String(startDate.getDate()).padStart(2, '0');
-  const startDateStr = `${startMonth}/${startDay}/${startYear}`;
+  const daysRemainingInWeek = 8 - startDayNumber;
   
   // Build list of dayNumbers to generate for Week 1
   const week1DayNumbers: number[] = [];
   for (let i = startDayNumber; i <= 7; i++) {
     week1DayNumbers.push(i);
   }
-  const week1DayNames = week1DayNumbers.map(d => {
-    const names = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return names[d];
-  }).join(', ');
+
+  // Build the complete prompt dynamically from database records
+  const userPrompt = buildTrainingPlanPrompt(assembledPrompt, {
+    raceName: inputs.raceName,
+    raceDistance: inputs.raceDistance,
+    goalTime: inputs.goalTime,
+    fiveKPace: inputs.fiveKPace,
+    predictedRacePace: inputs.predictedRacePace,
+    goalRacePace: inputs.goalRacePace,
+    currentWeeklyMileage: inputs.currentWeeklyMileage,
+    preferredDays: inputs.preferredDays,
+    totalWeeks: inputs.totalWeeks,
+    planStartDate: inputs.planStartDate,
+  });
   
-  const prompt = `You are a professional running coach creating a training plan using the GoFast Training Model.
+  const prompt = `${userPrompt}
 
 CRITICAL: You MUST return ONLY phases (with weekCount) and Week 1. DO NOT generate weeks 2, 3, 4, etc.
 
@@ -406,18 +483,23 @@ CRITICAL: The JSON structure must be EXACTLY this format (no variations):
     ]
   }
 }
-
-DO NOT include "weeks" inside phases. DO NOT generate weeks beyond week 1. Return ONLY this JSON structure.`;
+`;
 
   try {
     const openai = getOpenAIClient();
+    
+    // Use database-driven system message (AI Role content)
+    const systemMessage = assembledPrompt.systemMessage + 
+      '\n\nCRITICAL: You MUST return ONLY phases (with name and weekCount) and week 1. DO NOT generate weeks 2, 3, 4, etc. DO NOT include "weeks" array inside phases. Return ONLY valid JSON matching the return format schema provided.';
+
+    console.log('🤖 PLAN GENERATOR: Calling OpenAI with database-driven prompt...');
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content:
-            'You are a professional running coach. You MUST return ONLY phases (with name and weekCount) and week 1. DO NOT generate weeks 2, 3, 4, etc. DO NOT include "weeks" array inside phases. Return ONLY valid JSON matching this exact structure: {"totalWeeks": number, "phases": [{"name": "base", "weekCount": 5}, ...], "week": {"weekNumber": 1, "days": [...]}}',
+          content: systemMessage,
         },
         {
           role: 'user',
@@ -459,9 +541,19 @@ DO NOT include "weeks" inside phases. DO NOT generate weeks beyond week 1. Retur
       throw new Error(`Failed to parse AI response as JSON: ${parseError.message}. This usually means the AI returned malformed JSON. Please try again.`);
     }
 
-    // Validate structure
+    // Validate structure matches Return Format schema
     if (!parsed.phases || !Array.isArray(parsed.phases)) {
       throw new Error('Invalid plan structure: missing phases array');
+    }
+
+    // Validate against Return Format schema from database
+    console.log('🔍 PLAN GENERATOR: Validating response against Return Format schema...');
+    try {
+      validateAgainstReturnFormat(parsed, assembledPrompt.returnFormatSchema);
+      console.log('✅ PLAN GENERATOR: Response matches Return Format schema');
+    } catch (validationError: any) {
+      console.error('❌ PLAN GENERATOR: Return Format validation failed:', validationError.message);
+      throw new Error(`Response does not match Return Format schema: ${validationError.message}`);
     }
 
     // Clean up phases - remove any "weeks" arrays if AI included them (should only have weekCount)

@@ -17,38 +17,18 @@ export async function GET(request: NextRequest) {
     }
 
     // NO STATUS LOGIC - Just find whatever plan exists
-    // Try AthleteTrainingPlan junction table first (ordered by assignedAt desc)
-    const activeAssignment = await prisma.athleteTrainingPlan.findFirst({
+    // Junction table removed - use direct query
+    const activePlan = await prisma.training_plans.findFirst({
       where: {
         athleteId,
       },
       include: {
-        trainingPlan: {
-          include: {
-            race: true, // Direct relation
-          },
-        },
+        race_registry: true, // Direct relation
       },
       orderBy: {
-        assignedAt: 'desc',
+        createdAt: 'desc',
       },
-    });
-
-    // Fallback: if no junction entry, check for latest plan (any status)
-    let activePlan = activeAssignment?.trainingPlan || undefined;
-    if (!activePlan) {
-      activePlan = await prisma.trainingPlan.findFirst({
-        where: {
-          athleteId,
-        },
-        include: {
-          race: true, // Direct relation
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }) || undefined;
-    }
+    }) || undefined;
 
     // STATE 1: No plan at all
     if (!activePlan) {
@@ -68,7 +48,7 @@ export async function GET(request: NextRequest) {
     // DATE-BASED MODEL: All plans are active, date determines plan state
     const today = new Date();
     const planStart = new Date(activePlan.startDate);
-    const raceDate = activePlan.race ? new Date(activePlan.race.date) : null;
+    const raceDate = activePlan.race_registry ? new Date(activePlan.race_registry.date) : null;
     
     // Plan state based on dates:
     // - "upcoming" if today < startDate
@@ -90,12 +70,12 @@ export async function GET(request: NextRequest) {
     const isCurrentPlan = planState === 'current';
     
     // Check what steps are needed (based on what's missing)
-    const hasRace = !!activePlan.race;
+    const hasRace = !!activePlan.race_registry
     const hasGoalTime = !!activePlan.goalTime;
     const hasBaseline = !!(activePlan.current5KPace && activePlan.currentWeeklyMileage);
     const hasPreferences = !!(activePlan.preferredDays && activePlan.preferredDays.length > 0);
     const hasStartDate = !!activePlan.startDate;
-    const planDayCount = await prisma.trainingPlanDay.count({
+    const planDayCount = await prisma.training_plan_days.count({
       where: { planId: activePlan.id },
     });
     const hasGeneratedDays = planDayCount > 0;
@@ -140,13 +120,13 @@ export async function GET(request: NextRequest) {
           name: activePlan.name,
           goalTime: activePlan.goalTime,
           goalPace5K: activePlan.goalPace5K,
-          race: activePlan.race
+          race: activePlan.race_registry
             ? {
-                id: activePlan.race.id,
-                name: activePlan.race.name,
-                raceType: activePlan.race.raceType,
-                miles: activePlan.race.miles,
-                date: activePlan.race.date,
+                id: activePlan.race_registry.id,
+                name: activePlan.race_registry.name,
+                raceType: activePlan.race_registry.raceType,
+                miles: activePlan.race_registry.miles,
+                date: activePlan.race_registry.date,
               }
             : null,
           progress: {
@@ -172,7 +152,7 @@ export async function GET(request: NextRequest) {
     //   const startOfDay = getStartOfDay(today);
     //   const endOfDay = getEndOfDay(today);
     //
-    //   todayPlanned = await prisma.trainingPlanDay.findFirst({
+    //   todayPlanned = await prisma.training_plan_days.findFirst({
     //     where: {
     //       planId: activePlan.id,
     //       date: {
@@ -190,7 +170,7 @@ export async function GET(request: NextRequest) {
     //   });
     //
     //   if (todayPlanned) {
-    //     const todayExecuted = await prisma.trainingDayExecuted.findFirst({
+    //     const todayExecuted = await prisma.training_days_executed.findFirst({
     //       where: {
     //         athleteId,
     //         date: {
@@ -229,7 +209,7 @@ export async function GET(request: NextRequest) {
     let currentPhase = 'base';
     if (isCurrentPlan || planState === 'complete') {
       // Get all phases ordered by their sequence (base -> build -> peak -> taper)
-      const phases = await prisma.trainingPlanPhase.findMany({
+      const phases = await prisma.training_plan_phases.findMany({
         where: { planId: activePlan.id },
         orderBy: {
           // Order by phaseStartDate to get correct sequence
@@ -268,7 +248,7 @@ export async function GET(request: NextRequest) {
 
     // Get race readiness (using goalPace5K from plan)
     const goal5kPace = activePlan.goalPace5K || null;
-    const race = activePlan.race || null;
+    const race = activePlan.race_registry || null;
     let raceReadiness = null;
 
     if (goal5kPace && race) {

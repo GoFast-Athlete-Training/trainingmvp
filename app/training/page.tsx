@@ -54,10 +54,11 @@ interface DraftPlan {
   id: string;
   name: string;
   goalTime: string | null;
-  race: {
+  race_registry: {
     id: string;
     name: string;
-    distance: string;
+    raceType: string;
+    miles: number;
     date: string;
   } | null;
   nextStep: string;
@@ -154,7 +155,7 @@ export default function TrainingHub() {
       
       setTodayWorkout(data.todayWorkout);
       setPlanStatus(data.planStatus);
-      setRaceReadiness(data.raceReadiness);
+      setRaceReadiness(data.race_registryeadiness);
       
       // Determine plan state from API response
       const planState = data.planState || 'no-plan';
@@ -167,12 +168,13 @@ export default function TrainingHub() {
           goalTime: data.draftPlan.goalTime,
           // TODO: status removed - will be handled via execution-based lifecycle
           // status: data.draftPlan.status,
-          race: data.draftPlan.race
+          race_registry: data.draftPlan.race_registry
             ? {
-                id: data.draftPlan.race.id,
-                name: data.draftPlan.race.name,
-                distance: data.draftPlan.race.raceType,
-                date: data.draftPlan.race.date,
+                id: data.draftPlan.race_registry.id,
+                name: data.draftPlan.race_registry.name,
+                raceType: data.draftPlan.race_registry.raceType,
+                miles: data.draftPlan.race_registry.miles,
+                date: data.draftPlan.race_registry.date,
               }
             : null,
           nextStep: data.draftPlan.progress.hasRace
@@ -310,9 +312,9 @@ export default function TrainingHub() {
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-lg text-gray-900">Select Race</div>
-                    {draftPlan.progress.hasRace && draftPlan.race && (
+                    {draftPlan.progress.hasRace && draftPlan.race_registry && (
                       <div className="text-sm text-gray-600 mt-1">
-                        {draftPlan.race.name} • {formatRaceDate(draftPlan.race.date)}
+                        {draftPlan.race_registry.name} • {formatRaceDate(draftPlan.race_registry.date)}
                       </div>
                     )}
                   </div>
