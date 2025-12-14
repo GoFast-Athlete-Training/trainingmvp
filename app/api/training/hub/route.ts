@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       nextStepUrl = `/training-setup/${activePlan.id}/review`;
     }
 
-    // If plan doesn't have generated days, return setup state
+    // If plan doesn't have generated days, return draft state
     if (!hasGeneratedDays) {
       return NextResponse.json({
         todayWorkout: null,
@@ -114,13 +114,13 @@ export async function GET(request: NextRequest) {
           phase: '',
         },
         raceReadiness: null,
-        planState: 'setup', // Plan exists but needs setup
-        plan: {
+        planState: 'draft', // Draft/Incomplete plan
+        draftPlan: {
           id: activePlan.id,
           name: activePlan.name,
           goalTime: activePlan.goalTime,
           goalPace5K: activePlan.goalPace5K,
-          race: activePlan.race_registry
+          race_registry: activePlan.race_registry
             ? {
                 id: activePlan.race_registry.id,
                 name: activePlan.race_registry.name,
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
             hasBaseline,
             hasPreferences,
             hasStartDate,
-            hasGeneratedDays,
+            isComplete: hasGeneratedDays,
           },
           nextStep,
           nextStepUrl,

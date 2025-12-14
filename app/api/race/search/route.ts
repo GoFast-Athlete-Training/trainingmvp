@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      races,
+      race_registry: races, // Match frontend expectation
     });
   } catch (error: any) {
     console.error('❌ RACE SEARCH: Error:', error);

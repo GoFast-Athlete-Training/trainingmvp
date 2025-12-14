@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     raceDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)); // Assign to outer scope variable
     
     console.log('📅 RACE CREATE: Normalized date:', raceDate.toISOString());
+    console.log('🔍 RACE CREATE: Searching for race:', { name, date: raceDate.toISOString() });
     
     // REGISTRY PATTERN: Find or create race (upsert)
     // Always returns race ID - frontend doesn't need to know if it was created or found
@@ -72,6 +73,22 @@ export async function POST(request: NextRequest) {
         date: raceDate,
       },
     });
+    
+    if (!race) {
+      console.log('⚠️ RACE CREATE: No exact match found, checking all races with same name...');
+      // Try finding by name only to see if there's a date mismatch
+      const racesByName = await prisma.race_registry.findMany({
+        where: {
+          name: {
+            equals: name,
+            mode: 'insensitive',
+          },
+        },
+      });
+      console.log(`📊 RACE CREATE: Found ${racesByName.length} races with name "${name}":`, 
+        racesByName.map(r => ({ id: r.id, name: r.name, date: r.date?.toISOString() }))
+      );
+    }
 
     if (!race) {
       // Race doesn't exist - create it
