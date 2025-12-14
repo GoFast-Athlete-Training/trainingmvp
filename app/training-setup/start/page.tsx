@@ -65,10 +65,13 @@ export default function TrainingSetupStartPage() {
 
     try {
       const response = await api.post('/race/search', { query: query.trim() });
+      console.log('🔍 SEARCH: Response:', response.data);
       if (response.data.success) {
         const races = response.data.race_registry || [];
+        console.log('✅ SEARCH: Found races:', races.length, races);
         setSearchResults(races);
       } else {
+        console.error('❌ SEARCH: Failed:', response.data.error);
         setError(response.data.error || 'Failed to search races');
         setSearchResults([]);
       }
