@@ -30,10 +30,21 @@ export default function TrainingSetupGoalTimePage() {
       // Load plan from database
       try {
         const response = await api.get(`/training-plan/${trainingPlanId}`);
+        console.log('📋 GOAL TIME: Plan loaded:', response.data);
         if (response.data.success) {
-          setPlan(response.data.trainingPlan);
-          if (response.data.trainingPlan.goalTime) {
-            const timeStr = response.data.trainingPlan.goalTime;
+          const planData = response.data.trainingPlan;
+          
+          // Check if race is attached
+          if (!planData.race) {
+            console.warn('⚠️ GOAL TIME: No race attached to plan, redirecting to race selection');
+            router.push(`/training-setup/start?planId=${trainingPlanId}`);
+            return;
+          }
+          
+          setPlan(planData);
+          
+          if (planData.goalTime) {
+            const timeStr = planData.goalTime;
             setGoalTime(timeStr);
             // Parse existing time into components
             const parts = timeStr.split(':');
@@ -48,20 +59,24 @@ export default function TrainingSetupGoalTimePage() {
             }
           }
           
-          // Set race type for validation
-          const raceType = response.data.trainingPlan.race_registry.raceType || response.data.trainingPlan.race_registry.distance;
-          setPlan((prev: any) => ({
-            ...prev,
-            race: {
-              ...prev?.race_registry,
-              raceType: raceType,
-            }
-          }));
+          // Set race type for validation (API returns 'race' not 'race_registry')
+          const race = planData.race;
+          if (race) {
+            const raceType = race.raceType || race.distance;
+            setPlan((prev: any) => ({
+              ...prev,
+              race: {
+                ...race,
+                raceType: raceType,
+              },
+              race_registry: race, // Also set for backward compat
+            }));
+          }
         } else {
           setError(response.data.error || 'Failed to load plan');
         }
       } catch (err: any) {
-        console.error('Load plan error:', err);
+        console.error('❌ GOAL TIME: Load plan error:', err);
         setError(err.response?.data?.error || 'Failed to load plan');
       } finally {
         setLoading(false);
@@ -73,7 +88,8 @@ export default function TrainingSetupGoalTimePage() {
 
   // Update goalTime string when components change
   useEffect(() => {
-    const raceType = plan?.race_registry.raceType?.toLowerCase() || plan?.race_registry.distance?.toLowerCase();
+    const race = plan?.race || plan?.race_registry;
+    const raceType = race?.raceType?.toLowerCase() || race?.distance?.toLowerCase();
     const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     if (isLongRace) {
@@ -95,10 +111,11 @@ export default function TrainingSetupGoalTimePage() {
         setGoalTime(`${h}:${m}:${s}`);
       }
     }
-  }, [hours, minutes, seconds, plan?.race_registry.distance]);
+  }, [hours, minutes, seconds, plan?.race?.distance || plan?.race_registry?.distance]);
 
   const handleSave = async () => {
-    const raceType = plan?.race_registry.raceType?.toLowerCase() || plan?.race_registry.distance?.toLowerCase();
+    const race = plan?.race || plan?.race_registry;
+    const raceType = race?.raceType?.toLowerCase() || race?.distance?.toLowerCase();
     const isLongRace = raceType === 'marathon' || raceType === 'half';
     
     // Validate inputs
@@ -187,7 +204,7 @@ export default function TrainingSetupGoalTimePage() {
             Set Your Goal Time 🎯
           </h1>
           <p className="text-gray-600 mb-8">
-            What's your goal time for {plan.race_registry?.name || 'this race'}?
+            What's your goal time for {(plan.race || plan.race_registry)?.name || 'this race'}?
           </p>
 
           {error && (
@@ -202,7 +219,11 @@ export default function TrainingSetupGoalTimePage() {
                 Goal Time *
               </label>
               
-              {((plan?.race_registry.raceType?.toLowerCase() === 'marathon' || plan?.race_registry.raceType?.toLowerCase() === 'half')) ? (
+              {(() => {
+                const race = plan?.race || plan?.race_registry;
+                const raceType = race?.raceType?.toLowerCase() || race?.distance?.toLowerCase();
+                return raceType === 'marathon' || raceType === 'half';
+              })() ? (
                 // Long race: HH:MM:SS format
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
