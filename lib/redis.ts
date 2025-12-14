@@ -71,56 +71,80 @@ export async function setPreview(planId: string, previewData: any): Promise<void
   const key = `preview:${planId}`;
   const expiresAt = Date.now() + PREVIEW_TTL * 1000;
 
+  console.log(`💾 REDIS: Attempting to store preview for plan ${planId} with key: ${key}`);
+
   try {
     await ensureRedisClient();
-  } catch (error) {
-    console.warn('⚠️ Redis: Connection failed, using memory cache');
+    console.log(`📡 REDIS: Client status - type: ${redisClientType}, connected: ${!!redisClient}`);
+  } catch (error: any) {
+    console.warn('⚠️ Redis: Connection failed, using memory cache:', error.message);
   }
 
   if (redisClient && redisClientType) {
     try {
+      const jsonData = JSON.stringify(previewData);
+      console.log(`💾 REDIS: Storing ${jsonData.length} bytes of preview data`);
+      
       if (redisClientType === 'standard') {
         // Standard Redis client (Redis Labs)
-        await redisClient.setEx(key, PREVIEW_TTL, JSON.stringify(previewData));
+        await redisClient.setEx(key, PREVIEW_TTL, jsonData);
+        console.log(`✅ Redis: Stored preview for plan ${planId} using standard Redis`);
       } else {
         // Upstash Redis (REST API)
-        await redisClient.setex(key, PREVIEW_TTL, JSON.stringify(previewData));
+        await redisClient.setex(key, PREVIEW_TTL, jsonData);
+        console.log(`✅ Redis: Stored preview for plan ${planId} using Upstash Redis`);
       }
-      console.log(`✅ Redis: Stored preview for plan ${planId}`);
+      
+      // Verify it was stored
+      const verify = await redisClient.get(key);
+      if (verify) {
+        console.log(`✅ Redis: Verified preview stored successfully for plan ${planId}`);
+      } else {
+        console.error(`❌ Redis: Preview not found immediately after storage for plan ${planId}`);
+      }
       return;
     } catch (error: any) {
       console.error('❌ Redis: Failed to store preview:', error.message);
+      console.error('❌ Redis: Error details:', error);
       // Fallback to memory cache
     }
   }
   
   // Use in-memory cache (fallback or primary)
   memoryCache.set(key, { data: previewData, expires: expiresAt });
-  console.log(`✅ Memory: Stored preview for plan ${planId}`);
+  console.log(`✅ Memory: Stored preview for plan ${planId} (Redis not available)`);
 }
 
 export async function getPreview(planId: string): Promise<any | null> {
   const key = `preview:${planId}`;
+  console.log(`🔍 REDIS: Looking for preview with key: ${key} for plan ${planId}`);
 
   try {
     await ensureRedisClient();
-  } catch (error) {
-    console.warn('⚠️ Redis: Connection failed, checking memory cache');
+    console.log(`📡 REDIS: Client status - type: ${redisClientType}, connected: ${!!redisClient}`);
+  } catch (error: any) {
+    console.warn('⚠️ Redis: Connection failed, checking memory cache:', error.message);
   }
 
   if (redisClient && redisClientType) {
     try {
+      console.log(`🔍 REDIS: Querying Redis for key: ${key}`);
       const data = await redisClient.get(key);
+      console.log(`📋 REDIS: Raw data from Redis:`, data ? `found (${typeof data})` : 'null');
+      
       if (data) {
         const parsed = typeof data === 'string' ? JSON.parse(data) : data;
         console.log(`✅ Redis: Retrieved preview for plan ${planId}`);
         return parsed;
       }
-      console.log(`⚠️ Redis: No preview found for plan ${planId}`);
+      console.log(`⚠️ Redis: No preview found in Redis for plan ${planId} with key ${key}`);
     } catch (error: any) {
       console.error('❌ Redis: Failed to get preview:', error.message);
+      console.error('❌ Redis: Error stack:', error.stack);
       // Fallback to memory cache
     }
+  } else {
+    console.log(`⚠️ Redis: No Redis client available (type: ${redisClientType}), checking memory cache`);
   }
   
   // Use in-memory cache (fallback or primary)
@@ -132,10 +156,11 @@ export async function getPreview(planId: string): Promise<any | null> {
   
   // Clean up expired entries
   if (cached) {
+    console.log(`⚠️ Memory: Found expired preview for plan ${planId}`);
     memoryCache.delete(key);
   }
   
-  console.log(`⚠️ Memory: No preview found for plan ${planId}`);
+  console.log(`❌ Memory: No preview found for plan ${planId}`);
   return null;
 }
 
