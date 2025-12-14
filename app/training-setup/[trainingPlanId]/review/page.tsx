@@ -331,19 +331,26 @@ export default function TrainingSetupReviewPage() {
                       {plan.goalTime || 'Not set'}
                     </p>
                     {/* Goal Race Pace - Show right under goal time */}
-                    {plan.goalTime && plan.race_registry?.miles && (
+                    {(() => {
+                      const race = plan?.race || plan?.race_registry;
+                      return plan.goalTime && race?.miles;
+                    })() && (
                       <div className="mt-2">
                         <p className="text-xs text-gray-500">Goal Pace:</p>
                         <p className="text-lg font-bold text-orange-600">
                           {(() => {
                             try {
+                              const race = plan?.race || plan?.race_registry;
                               // Use stored value if available, otherwise calculate on the fly
                               if (plan.goalRacePace) {
                                 return paceToString(plan.goalRacePace);
                               }
                               // Fallback: calculate from goal time and race miles
-                              const goalPaceSec = calculateGoalRacePace(plan.goalTime, plan.race_registry.miles);
-                              return paceToString(goalPaceSec);
+                              if (race?.miles) {
+                                const goalPaceSec = calculateGoalRacePace(plan.goalTime, race.miles);
+                                return paceToString(goalPaceSec);
+                              }
+                              return 'Unable to calculate';
                             } catch (error) {
                               console.error('Error calculating goal pace:', error);
                               return 'Unable to calculate';
@@ -467,7 +474,7 @@ export default function TrainingSetupReviewPage() {
                 saving ||
                 !plan.goalTime || 
                 !startDate || 
-                !plan.race_registry ||
+                !(plan.race || plan.race_registry) ||
                 !plan.current5KPace ||
                 !plan.currentWeeklyMileage ||
                 !plan.preferredDays ||
@@ -480,11 +487,11 @@ export default function TrainingSetupReviewPage() {
           </div>
 
           {/* Validation Messages */}
-          {(!plan.race_registry || !plan.goalTime || !startDate || !plan.current5KPace || !plan.currentWeeklyMileage || !plan.preferredDays || plan.preferredDays.length < 5) && (
+          {(!(plan.race || plan.race_registry) || !plan.goalTime || !startDate || !plan.current5KPace || !plan.currentWeeklyMileage || !plan.preferredDays || plan.preferredDays.length < 5) && (
             <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-sm font-semibold text-yellow-800 mb-2">Please complete all required fields:</p>
               <ul className="text-sm text-yellow-700 list-disc list-inside space-y-1">
-                {!plan.race_registry && <li>Select a race (click Edit next to Race above)</li>}
+                {!(plan.race || plan.race_registry) && <li>Select a race (click Edit next to Race above)</li>}
                 {!plan.goalTime && <li>Set your goal time (click Edit next to Goal Time above)</li>}
                 {!plan.current5KPace && <li>Set your baseline 5K pace (go back to Set Baseline step)</li>}
                 {!plan.currentWeeklyMileage && <li>Set your current weekly mileage (go back to Set Baseline step)</li>}
