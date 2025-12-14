@@ -432,7 +432,6 @@ export default function TrainingSetupReviewPage() {
               onClick={handleGenerate}
               disabled={
                 generating || 
-                saving ||
                 !plan.goalTime || 
                 !startDate || 
                 !(plan.race || plan.race_registry) ||

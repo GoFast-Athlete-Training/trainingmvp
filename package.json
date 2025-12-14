@@ -23,7 +23,8 @@
     "next": "15.4.8",
     "openai": "^4.52.7",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "redis": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
