@@ -181,30 +181,12 @@ export default function TrainingSetupReviewPage() {
         return;
       }
       
-      // Wait a moment to ensure database transaction commits
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Generate the plan (stores preview in Redis, then navigate to preview page)
-      console.log('🔄 REVIEW: Calling generate endpoint...');
-      const response = await api.post('/training-plan/generate', {
-        trainingPlanId,
-      });
-
-      console.log('📋 REVIEW: Generate response:', response.data);
-
-      if (response.data.success) {
-        // Preview is stored in Redis, navigate to preview page
-        console.log('✅ REVIEW: Preview generated, navigating to preview page');
-        router.push(`/training-setup/${trainingPlanId}/preview`);
-      } else {
-        setError(response.data.error || response.data.details || 'Failed to generate plan');
-        setGenerating(false);
-      }
+      // Navigate to preview page immediately - it will handle generation
+      console.log('✅ REVIEW: Plan updated, navigating to preview page');
+      router.push(`/training-setup/${trainingPlanId}/preview`);
     } catch (err: any) {
-      console.error('❌ REVIEW: Generate error:', err);
-      console.error('❌ REVIEW: Error response:', err.response?.data);
-      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to generate plan');
-    } finally {
+      console.error('❌ REVIEW: Update error:', err);
+      setError(err.response?.data?.error || err.response?.data?.details || 'Failed to update plan');
       setGenerating(false);
     }
   };
