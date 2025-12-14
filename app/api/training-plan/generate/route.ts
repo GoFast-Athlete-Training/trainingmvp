@@ -331,7 +331,7 @@ export async function PUT(request: NextRequest) {
         phaseMap.set(phaseData.name, phase.id);
       }
 
-      // Determine which phase week 1 belongs to
+      // Determine which phase week 1 belongs to (for fallback if weeks array doesn't exist)
       let currentWeek = 1;
       let week1PhaseId: string | null = null;
       let week1PhaseName: string | null = null;
