@@ -64,15 +64,30 @@ export default function TrainingPlanPreviewPage() {
         }
       }
 
-      // Load plan to get start date
+      // Load plan to get start date (after potential update)
       try {
         const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
         if (planResponse.data.success && planResponse.data.trainingPlan.startDate) {
           const startDate = new Date(planResponse.data.trainingPlan.startDate);
+          // Use UTC methods to prevent timezone shifts
+          startDate.setUTCHours(0, 0, 0, 0);
           setPlanStartDate(startDate);
+          console.log('📅 PREVIEW: Loaded plan start date:', startDate.toISOString().split('T')[0]);
+        } else if (startDateParam) {
+          // Fallback: use the param if plan doesn't have it yet
+          const startDate = new Date(startDateParam);
+          startDate.setUTCHours(0, 0, 0, 0);
+          setPlanStartDate(startDate);
+          console.log('📅 PREVIEW: Using start date param:', startDate.toISOString().split('T')[0]);
         }
       } catch (err: any) {
         console.error('Failed to load plan start date:', err);
+        // Fallback to param if available
+        if (startDateParam) {
+          const startDate = new Date(startDateParam);
+          startDate.setUTCHours(0, 0, 0, 0);
+          setPlanStartDate(startDate);
+        }
       }
 
       // First try to load existing preview from Redis
