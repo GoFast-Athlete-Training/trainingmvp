@@ -350,8 +350,16 @@ export default function TrainingSetupStartPage() {
                   </div>
                 ) : !searching && searchQuery.trim().length >= 2 ? (
                   <div className="bg-blue-50 border-2 border-blue-200 text-blue-700 px-4 py-3 rounded-xl">
-                    <p className="font-semibold">No races found</p>
-                    <p className="text-sm mt-1">Please create a new race below to get started.</p>
+                    <p className="font-semibold mb-2">No races found</p>
+                    <button
+                      onClick={() => {
+                        setRaceName(searchQuery.trim());
+                        setShowCreateForm(true);
+                      }}
+                      className="w-full bg-orange-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-orange-600 transition"
+                    >
+                      Add "{searchQuery.trim()}"
+                    </button>
                   </div>
                 ) : null}
               </div>
