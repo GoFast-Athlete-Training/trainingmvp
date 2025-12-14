@@ -22,11 +22,17 @@ async function ensureRedisClient(): Promise<void> {
   }
 
   redisConnectionPromise = (async () => {
-    const redisUrl = process.env.REDIS_URL;
+    // Check STORAGE_REDIS_URL first (user's configured variable), then REDIS_URL as fallback
+    const redisUrl = process.env.STORAGE_REDIS_URL || process.env.REDIS_URL;
     const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
     const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-    // Priority: 1) Redis Labs connection string, 2) Upstash REST API
+    console.log(`🔍 REDIS: Checking for Redis connection...`);
+    console.log(`🔍 REDIS: STORAGE_REDIS_URL: ${process.env.STORAGE_REDIS_URL ? '✅ Set' : '❌ Not set'}`);
+    console.log(`🔍 REDIS: REDIS_URL: ${process.env.REDIS_URL ? '✅ Set' : '❌ Not set'}`);
+    console.log(`🔍 REDIS: Using redisUrl: ${redisUrl ? '✅ Found' : '❌ Not found'}`);
+
+    // Priority: 1) Redis Labs connection string (STORAGE_REDIS_URL or REDIS_URL), 2) Upstash REST API
     if (redisUrl && redisUrl.startsWith('redis://')) {
       try {
         const { createClient } = require('redis');
