@@ -187,8 +187,8 @@ export async function POST(request: NextRequest) {
     console.log('✅ GENERATE: Plan generated successfully:', {
       phasesCount: plan.phases.length,
       hasWeek: !!plan.week,
-      hasWeeks: !!plan.weeks,
-      weeksCount: plan.weeks?.length,
+      hasWeeks: !!(plan as any).weeks,
+      weeksCount: (plan as any).weeks?.length,
       weekNumber: plan.week?.weekNumber,
       totalWeeks: plan.totalWeeks,
     });
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     const previewData = {
       phases: plan.phases,
       week: plan.week, // Single week (backward compat)
-      weeks: plan.weeks || (plan.week ? [plan.week] : []), // All weeks array
+      weeks: (plan as any).weeks || (plan.week ? [plan.week] : []), // All weeks array
       totalWeeks: plan.totalWeeks,
       generatedAt: new Date().toISOString(),
     };

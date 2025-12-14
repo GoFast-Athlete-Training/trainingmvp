@@ -122,6 +122,7 @@ export interface GeneratedPlan {
   totalWeeks: number;
   phases: TrainingPlanPhase[]; // phases[] with weekCount only (no weeks array)
   week: TrainingPlanWeek; // Week 1 only
+  weeks?: TrainingPlanWeek[]; // Optional: All weeks if AI generates them
 }
 
 // Weekly Generation Inputs (for generating subsequent weeks)
