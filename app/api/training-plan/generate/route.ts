@@ -161,16 +161,15 @@ export async function POST(request: NextRequest) {
       ? paceToString(goalRacePaceSec) 
       : '7:30'; // Fallback
 
-    // Load default TrainingGenPrompt (Marathon Plan Generator V1)
-    // TODO: Make this configurable per plan or race type
-    const defaultPromptId = 'cmj56dpdu0001ju04zpwkvrku'; // Marathon Plan Generator V1
+    // Load TrainingGenPrompt (Marathon Training Plan)
+    const promptId = 'cmj6cehii0001ii049qpzocs3'; // Marathon Training Plan
     
     // Generate plan using database-driven prompt (phases + week 1 only)
     console.log('🤖 GENERATE: Calling AI to generate phases + week 1 with database-driven prompt...', {
-      promptId: defaultPromptId,
+      promptId: promptId,
     });
     const plan = await generateTrainingPlanAI({
-      promptId: defaultPromptId, // Database-driven prompt configuration
+      promptId: promptId, // Database-driven prompt configuration
       raceName: race.name,
       raceDistance: race.raceType, // Use raceType (migration should have populated this)
       raceMiles: race.miles, // Pass miles for accurate calculations

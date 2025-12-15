@@ -131,12 +131,43 @@ export default function TrainingSetupReviewPage() {
     }
   };
 
-  // Handle start date change
-  const handleStartDateChange = (dateStr: string) => {
+  // Handle start date change - save immediately to database
+  const handleStartDateChange = async (dateStr: string) => {
     setStartDate(dateStr);
     const race = plan?.race || plan?.race_registry;
     if (race?.date) {
       calculateWeeksUntilRace(race.date, dateStr);
+    }
+
+    // Save to database immediately
+    if (dateStr) {
+      try {
+        const startDateObj = new Date(dateStr);
+        startDateObj.setUTCHours(0, 0, 0, 0);
+        
+        // Calculate weeks if race date exists
+        let calculatedWeeks = plan?.totalWeeks || 16;
+        if (race?.date) {
+          const raceDate = new Date(race.date);
+          raceDate.setUTCHours(0, 0, 0, 0);
+          const diffMs = raceDate.getTime() - startDateObj.getTime();
+          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
+        }
+        
+        // Update plan with start date and weeks
+        await api.post('/training-plan/update', {
+          trainingPlanId,
+          updates: {
+            startDate: startDateObj.toISOString(),
+            totalWeeks: calculatedWeeks,
+          },
+        });
+        console.log('✅ REVIEW: Start date saved to database:', dateStr);
+      } catch (err: any) {
+        console.error('❌ REVIEW: Failed to save start date:', err);
+        // Don't show error to user - it's auto-save, they can still proceed
+      }
     }
   };
 
