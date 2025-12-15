@@ -22,21 +22,20 @@ export default function TrainingPlanPreviewPage() {
   const [raceDate, setRaceDate] = useState<Date | null>(null);
 
   // Parse YYYY-MM-DD date string as LOCAL date (not UTC) to avoid timezone shifts
-  function parseLocalDate(dateString: string | Date): Date {
+  // Fixes Dec 15 → Dec 14 bug when parsing "2025-12-15" as UTC
+  function parseLocalDate(dateStr: string | Date): Date {
     // If it's already a Date object, return it
-    if (dateString instanceof Date) return dateString;
+    if (dateStr instanceof Date) return dateStr;
     
     // Parse YYYY-MM-DD format as local date
-    const parts = dateString.split('T')[0].split('-'); // Handle ISO strings
+    const parts = dateStr.split('T')[0].split('-'); // Handle ISO strings like "2025-12-15T00:00:00Z"
     if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
-      const day = parseInt(parts[2], 10);
-      return new Date(year, month, day);
+      const [year, month, day] = parts.map(Number);
+      return new Date(year, month - 1, day); // Month is 0-indexed
     }
     
     // Fallback to standard parsing
-    return new Date(dateString);
+    return new Date(dateStr);
   }
 
   useEffect(() => {
@@ -59,9 +58,8 @@ export default function TrainingPlanPreviewPage() {
             
             let calculatedWeeks = plan.totalWeeks || 16;
             if (race?.date) {
-              const raceDate = new Date(race.date);
-              raceDate.setUTCHours(0, 0, 0, 0);
-              const diffMs = raceDate.getTime() - startDateObj.getTime();
+              const raceDateObj = parseLocalDate(race.date);
+              const diffMs = raceDateObj.getTime() - startDateObj.getTime();
               const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
               calculatedWeeks = Math.max(8, Math.floor(diffDays / 7));
             }
@@ -269,7 +267,7 @@ export default function TrainingPlanPreviewPage() {
                   <div>
                     <p className="text-sm text-gray-600">Total Weeks</p>
                     <p className="text-lg font-bold text-gray-800">
-                      {preview.totalWeeks || preview.weeks?.length || 'N/A'}
+                      {preview.totalWeeks ?? preview.weeks?.length ?? 'N/A'}
                     </p>
                   </div>
                   <div>
