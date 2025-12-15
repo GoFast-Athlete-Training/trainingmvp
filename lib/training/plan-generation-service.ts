@@ -4,6 +4,7 @@ import OpenAI from "openai";
 export interface RequiredUserInputs {
   planStartDate: Date | string; // Training start day
   preferredDays: number[]; // Preferred days of week (1=Monday, 7=Sunday)
+  totalWeeks: number; // Total weeks (calculated from race date - plan start date)
   [key: string]: any; // Other inputs as specified by MustHaves
 }
 
@@ -58,6 +59,7 @@ function assemblePromptFromComponents(components: {
 
   // 2. Prompt Instructions (from DB - PromptInstruction table)
   // Hardcoded structure wraps DB content
+  // Note: Instructions should contain {totalWeeks} placeholder for interpolation
   if (components.instructions && components.instructions.length > 0) {
     parts.push("## Instructions");
     components.instructions.forEach((instruction) => {
@@ -65,7 +67,7 @@ function assemblePromptFromComponents(components: {
         parts.push(`### ${instruction.title}`);
       }
       if (instruction.content) {
-        parts.push(instruction.content);
+        parts.push(instruction.content); // Will be interpolated with {totalWeeks} later
       }
     });
   }
@@ -183,6 +185,7 @@ export async function generatePlanFromPrompt(
   const normalizedInputs: Record<string, string> = {
     planStartDate: normalizeDate(userInputs.planStartDate),
     preferredDays: normalizePreferredDays(userInputs.preferredDays),
+    totalWeeks: String(userInputs.totalWeeks), // Pass totalWeeks as string for interpolation
   };
 
   // Add any other inputs from userInputs (for Must Haves fields)
@@ -209,10 +212,17 @@ export async function generatePlanFromPrompt(
 
   // 4. Interpolate normalized inputs into prompt
   // Simple string replacement: {key} → value
+  // This replaces {totalWeeks}, {planStartDate}, {preferredDays}, etc. in the prompt
   Object.keys(normalizedInputs).forEach((key) => {
     const placeholder = `{${key}}`;
     const value = normalizedInputs[key];
     promptText = promptText.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
+  });
+  
+  console.log('📋 PLAN GENERATION: Interpolated inputs:', {
+    totalWeeks: normalizedInputs.totalWeeks,
+    planStartDate: normalizedInputs.planStartDate,
+    preferredDays: normalizedInputs.preferredDays,
   });
 
   // OpenAI requires the word "json" in the prompt when using response_format: { type: "json_object" }

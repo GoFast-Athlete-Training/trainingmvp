@@ -121,7 +121,28 @@ export async function POST(request: NextRequest) {
 
     const goalTime = existingPlan.goalTime!;
     const planStartDate = existingPlan.startDate;
-    const totalWeeks = existingPlan.totalWeeks;
+    
+    // Calculate totalWeeks from race date and plan start date (authoritative calculation)
+    let calculatedTotalWeeks: number;
+    if (race?.date && planStartDate) {
+      const raceDateObj = new Date(race.date);
+      raceDateObj.setUTCHours(0, 0, 0, 0);
+      const startDateObj = new Date(planStartDate);
+      startDateObj.setUTCHours(0, 0, 0, 0);
+      const diffMs = raceDateObj.getTime() - startDateObj.getTime();
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      calculatedTotalWeeks = Math.ceil(diffDays / 7);
+      console.log('📅 GENERATE: Calculated totalWeeks from dates:', {
+        planStartDate: planStartDate,
+        raceDate: race.date,
+        diffDays,
+        totalWeeks: calculatedTotalWeeks,
+      });
+    } else {
+      // Fallback to stored value or default
+      calculatedTotalWeeks = existingPlan.totalWeeks || 16;
+      console.log('⚠️ GENERATE: Using stored/default totalWeeks:', calculatedTotalWeeks);
+    }
     
     // Log the actual start date being used
     console.log('📅 GENERATE: Plan start date from database:', {
@@ -208,7 +229,7 @@ export async function POST(request: NextRequest) {
       predictedRacePace: predictedRacePaceString,
       goalRacePace: goalRacePaceString,
       currentWeeklyMileage: currentWeeklyMileage,
-      totalWeeks,
+      totalWeeks: calculatedTotalWeeks, // Pass calculated totalWeeks (authoritative from race date)
     };
     
     // Call the service - returns raw JSON string
