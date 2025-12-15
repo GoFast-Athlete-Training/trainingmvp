@@ -269,7 +269,7 @@ export default function TrainingPlanPreviewPage() {
                   <div>
                     <p className="text-sm text-gray-600">Total Weeks</p>
                     <p className="text-lg font-bold text-gray-800">
-                      {preview.totalWeeks ?? preview.weeks?.length ?? 'N/A'}
+                      {preview.totalWeeks ?? (preview.weeks && Array.isArray(preview.weeks) ? preview.weeks.length : null) ?? 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -357,16 +357,9 @@ export default function TrainingPlanPreviewPage() {
               {preview.weeks && Array.isArray(preview.weeks) && preview.weeks.length > 0 ? (
                 <div className="space-y-6">
                   <h3 className="text-2xl font-bold text-gray-800">All Training Weeks</h3>
-                  {(() => {
-                    // Sort weeks by weekNumber and log for debugging
-                    const sortedWeeks = [...preview.weeks].sort((a: any, b: any) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0));
-                    console.log('📋 PREVIEW: Weeks array:', {
-                      total: preview.weeks.length,
-                      weekNumbers: preview.weeks.map((w: any) => w.weekNumber),
-                      sortedWeekNumbers: sortedWeeks.map((w: any) => w.weekNumber),
-                    });
-                    return sortedWeeks;
-                  })().map((week: any, weekIndex: number) => {
+                  {[...preview.weeks]
+                    .sort((a: any, b: any) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0))
+                    .map((week: any, weekIndex: number) => {
                     // Calculate week start date (create new Date to avoid mutation)
                     const weekStartDate = planStartDate ? (() => {
                       const date = new Date(planStartDate);
@@ -377,7 +370,7 @@ export default function TrainingPlanPreviewPage() {
                     // Calculate week end date - use race date if this is the final week
                     const weekEndDate = weekStartDate ? (() => {
                       // If this is the last week and we have a race date, use race date as end
-                      const sortedWeeks = [...preview.weeks].sort((a: any, b: any) => (a.weekNumber || 0) - (b.weekNumber || 0));
+                      const sortedWeeks = [...preview.weeks].sort((a: any, b: any) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0));
                       const isLastWeek = week.weekNumber === sortedWeeks[sortedWeeks.length - 1]?.weekNumber;
                       if (isLastWeek && raceDate) {
                         return new Date(raceDate);
@@ -388,12 +381,15 @@ export default function TrainingPlanPreviewPage() {
                       return end;
                     })() : null;
                     
+                    // Day names for dayOfWeek (1=Monday, 7=Sunday)
+                    const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    
                     return (
                       <div key={weekIndex} className="bg-white rounded-xl p-6 border-2 border-orange-200">
                         <div className="flex items-center justify-between mb-4">
                           <h4 className="text-xl font-bold text-gray-800">
                             Week {week.weekNumber || weekIndex + 1}
-                            {week.phase && <span className="text-sm font-normal text-gray-600 ml-2">({week.phase})</span>}
+                            {week.phaseName && <span className="text-sm font-normal text-gray-600 ml-2">({week.phaseName})</span>}
                           </h4>
                           {weekStartDate && weekEndDate && (
                             <p className="text-sm text-gray-600">
@@ -403,35 +399,34 @@ export default function TrainingPlanPreviewPage() {
                           )}
                         </div>
                         
-                        {week.days && Array.isArray(week.days) && week.days.length > 0 ? (
+                        {/* Render planningDays (new structure) */}
+                        {week.planningDays && Array.isArray(week.planningDays) && week.planningDays.length > 0 ? (
                           <div className="space-y-2">
-                            {week.days.map((day: any, dayIndex: number) => {
-                              const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-                              const totalMiles = 
-                                (day.warmup?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                                (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                                (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
+                            {week.planningDays.map((planningDay: any, dayIndex: number) => {
+                              const dayName = dayNames[planningDay.dayOfWeek] || `Day ${planningDay.dayOfWeek}`;
+                              const runType = planningDay.type || 'easy';
+                              const miles = planningDay.miles || week.miles || 0;
                               
-                              // Extract type from notes or infer from mileage
-                              let dayType = day.notes || '';
-                              if (!dayType && totalMiles === 0) {
-                                dayType = 'Rest';
-                              } else if (!dayType) {
-                                if (totalMiles >= 8) dayType = 'Long Run';
-                                else if (totalMiles >= 5) dayType = 'Moderate';
-                                else dayType = 'Easy';
-                              }
+                              // Format run type for display
+                              const typeLabels: Record<string, string> = {
+                                easy: 'Easy',
+                                quality: 'Quality',
+                                long: 'Long Run',
+                                rest: 'Rest',
+                                race: 'Race',
+                              };
+                              const typeLabel = typeLabels[runType] || runType;
                               
                               return (
                                 <div key={dayIndex} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
-                                      <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
-                                      {dayType && (
-                                        <span className="ml-2 text-sm text-gray-600">{dayType}</span>
-                                      )}
+                                      <span className="font-semibold text-gray-800">{dayName}</span>
+                                      <span className="ml-2 text-sm text-gray-600 capitalize">{typeLabel}</span>
                                     </div>
-                                    <span className="text-sm font-bold text-orange-600">{totalMiles.toFixed(1)} miles</span>
+                                    {miles > 0 && (
+                                      <span className="text-sm font-bold text-orange-600">{miles.toFixed(1)} miles</span>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -445,53 +440,6 @@ export default function TrainingPlanPreviewPage() {
                       </div>
                     );
                   })}
-                </div>
-              ) : preview.week ? (
-                // Fallback: Show single week if weeks array doesn't exist
-                <div className="bg-white rounded-xl p-6 border-2 border-orange-200">
-                  <h4 className="text-xl font-bold text-gray-800 mb-4">
-                    Week {preview.week.weekNumber || 1}
-                  </h4>
-                  
-                  {preview.week.days && Array.isArray(preview.week.days) && preview.week.days.length > 0 ? (
-                    <div className="space-y-2">
-                      {preview.week.days.map((day: any, dayIndex: number) => {
-                        const dayNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-                        const totalMiles = 
-                          (day.warmup?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                          (day.workout?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0) +
-                          (day.cooldown?.reduce((sum: number, lap: any) => sum + (lap.distanceMiles || 0), 0) || 0);
-                        
-                        // Extract type from notes or infer from mileage
-                        let dayType = day.notes || '';
-                        if (!dayType && totalMiles === 0) {
-                          dayType = 'Rest';
-                        } else if (!dayType) {
-                          if (totalMiles >= 8) dayType = 'Long Run';
-                          else if (totalMiles >= 5) dayType = 'Moderate';
-                          else dayType = 'Easy';
-                        }
-                        
-                        return (
-                          <div key={dayIndex} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <span className="font-semibold text-gray-800">{dayNames[day.dayNumber] || `Day ${day.dayNumber}`}</span>
-                                {dayType && (
-                                  <span className="ml-2 text-sm text-gray-600">{dayType}</span>
-                                )}
-                              </div>
-                              <span className="text-sm font-bold text-orange-600">{totalMiles.toFixed(1)} miles</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 italic text-sm">
-                      Planning week - days will be scheduled later
-                    </p>
-                  )}
                 </div>
               ) : (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
