@@ -22,7 +22,7 @@ export default function TrainingPlanPreviewPage() {
   const [raceDate, setRaceDate] = useState<Date | null>(null);
 
   // Parse YYYY-MM-DD date string as LOCAL date (not UTC) to avoid timezone shifts
-  function parseLocalDate(dateString: string): Date {
+  function parseLocalDate(dateString: string | Date): Date {
     // If it's already a Date object, return it
     if (dateString instanceof Date) return dateString;
     
