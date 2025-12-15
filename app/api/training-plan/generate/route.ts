@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAthleteIdFromRequest } from '@/lib/api-helpers';
 import { prisma } from '@/lib/prisma';
-import { generateTrainingPlanAI } from '@/lib/training/plan-generator';
+import { generatePlanFromPrompt } from '@/lib/training/plan-generation-service';
 import { calculateGoalRacePace } from '@/lib/training/goal-race-pace';
 import { predictedRacePaceFrom5K, parsePaceToSeconds, normalizeRaceType, paceToString } from '@/lib/training/pace-prediction';
 import { calculateTrainingDayDateFromWeek, getDayOfWeek } from '@/lib/training/dates';
@@ -164,39 +164,80 @@ export async function POST(request: NextRequest) {
     // Load TrainingGenPrompt (Marathon Training Plan)
     const promptId = 'cmj6cehii0001ii049qpzocs3'; // Marathon Training Plan
     
-    // Generate plan using database-driven prompt (phases + week 1 only)
-    console.log('🤖 GENERATE: Calling AI to generate phases + week 1 with database-driven prompt...', {
+    // Verify prompt exists before attempting generation
+    const promptExists = await prisma.trainingGenPrompt.findUnique({
+      where: { id: promptId },
+      select: { id: true, name: true },
+    });
+    
+    if (!promptExists) {
+      console.error(`❌ GENERATE: Prompt ${promptId} not found in database`);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Training prompt not found. Please ensure the prompt exists in the database.`,
+          details: `Prompt ID: ${promptId}`
+        },
+        { status: 404 }
+      );
+    }
+    
+    console.log('✅ GENERATE: Prompt found:', promptExists.name);
+    
+    // Generate plan using database-driven prompt service (returns raw JSON)
+    console.log('🤖 GENERATE: Calling plan-generation-service...', {
       promptId: promptId,
     });
-    const plan = await generateTrainingPlanAI({
-      promptId: promptId, // Database-driven prompt configuration
+    
+    // Prepare user inputs for the service
+    const userInputs = {
+      planStartDate: planStartDate,
+      preferredDays: preferredDays,
       raceName: race.name,
-      raceDistance: race.raceType, // Use raceType (migration should have populated this)
-      raceMiles: race.miles, // Pass miles for accurate calculations
+      raceDistance: race.raceType,
+      raceMiles: race.miles,
       goalTime,
       fiveKPace: fiveKPaceString,
       predictedRacePace: predictedRacePaceString,
       goalRacePace: goalRacePaceString,
-      currentWeeklyMileage: currentWeeklyMileage, // Baseline weekly mileage for gradual build-up
-      preferredDays: preferredDays, // Preferred training days (1=Monday, 7=Sunday)
+      currentWeeklyMileage: currentWeeklyMileage,
       totalWeeks,
-      planStartDate: planStartDate, // Pass actual start date so AI knows day of week patterns
-    });
+    };
+    
+    // Call the service - returns raw JSON string
+    const rawJsonResponse = await generatePlanFromPrompt(promptId, userInputs);
+    
+    // Parse the JSON response
+    let plan: any;
+    try {
+      plan = JSON.parse(rawJsonResponse);
+    } catch (parseError: any) {
+      console.error('❌ GENERATE: Failed to parse AI response as JSON:', parseError);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Failed to parse AI response as JSON',
+          details: parseError.message 
+        },
+        { status: 500 }
+      );
+    }
 
     console.log('✅ GENERATE: Plan generated successfully:', {
-      phasesCount: plan.phases.length,
+      hasPhases: !!plan.phases,
+      phasesCount: plan.phases?.length,
       hasWeek: !!plan.week,
-      hasWeeks: !!(plan as any).weeks,
-      weeksCount: (plan as any).weeks?.length,
+      hasWeeks: !!plan.weeks,
+      weeksCount: plan.weeks?.length,
       weekNumber: plan.week?.weekNumber,
       totalWeeks: plan.totalWeeks,
     });
 
     // Store preview in Redis for the preview page (include all weeks if available)
     const previewData = {
-      phases: plan.phases,
-      week: plan.week, // Single week (backward compat)
-      weeks: (plan as any).weeks || (plan.week ? [plan.week] : []), // All weeks array
+      phases: plan.phases || [],
+      week: plan.week || null, // Single week (backward compat)
+      weeks: plan.weeks || (plan.week ? [plan.week] : []), // All weeks array
       totalWeeks: plan.totalWeeks,
       generatedAt: new Date().toISOString(),
     };
