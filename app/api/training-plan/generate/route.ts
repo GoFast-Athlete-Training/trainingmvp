@@ -267,10 +267,12 @@ export async function POST(request: NextRequest) {
       // Don't fail the request - preview might be in memory cache
     }
 
-    // Return success (preview is stored in Redis, frontend will navigate to preview page)
+    // Return success with preview data directly (eliminates race condition)
+    // Also store in Redis for later retrieval
     return NextResponse.json({
       success: true,
-      previewKey: trainingPlanId, // Frontend uses this to navigate to preview page
+      preview: previewData, // Return preview directly in response
+      previewKey: trainingPlanId, // Also include for backward compat
     });
   } catch (error: any) {
     console.error('❌ GENERATE PLAN: Error:', error);

@@ -112,15 +112,18 @@ export default function TrainingPlanPreviewPage() {
         });
 
         if (generateResponse.data.success) {
-          // Wait a moment for Redis to store
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Now fetch the preview
-          const previewResponse = await api.get(`/training-plan/preview/${trainingPlanId}`);
-          if (previewResponse.data.success) {
-            setPreview(previewResponse.data.preview);
+          // Use preview data directly from generate response (eliminates race condition)
+          if (generateResponse.data.preview) {
+            setPreview(generateResponse.data.preview);
           } else {
-            setError(previewResponse.data.error || 'Failed to load generated preview');
+            // Fallback: try to fetch from Redis if preview not in response
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const previewResponse = await api.get(`/training-plan/preview/${trainingPlanId}`);
+            if (previewResponse.data.success) {
+              setPreview(previewResponse.data.preview);
+            } else {
+              setError(previewResponse.data.error || 'Failed to load generated preview');
+            }
           }
         } else {
           setError(generateResponse.data.error || generateResponse.data.details || 'Failed to generate plan');
