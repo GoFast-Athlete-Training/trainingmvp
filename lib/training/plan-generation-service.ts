@@ -215,6 +215,12 @@ export async function generatePlanFromPrompt(
     promptText = promptText.replace(new RegExp(placeholder.replace(/[{}]/g, "\\$&"), "g"), value);
   });
 
+  // OpenAI requires the word "json" in the prompt when using response_format: { type: "json_object" }
+  // Ensure it's present (usually it's in the Return Format Schema section, but add it if missing)
+  if (!promptText.toLowerCase().includes('json')) {
+    promptText += '\n\nPlease return your response as valid JSON.';
+  }
+
   // 5. Call OpenAI once
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY environment variable is required");
