@@ -19,6 +19,25 @@ export default function TrainingPlanPreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [planStartDate, setPlanStartDate] = useState<Date | null>(null);
+  const [raceDate, setRaceDate] = useState<Date | null>(null);
+
+  // Parse YYYY-MM-DD date string as LOCAL date (not UTC) to avoid timezone shifts
+  function parseLocalDate(dateString: string): Date {
+    // If it's already a Date object, return it
+    if (dateString instanceof Date) return dateString;
+    
+    // Parse YYYY-MM-DD format as local date
+    const parts = dateString.split('T')[0].split('-'); // Handle ISO strings
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+      const day = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    }
+    
+    // Fallback to standard parsing
+    return new Date(dateString);
+  }
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -30,8 +49,7 @@ export default function TrainingPlanPreviewPage() {
       // First, update plan with start date if provided (from review page)
       if (startDateParam) {
         try {
-          const startDateObj = new Date(startDateParam);
-          startDateObj.setUTCHours(0, 0, 0, 0);
+          const startDateObj = parseLocalDate(startDateParam);
           
           // Load plan to calculate weeks
           const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
@@ -64,33 +82,44 @@ export default function TrainingPlanPreviewPage() {
         }
       }
 
-      // Load plan to get start date (after potential update)
+      // Load plan to get start date and race date (after potential update)
       try {
         const planResponse = await api.get(`/training-plan/${trainingPlanId}`);
-        if (planResponse.data.success && planResponse.data.trainingPlan.startDate) {
-          const startDate = new Date(planResponse.data.trainingPlan.startDate);
-          // Use UTC methods to prevent timezone shifts
-          startDate.setUTCHours(0, 0, 0, 0);
-          setPlanStartDate(startDate);
-          console.log('📅 PREVIEW: Loaded plan start date from database:', {
-            raw: planResponse.data.trainingPlan.startDate,
-            parsed: startDate.toISOString(),
-            local: startDate.toLocaleDateString('en-US'),
-            utc: startDate.toISOString().split('T')[0],
-          });
-        } else if (startDateParam) {
-          // Fallback: use the param if plan doesn't have it yet
-          const startDate = new Date(startDateParam);
-          startDate.setUTCHours(0, 0, 0, 0);
-          setPlanStartDate(startDate);
-          console.log('📅 PREVIEW: Using start date param:', startDate.toISOString().split('T')[0]);
+        if (planResponse.data.success) {
+          const plan = planResponse.data.trainingPlan;
+          
+          // Load start date
+          if (plan.startDate) {
+            const startDate = parseLocalDate(plan.startDate);
+            setPlanStartDate(startDate);
+            console.log('📅 PREVIEW: Loaded plan start date from database:', {
+              raw: plan.startDate,
+              parsed: startDate.toISOString(),
+              local: startDate.toLocaleDateString('en-US'),
+            });
+          } else if (startDateParam) {
+            // Fallback: use the param if plan doesn't have it yet
+            const startDate = parseLocalDate(startDateParam);
+            setPlanStartDate(startDate);
+            console.log('📅 PREVIEW: Using start date param:', startDate.toLocaleDateString('en-US'));
+          }
+          
+          // Load race date (authoritative end date)
+          const race = plan.race || plan.race_registry;
+          if (race?.date) {
+            const raceDateObj = parseLocalDate(race.date);
+            setRaceDate(raceDateObj);
+            console.log('📅 PREVIEW: Loaded race date:', {
+              raw: race.date,
+              parsed: raceDateObj.toLocaleDateString('en-US'),
+            });
+          }
         }
       } catch (err: any) {
         console.error('Failed to load plan start date:', err);
         // Fallback to param if available
         if (startDateParam) {
-          const startDate = new Date(startDateParam);
-          startDate.setUTCHours(0, 0, 0, 0);
+          const startDate = parseLocalDate(startDateParam);
           setPlanStartDate(startDate);
         }
       }
@@ -239,7 +268,9 @@ export default function TrainingPlanPreviewPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">Total Weeks</p>
-                    <p className="text-lg font-bold text-gray-800">{preview.totalWeeks || 'N/A'}</p>
+                    <p className="text-lg font-bold text-gray-800">
+                      {preview.totalWeeks || preview.weeks?.length || 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Phases</p>
@@ -265,14 +296,19 @@ export default function TrainingPlanPreviewPage() {
                       const startWeek = acc.reduce((sum, p) => sum + (p.weekCount || 0), 0) + 1;
                       const endWeek = startWeek + (phase.weekCount || 0) - 1;
                       
-                      // Calculate dates from planStartDate
+                      // Calculate dates from planStartDate (create new Date objects to avoid mutation)
                       const startDate = new Date(planStartDate!);
-                      startDate.setUTCHours(0, 0, 0, 0);
                       startDate.setDate(startDate.getDate() + (startWeek - 1) * 7);
                       
-                      const endDate = new Date(planStartDate!);
-                      endDate.setUTCHours(0, 0, 0, 0);
-                      endDate.setDate(endDate.getDate() + (endWeek - 1) * 7 + 6);
+                      // For final phase, use race date if available, otherwise calculate
+                      const isLastPhase = index === preview.phases.length - 1;
+                      const endDate = isLastPhase && raceDate 
+                        ? new Date(raceDate)
+                        : (() => {
+                            const end = new Date(planStartDate!);
+                            end.setDate(end.getDate() + (endWeek - 1) * 7 + 6);
+                            return end;
+                          })();
                       
                       console.log(`📅 PREVIEW: Phase ${index + 1} (${phase.name}) dates:`, {
                         planStartDate: planStartDate?.toISOString(),
@@ -321,12 +357,28 @@ export default function TrainingPlanPreviewPage() {
               {preview.weeks && Array.isArray(preview.weeks) && preview.weeks.length > 0 ? (
                 <div className="space-y-6">
                   <h3 className="text-2xl font-bold text-gray-800">All Training Weeks</h3>
-                  {preview.weeks.map((week: any, weekIndex: number) => {
-                    // Calculate week start date
+                  {[...preview.weeks]
+                    .sort((a: any, b: any) => (a.weekNumber || 0) - (b.weekNumber || 0))
+                    .map((week: any, weekIndex: number) => {
+                    // Calculate week start date (create new Date to avoid mutation)
                     const weekStartDate = planStartDate ? (() => {
                       const date = new Date(planStartDate);
                       date.setDate(date.getDate() + (week.weekNumber - 1) * 7);
                       return date;
+                    })() : null;
+                    
+                    // Calculate week end date - use race date if this is the final week
+                    const weekEndDate = weekStartDate ? (() => {
+                      // If this is the last week and we have a race date, use race date as end
+                      const sortedWeeks = [...preview.weeks].sort((a: any, b: any) => (a.weekNumber || 0) - (b.weekNumber || 0));
+                      const isLastWeek = week.weekNumber === sortedWeeks[sortedWeeks.length - 1]?.weekNumber;
+                      if (isLastWeek && raceDate) {
+                        return new Date(raceDate);
+                      }
+                      // Otherwise, calculate end of week (start + 6 days)
+                      const end = new Date(weekStartDate);
+                      end.setDate(end.getDate() + 6);
+                      return end;
                     })() : null;
                     
                     return (
@@ -336,10 +388,10 @@ export default function TrainingPlanPreviewPage() {
                             Week {week.weekNumber || weekIndex + 1}
                             {week.phase && <span className="text-sm font-normal text-gray-600 ml-2">({week.phase})</span>}
                           </h4>
-                          {weekStartDate && (
+                          {weekStartDate && weekEndDate && (
                             <p className="text-sm text-gray-600">
                               {weekStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {' '}
-                              {new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              {weekEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </p>
                           )}
                         </div>
@@ -379,7 +431,9 @@ export default function TrainingPlanPreviewPage() {
                             })}
                           </div>
                         ) : (
-                          <p className="text-gray-500 italic">No days scheduled for this week</p>
+                          <p className="text-gray-500 italic text-sm">
+                            Planning week - days will be scheduled later
+                          </p>
                         )}
                       </div>
                     );
@@ -427,7 +481,9 @@ export default function TrainingPlanPreviewPage() {
                       })}
                     </div>
                   ) : (
-                    <p className="text-gray-500 italic">No days scheduled</p>
+                    <p className="text-gray-500 italic text-sm">
+                      Planning week - days will be scheduled later
+                    </p>
                   )}
                 </div>
               ) : (
