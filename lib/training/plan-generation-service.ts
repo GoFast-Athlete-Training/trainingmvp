@@ -248,7 +248,7 @@ export async function generatePlanFromPrompt(
       },
     ],
     temperature: 0.7,
-    max_tokens: 2000,
+    max_tokens: 8000, // Increased for longer plans (18+ weeks)
     response_format: { type: "json_object" },
   });
 
@@ -257,6 +257,9 @@ export async function generatePlanFromPrompt(
     throw new Error("No response from OpenAI");
   }
 
+  // Log response length for debugging
+  console.log('📋 PLAN GENERATION: AI response length:', content.length, 'characters');
+  
   // 6. Return raw JSON response
   return content;
 }

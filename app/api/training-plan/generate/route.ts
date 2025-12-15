@@ -241,11 +241,17 @@ export async function POST(request: NextRequest) {
       plan = JSON.parse(rawJsonResponse);
     } catch (parseError: any) {
       console.error('❌ GENERATE: Failed to parse AI response as JSON:', parseError);
+      console.error('❌ GENERATE: Response length:', rawJsonResponse.length);
+      console.error('❌ GENERATE: Response preview (first 1000 chars):', rawJsonResponse.substring(0, 1000));
+      console.error('❌ GENERATE: Response preview (around error position):', 
+        rawJsonResponse.substring(Math.max(0, (parseError.message.match(/position (\d+)/)?.[1] || 0) - 200), 
+        (parseError.message.match(/position (\d+)/)?.[1] || 0) + 200));
       return NextResponse.json(
         { 
           success: false, 
           error: 'Failed to parse AI response as JSON',
-          details: parseError.message 
+          details: parseError.message,
+          responseLength: rawJsonResponse.length,
         },
         { status: 500 }
       );
