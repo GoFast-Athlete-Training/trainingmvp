@@ -122,6 +122,13 @@ export async function POST(request: NextRequest) {
     const goalTime = existingPlan.goalTime!;
     const planStartDate = existingPlan.startDate;
     const totalWeeks = existingPlan.totalWeeks;
+    
+    // Log the actual start date being used
+    console.log('📅 GENERATE: Plan start date from database:', {
+      startDate: planStartDate,
+      startDateISO: planStartDate?.toISOString(),
+      startDateLocal: planStartDate ? new Date(planStartDate).toLocaleDateString('en-US') : null,
+    });
 
     // Calculate goalRacePace and predictedRacePace if not already set
     let goalRacePaceSec = existingPlan.goalRacePace;
@@ -232,6 +239,9 @@ export async function POST(request: NextRequest) {
       weekNumber: plan.week?.weekNumber,
       totalWeeks: plan.totalWeeks,
     });
+    
+    // Log the full JSON response for debugging
+    console.log('📋 GENERATE: Full AI response JSON:', JSON.stringify(plan, null, 2));
 
     // Store preview in Redis for the preview page (include all weeks if available)
     const previewData = {
@@ -255,10 +265,14 @@ export async function POST(request: NextRequest) {
       await setPreview(trainingPlanId, previewData);
       console.log('✅ GENERATE: Preview stored successfully');
       
+      // Log what we stored
+      console.log('💾 GENERATE: Stored preview data (full JSON):', JSON.stringify(previewData, null, 2));
+      
       // Verify it was stored
       const verifyPreview = await getPreview(trainingPlanId);
       if (verifyPreview) {
         console.log('✅ GENERATE: Verified preview exists after storage');
+        console.log('📋 GENERATE: Verified preview JSON:', JSON.stringify(verifyPreview, null, 2));
       } else {
         console.error('❌ GENERATE: Preview not found after storage - may be using memory cache');
       }
@@ -382,8 +396,19 @@ export async function PUT(request: NextRequest) {
 
       // Calculate phase dates using progressive logic and week boundaries
       const { calculatePhaseDates } = await import('@/lib/training/phase-date-calculator');
-      const phaseDates = calculatePhaseDates(
+      
+      // Ensure planStartDate is a Date object
+      const startDate = planStartDate instanceof Date ? planStartDate : new Date(planStartDate);
+      startDate.setUTCHours(0, 0, 0, 0); // Normalize to midnight UTC
+      
+      console.log('📅 SAVE: Calculating phase dates with start date:', {
         planStartDate,
+        normalized: startDate.toISOString(),
+        local: startDate.toLocaleDateString('en-US'),
+      });
+      
+      const phaseDates = calculatePhaseDates(
+        startDate,
         generatedPlan.phases.map((p: { name: string; weekCount: number }) => ({ name: p.name, weekCount: p.weekCount }))
       );
 

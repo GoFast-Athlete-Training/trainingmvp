@@ -72,7 +72,12 @@ export default function TrainingPlanPreviewPage() {
           // Use UTC methods to prevent timezone shifts
           startDate.setUTCHours(0, 0, 0, 0);
           setPlanStartDate(startDate);
-          console.log('📅 PREVIEW: Loaded plan start date:', startDate.toISOString().split('T')[0]);
+          console.log('📅 PREVIEW: Loaded plan start date from database:', {
+            raw: planResponse.data.trainingPlan.startDate,
+            parsed: startDate.toISOString(),
+            local: startDate.toLocaleDateString('en-US'),
+            utc: startDate.toISOString().split('T')[0],
+          });
         } else if (startDateParam) {
           // Fallback: use the param if plan doesn't have it yet
           const startDate = new Date(startDateParam);
@@ -114,6 +119,12 @@ export default function TrainingPlanPreviewPage() {
         if (generateResponse.data.success) {
           // Use preview data directly from generate response (eliminates race condition)
           if (generateResponse.data.preview) {
+            console.log('📋 PREVIEW: Received preview from generate response:', {
+              hasPhases: !!generateResponse.data.preview.phases,
+              phasesCount: generateResponse.data.preview.phases?.length,
+              totalWeeks: generateResponse.data.preview.totalWeeks,
+              previewData: JSON.stringify(generateResponse.data.preview, null, 2),
+            });
             setPreview(generateResponse.data.preview);
           } else {
             // Fallback: try to fetch from Redis if preview not in response
@@ -253,10 +264,23 @@ export default function TrainingPlanPreviewPage() {
                     {preview.phases.reduce((acc: any[], phase: any, index: number) => {
                       const startWeek = acc.reduce((sum, p) => sum + (p.weekCount || 0), 0) + 1;
                       const endWeek = startWeek + (phase.weekCount || 0) - 1;
-                      const startDate = new Date(planStartDate);
+                      
+                      // Calculate dates from planStartDate
+                      const startDate = new Date(planStartDate!);
+                      startDate.setUTCHours(0, 0, 0, 0);
                       startDate.setDate(startDate.getDate() + (startWeek - 1) * 7);
-                      const endDate = new Date(planStartDate);
+                      
+                      const endDate = new Date(planStartDate!);
+                      endDate.setUTCHours(0, 0, 0, 0);
                       endDate.setDate(endDate.getDate() + (endWeek - 1) * 7 + 6);
+                      
+                      console.log(`📅 PREVIEW: Phase ${index + 1} (${phase.name}) dates:`, {
+                        planStartDate: planStartDate?.toISOString(),
+                        startWeek,
+                        endWeek,
+                        calculatedStart: startDate.toLocaleDateString('en-US'),
+                        calculatedEnd: endDate.toLocaleDateString('en-US'),
+                      });
                       
                       acc.push({
                         ...phase,

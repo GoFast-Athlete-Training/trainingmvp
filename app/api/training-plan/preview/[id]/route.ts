@@ -42,7 +42,12 @@ export async function GET(
     console.log(`🔑 GET PREVIEW: Redis key will be: preview:${trainingPlanId}`);
     const preview = await getPreview(trainingPlanId);
     console.log(`📋 GET PREVIEW: Preview result from Redis:`, preview ? '✅ FOUND' : '❌ NOT FOUND');
-
+    
+    // Log the full JSON for debugging
+    if (preview) {
+      console.log('📋 GET PREVIEW: Full preview JSON from Redis:', JSON.stringify(preview, null, 2));
+    }
+    
     if (!preview) {
       console.error(`❌ GET PREVIEW: No preview found for plan ${trainingPlanId}`);
       return NextResponse.json(

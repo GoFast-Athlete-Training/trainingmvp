@@ -48,11 +48,23 @@ export function calculatePhaseDates(
 ): Array<{ name: string; weekCount: number; phaseStartDate: Date; phaseEndDate: Date }> {
   const result: Array<{ name: string; weekCount: number; phaseStartDate: Date; phaseEndDate: Date }> = [];
   
+  // Use the exact start date - don't align to Monday
+  // The user chose this specific date, so phase 1 should start on that date
   let currentDate = new Date(planStartDate);
+  currentDate.setUTCHours(0, 0, 0, 0); // Normalize to midnight UTC
+  
+  console.log('📅 PHASE CALCULATOR: Plan start date:', {
+    original: planStartDate,
+    normalized: currentDate.toISOString(),
+    local: currentDate.toLocaleDateString('en-US'),
+  });
   
   for (const phase of phases) {
-    // Phase starts at current date (aligned to week start if needed)
-    const phaseStart = getWeekStart(currentDate);
+    // Phase 1 starts exactly on planStartDate (no alignment)
+    // Subsequent phases start on Monday after previous phase ends
+    const phaseStart = result.length === 0 
+      ? new Date(currentDate) // First phase uses exact start date
+      : getWeekStart(currentDate); // Subsequent phases align to Monday
     
     // Calculate phase end: start + (weekCount * 7 days) - 1 day, then align to week end
     const phaseEnd = new Date(phaseStart);
@@ -64,6 +76,12 @@ export function calculatePhaseDates(
       weekCount: phase.weekCount,
       phaseStartDate: phaseStart,
       phaseEndDate: phaseEndAligned,
+    });
+    
+    console.log(`📅 PHASE CALCULATOR: Phase "${phase.name}":`, {
+      startDate: phaseStart.toLocaleDateString('en-US'),
+      endDate: phaseEndAligned.toLocaleDateString('en-US'),
+      weekCount: phase.weekCount,
     });
     
     // Next phase starts on Monday after this phase ends
