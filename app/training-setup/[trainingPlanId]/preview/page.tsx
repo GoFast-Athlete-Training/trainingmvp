@@ -150,6 +150,8 @@ export default function TrainingPlanPreviewPage() {
               hasPhases: !!generateResponse.data.preview.phases,
               phasesCount: generateResponse.data.preview.phases?.length,
               totalWeeks: generateResponse.data.preview.totalWeeks,
+              weeksCount: generateResponse.data.preview.weeks?.length,
+              weekNumbers: generateResponse.data.preview.weeks?.map((w: any) => w.weekNumber),
               previewData: JSON.stringify(generateResponse.data.preview, null, 2),
             });
             setPreview(generateResponse.data.preview);
@@ -355,9 +357,16 @@ export default function TrainingPlanPreviewPage() {
               {preview.weeks && Array.isArray(preview.weeks) && preview.weeks.length > 0 ? (
                 <div className="space-y-6">
                   <h3 className="text-2xl font-bold text-gray-800">All Training Weeks</h3>
-                  {[...preview.weeks]
-                    .sort((a: any, b: any) => (a.weekNumber || 0) - (b.weekNumber || 0))
-                    .map((week: any, weekIndex: number) => {
+                  {(() => {
+                    // Sort weeks by weekNumber and log for debugging
+                    const sortedWeeks = [...preview.weeks].sort((a: any, b: any) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0));
+                    console.log('📋 PREVIEW: Weeks array:', {
+                      total: preview.weeks.length,
+                      weekNumbers: preview.weeks.map((w: any) => w.weekNumber),
+                      sortedWeekNumbers: sortedWeeks.map((w: any) => w.weekNumber),
+                    });
+                    return sortedWeeks;
+                  })().map((week: any, weekIndex: number) => {
                     // Calculate week start date (create new Date to avoid mutation)
                     const weekStartDate = planStartDate ? (() => {
                       const date = new Date(planStartDate);
