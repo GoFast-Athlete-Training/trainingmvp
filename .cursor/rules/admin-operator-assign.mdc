@@ -1,0 +1,8 @@
+# Admin → Training Manage operator assign
+
+A founder assigning a Training Manager is a **human** write. Do not send them through `/api/internal/operators/upsert`.
+
+- Route: `POST /api/admin/training-managers`
+- Auth: Firebase Bearer + `x-gofast-staff-id`, verify Company `GET /api/staff/me` (`FOUNDER` / `SENIOR_EXEC`)
+- Body is the Admin lookup snapshot; upsert `gofast_companies` then `training_managers`
+- `/api/internal/*` is machine-only. Do not require `GOFAST_INTERNAL_API_KEY` on this path.

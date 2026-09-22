@@ -1,38 +1,31 @@
-'use client';
+"use client";
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCjpoH763y2GH4VDc181IUBaZHqE_ryZ1c",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "gofast-a5f94.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gofast-a5f94",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "gofast-a5f94.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "500941094498",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:500941094498:web:4008d94b89a9e3a4889b3b",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-CQ0GJCJLXX",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
-export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+function configReady(): boolean {
+  return Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
+}
 
-export const auth = getAuth(app);
+export const app = configReady()
+  ? !getApps().length
+    ? initializeApp(firebaseConfig)
+    : getApp()
+  : null;
 
-// Set persistence to keep user logged in across page refreshes
-// This is critical for preventing logout on refresh
-// Only set persistence in browser, and only if auth is available
-if (typeof window !== "undefined") {
-  try {
-    setPersistence(auth, browserLocalPersistence).catch((error) => {
-      // Silently fail during build - will work at runtime
-      if (process.env.NODE_ENV !== "production" || typeof window !== "undefined") {
-        console.error("Failed to set auth persistence:", error);
-      }
-    });
-  } catch (error) {
-    // Ignore errors during build
-  }
+export const auth = app ? getAuth(app) : null;
+
+if (typeof window !== "undefined" && auth) {
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
 }
 
 export default app;
-

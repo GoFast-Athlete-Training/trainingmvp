@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Operator (Training Manage) ───────────────────────────────────────────
+
+model gofast_companies {
+  id         String   @id
+  name       String
+  slug       String   @unique
+  about      String?  @db.Text
+  whatWeDo   String?  @db.Text
+  companyUrl String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  training_managers training_managers[]
+
+  @@map("gofast_companies")
+}
+
+/// Same person as Company `company_staff` — `id` is `company_staff.id`.
+model training_managers {
+  id              String   @id
+  gofastCompanyId String?
+  firebaseUid     String?  @unique
+  email           String
+  name            String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  gofast_company gofast_companies? @relation(fields: [gofastCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([gofastCompanyId])
+}
+
+// ─── Enums (catalog) ────────────────────────────────────────────────────────
+
+enum WorkoutType {
+  Easy
+  Tempo
+  Intervals
+  LongRun
+  Race
+}
+
+enum AthletePersonaCapability {
+  NON_RUNNER
+  BEGINNER
+  RECREATIONAL
+  COMPETITIVE
+  ELITE
+}
+
+enum AthletePersonaDedication {
+  LOW
+  MODERATE
+  HIGH
+  ELITE
+}
+
+enum FitnessDelta {
+  SMALL
+  MODERATE
+  LARGE
+}
+
+enum ProgressionAggressiveness {
+  CONSERVATIVE
+  MODERATE
+  AMBITIOUS
+}
+
+enum TrainingPlanGoalKind {
+  RACE
+  TRAINING_BLOCK
+}
+
+enum TrainingPlanGoalType {
+  RACE
+  GENERAL_FITNESS
+  MORE_ENDURANCE
+}
+
+enum RaceWeekSlotType {
+  Easy
+  Tempo
+  Intervals
+  Rest
+  Shakeout
+  Race
+}
+
+// ─── Persona / goal (prod catalog — editor stub only) ───────────────────────
+
+model training_plan_persona {
+  id                  String                    @id @default(cuid())
+  slug                String                    @unique
+  title               String
+  capability          AthletePersonaCapability?
+  dedication          AthletePersonaDedication?
+  personaGoalLabel    String?
+  workoutFrequencyCap Int?
+  intentSummary       String?
+  runningHistory                  String?
+  runningHistorySummary           String?
+  currentCapability               String?
+  currentCapabilitySummary        String?
+  injuryAssessment                String?
+  injuryAssessmentSummary         String?
+  dedicationText                  String?
+  dedicationSummary               String?
+  abilityToTrain                  String?
+  abilityToTrainSummary           String?
+  estimated5kTimeSeconds          Int?
+  estimated5kPerformanceSummary   String?
+  estimated5kPerformanceRationale String?
+  athletePersonaSummary           String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  goals   training_plan_goal[]
+  presets training_plan_preset[]
+
+  @@index([capability])
+}
+
+model training_plan_goal {
+  id                        String                      @id @default(cuid())
+  slug                      String                      @unique
+  personaId                 String
+  persona                   training_plan_persona       @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  targetDistanceLabel       String?
+  objectiveOfPlan           String?
+  planDurationWeeks         Int
+  timeHorizonLabel          String?
+  fitnessDelta              FitnessDelta?
+  progressionAggressiveness ProgressionAggressiveness?
+  intensityReasoning        String?
+  goalKind                  TrainingPlanGoalKind?
+  goalType                  TrainingPlanGoalType?
+  coachIntent               String?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+
+  presets training_plan_preset[]
+
+  @@index([personaId])
+  @@index([planDurationWeeks])
+}
+
+// ─── Build preset (today's training_plan_preset) ────────────────────────────
+
+model training_plan_preset {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  title       String
+  description String?
+  publicDescription String?
+  targetDistanceLabel String?
+
+  personaId String?
+  goalId    String?
+  persona   training_plan_persona? @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  goal      training_plan_goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  coachIntent         String?
+  objectiveOfPlan     String?
+  athletePersonaCapability AthletePersonaCapability?
+  athletePersonaGoal       String?
+  athletePersonaDedication AthletePersonaDedication?
+  coachPlanOverview   Json?
+  workoutStructure    Json?
+
+  longRunCycleWeeks  Int    @default(4)
+  minWeeklyMiles     Int    @default(40)
+  maxWeeklyMiles     Int?
+  baseLongRunPoolMiles  Float @default(0)
+  peakLongRunPoolMiles  Float @default(0)
+  taperLongRunPoolMiles Float @default(0)
+  tempoIdealDow      Int    @default(2)
+  intervalIdealDow   Int    @default(4)
+  longRunDefaultDow  Int    @default(6)
+
+  longRunConfigId   String?
+  intervalsConfigId String?
+  tempoConfigId     String?
+  easyConfigId      String?
+  easyRunConfig     Json?
+
+  longRunConfig   long_run_config?   @relation(fields: [longRunConfigId], references: [id], onDelete: SetNull)
+  intervalsConfig intervals_config?  @relation(fields: [intervalsConfigId], references: [id], onDelete: SetNull)
+  tempoConfig     tempo_config?      @relation(fields: [tempoConfigId], references: [id], onDelete: SetNull)
+  easyConfig      easy_config?       @relation(fields: [easyConfigId], references: [id], onDelete: SetNull)
+
+  parent_as_build training_plan_preset_parent[] @relation("BuildPreset")
+  parent_as_taper training_plan_preset_parent[] @relation("TaperPreset")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Parent rollup (build + taper + race week) ──────────────────────────────
+
+model training_plan_preset_parent {
+  id    String @id @default(cuid())
+  slug  String @unique
+  title String
+
+  buildPresetId    String
+  taperPresetId    String?
+  raceWeekPresetId String?
+
+  /// Weekly peak miles (build last week target).
+  peakWeeklyMiles   Int?
+  /// One peak Saturday long-run miles (not a 4-week pool).
+  peakLongRunMiles  Float?
+  /// Count of LR weekends that are build-only (not taper, not race week).
+  buildLongRunWeekends Int?
+
+  buildPreset    training_plan_preset @relation("BuildPreset", fields: [buildPresetId], references: [id], onDelete: Restrict)
+  taperPreset    training_plan_preset? @relation("TaperPreset", fields: [taperPresetId], references: [id], onDelete: SetNull)
+  raceWeekPreset race_week_preset?     @relation(fields: [raceWeekPresetId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buildPresetId])
+  @@index([taperPresetId])
+  @@index([raceWeekPresetId])
+}
+
+// ─── Shakeout (no cycle) ────────────────────────────────────────────────────
+
+model shakeout_run_config {
+  id                   String @id @default(cuid())
+  name                 String
+  totalMiles           Float
+  paceOffsetSecPerMile Int    @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  race_week_presets race_week_preset[]
+
+  @@index([name])
+}
+
+// ─── Race week (notional race pin + day marks) ──────────────────────────────
+
+model race_week_preset {
+  id                      String @id @default(cuid())
+  title                   String
+  shakeoutRunConfigId     String?
+  shakeoutDaysPriorToRace Int    @default(2)
+  /// [{ offsetFromRace, slotType, easyConfigId?, tempoConfigId?, intervalsConfigId? }]
+  slots                   Json   @default("[]")
+
+  shakeoutRunConfig shakeout_run_config? @relation(fields: [shakeoutRunConfigId], references: [id], onDelete: SetNull)
+  parent_presets    training_plan_preset_parent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Workout catalogue ──────────────────────────────────────────────────────
+
+model workout_catalogue {
+  id                           String      @id @default(cuid())
+  name                         String
+  runSubType                   String?
+  slug                         String?     @unique
+  description                  String?
+  workoutType                  WorkoutType
+  segmentPaceDist              Json?
+  warmupFraction               Float?
+  workFraction                 Float?
+  cooldownFraction             Float?
+  workBaseReps                 Int?
+  workBaseRepMeters            Int?
+  recoveryDistanceMeters       Int?
+  recoveryDurationSeconds      Int?
+  warmupMiles                  Float?
+  warmupPaceOffsetSecPerMile   Int?
+  cooldownMiles                Float?
+  cooldownPaceOffsetSecPerMile Int?
+  workBaseMiles                Float?
+  workPaceOffsetSecPerMile     Int?
+  workBasePaceOffsetSecPerMile Int?
+  recoveryPaceOffsetSecPerMile Int?
+  paceAnchor                   String      @default("currentBuildup")
+  mpFraction                   Float?
+  mpBlockPosition              String?
+  mpBlockProgression           String      @default("flat")
+  mpTotalMiles                 Float?
+  mpPaceOffsetSecPerMile       Int?
+  intendedHeartRateZone        String?
+  intendedHRBpmLow             Int?
+  intendedHRBpmHigh            Int?
+  notes                        String?
+  trainingIntent               String[]    @default([])
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
+
+  long_run_config_positions  long_run_config_position[]
+  intervals_config_positions intervals_config_position[]
+  tempo_config_positions     tempo_config_position[]
+  easy_config_positions      easy_config_position[]
+
+  @@index([workoutType])
+}
+
+// ─── Rotations (type + cycle + catalogue) ───────────────────────────────────
+
+model long_run_config {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  positions     long_run_config_position[]
+  usedByPresets training_plan_preset[]
+
+  @@index([name])
+}
+
+model long_run_config_position {
+  id                 String  @id @default(cuid())
+  longRunConfigId    String
+  cyclePosition      Int
+  distributionWeight Float   @default(0.25)
+  catalogueWorkoutId String?
+
+  long_run_config   long_run_config    @relation(fields: [longRunConfigId], references: [id], onDelete: Cascade)
+  workout_catalogue workout_catalogue? @relation(fields: [catalogueWorkoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([longRunConfigId, cyclePosition])
+  @@index([longRunConfigId])
+}
+
+model intervals_config {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  positions     intervals_config_position[]
+  usedByPresets training_plan_preset[]
+
+  @@index([name])
+}
+
+model intervals_config_position {
+  id                 String  @id @default(cuid())
+  intervalsConfigId  String
+  cyclePosition      Int
+  distributionWeight Float   @default(0.25)
+  catalogueWorkoutId String?
+
+  intervals_config  intervals_config   @relation(fields: [intervalsConfigId], references: [id], onDelete: Cascade)
+  workout_catalogue workout_catalogue? @relation(fields: [catalogueWorkoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([intervalsConfigId, cyclePosition])
+  @@index([intervalsConfigId])
+}
+
+model tempo_config {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  positions     tempo_config_position[]
+  usedByPresets training_plan_preset[]
+
+  @@index([name])
+}
+
+model tempo_config_position {
+  id                 String  @id @default(cuid())
+  tempoConfigId      String
+  cyclePosition      Int
+  distributionWeight Float   @default(0.25)
+  catalogueWorkoutId String?
+
+  tempo_config      tempo_config       @relation(fields: [tempoConfigId], references: [id], onDelete: Cascade)
+  workout_catalogue workout_catalogue? @relation(fields: [catalogueWorkoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tempoConfigId, cyclePosition])
+  @@index([tempoConfigId])
+}
+
+model easy_config {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  positions     easy_config_position[]
+  usedByPresets training_plan_preset[]
+
+  @@index([name])
+}
+
+model easy_config_position {
+  id                 String  @id @default(cuid())
+  easyConfigId       String
+  cyclePosition      Int
+  distributionWeight Float   @default(0.25)
+  catalogueWorkoutId String?
+
+  easy_config       easy_config        @relation(fields: [easyConfigId], references: [id], onDelete: Cascade)
+  workout_catalogue workout_catalogue? @relation(fields: [catalogueWorkoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([easyConfigId, cyclePosition])
+  @@index([easyConfigId])
+}
