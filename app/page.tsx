@@ -1,8 +1,9 @@
 "use client";
 
-import { useAuth } from "@/components/AppProviders";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useAuth } from "@/components/AppProviders";
+import { getPostAuthPath } from "@/lib/training-manager-onboarding";
 
 export default function HomePage() {
   const router = useRouter();
@@ -14,11 +15,7 @@ export default function HomePage() {
       router.replace("/welcome");
       return;
     }
-    if (!manager) {
-      router.replace("/no-access");
-      return;
-    }
-    router.replace("/dashboard");
+    router.replace(getPostAuthPath(Boolean(manager), manager?.id));
   }, [user, manager, loading, router]);
 
   return (
