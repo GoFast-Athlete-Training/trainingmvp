@@ -62,7 +62,7 @@ export default function ParentPresetsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Programs (parent preset)</h1>
+        <h1 className="text-2xl font-bold">Parent presets</h1>
         <p className="text-sm text-gray-600">Build + taper + race week rollup.</p>
       </div>
 
@@ -87,7 +87,7 @@ export default function ParentPresetsPage() {
           onClick={() => void createParent()}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {creating ? "Creating…" : "New program"}
+          {creating ? "Creating…" : "New parent preset"}
         </button>
       </div>
 

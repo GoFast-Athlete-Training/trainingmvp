@@ -74,7 +74,7 @@ export default function ParentPresetDetailPage({ params }: { params: Promise<{ i
     const res = await authFetch("/api/training/taper-preset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `${parent?.title ?? "Program"} taper` }),
+      body: JSON.stringify({ title: `${parent?.title ?? "Parent preset"} taper` }),
     });
     const data = (await res.json()) as { taperPreset?: { id: string; title: string } };
     if (data.taperPreset) {
@@ -93,7 +93,7 @@ export default function ParentPresetDetailPage({ params }: { params: Promise<{ i
     <div className="space-y-6">
       <div>
         <Link href="/dashboard/parent-presets" className="text-sm text-sky-700 hover:underline">
-          ← Programs
+          ← Parent presets
         </Link>
         <h1 className="mt-2 text-2xl font-bold">{parent.title}</h1>
       </div>

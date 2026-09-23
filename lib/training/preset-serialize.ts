@@ -1,3 +1,4 @@
+import { presetCoreFromPreset } from "@/lib/training/preset-core";
 import type {
   easy_config,
   intervals_config,
@@ -22,11 +23,19 @@ export function serializeBuildPreset(
     intervalsConfig?: intervals_config | null;
   },
 ) {
+  const presetCore = presetCoreFromPreset({
+    minWeeklyMiles: row.minWeeklyMiles,
+    maxWeeklyMiles: row.maxWeeklyMiles,
+    coachPlanOverview: row.coachPlanOverview,
+    peakLongRunPoolMiles: row.peakLongRunPoolMiles,
+  });
+
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
     description: row.description,
+    presetCore,
     minWeeklyMiles: row.minWeeklyMiles,
     maxWeeklyMiles: row.maxWeeklyMiles,
     longRunCycleWeeks: row.longRunCycleWeeks,

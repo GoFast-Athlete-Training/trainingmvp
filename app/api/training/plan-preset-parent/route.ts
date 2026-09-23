@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Build preset not found" }, { status: 404 });
   }
 
-  const title = body.title?.trim() || `${build.title} (program)`;
+  const title = body.title?.trim() || `${build.title} (parent preset)`;
   const baseSlug = slugify(title);
   let slug = baseSlug || `parent-${Date.now()}`;
   let n = 0;

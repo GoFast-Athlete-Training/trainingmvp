@@ -1,21 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import TrainingManagerSidebar from "@/components/training-manager/TrainingManagerSidebar";
+import { useAuth } from "@/components/AppProviders";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
-import { useAuth } from "@/components/AppProviders";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
-const NAV = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/dashboard/presets", label: "Build presets" },
-  { href: "/dashboard/parent-presets", label: "Programs" },
-  { href: "/dashboard/long-run-config", label: "Long run rotations" },
-  { href: "/dashboard/race-week", label: "Race week" },
-];
-
-export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { manager } = useAuth();
 
@@ -25,42 +17,26 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+    <div className="flex h-screen min-h-0 bg-gray-50">
+      <TrainingManagerSidebar />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
-              Training Manage
+            <p className="text-sm font-medium text-gray-900">
+              {manager?.name ?? manager?.email ?? "Training staff"}
             </p>
-            <p className="text-sm text-gray-600">{manager?.email ?? "Staff"}</p>
+            <p className="text-xs text-gray-500">{manager?.gofastCompanyName ?? "GoFast"}</p>
           </div>
           <button
             type="button"
             onClick={() => void handleSignOut()}
-            className="text-sm text-gray-600 hover:text-gray-900"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
           >
             Sign out
           </button>
-        </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
-          {NAV.map((item) => {
-            const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`rounded-md px-3 py-1.5 text-sm whitespace-nowrap ${
-                  active ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        </header>
+        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+      </div>
     </div>
   );
 }

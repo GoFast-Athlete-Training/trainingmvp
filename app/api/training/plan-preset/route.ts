@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
 import { prisma } from "@/lib/prisma";
 import { serializeBuildPreset } from "@/lib/training/preset-serialize";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 function slugify(title: string): string {
@@ -40,9 +41,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     title?: string;
     minWeeklyMiles?: number;
+    maxWeeklyMiles?: number;
   };
 
   const title = body.title?.trim() || "New build preset";
+  const maxWeeklyMiles =
+    typeof body.maxWeeklyMiles === "number" && Number.isFinite(body.maxWeeklyMiles)
+      ? Math.round(body.maxWeeklyMiles)
+      : 55;
   const baseSlug = slugify(title);
   let slug = baseSlug || `preset-${Date.now()}`;
   let n = 0;
@@ -56,6 +62,19 @@ export async function POST(request: NextRequest) {
       slug,
       title,
       minWeeklyMiles: body.minWeeklyMiles ?? 40,
+      maxWeeklyMiles,
+      coachPlanOverview: {
+        summary: title,
+        weeklyVolume: { min: body.minWeeklyMiles ?? 40, max: maxWeeklyMiles },
+        weeklyWorkoutComposition: {
+          easy: 3,
+          tempo: 1,
+          intervals: 1,
+          longRun: 1,
+          cadenceWeeks: 1,
+        },
+        longRunStructure: { peakLongRunMiles: 20 },
+      } as Prisma.InputJsonValue,
       baseLongRunPoolMiles: 0,
       peakLongRunPoolMiles: 0,
       taperLongRunPoolMiles: 0,
