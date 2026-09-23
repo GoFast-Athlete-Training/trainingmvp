@@ -14,6 +14,10 @@ function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+/**
+ * Product rotation / persona rows live in gofastapp-mvp — IDs must not be copied into Training Manage.
+ * Staff link rotations on the preset detail page after send (same idea as race body copy without satellite FKs).
+ */
 export async function importBuildPreset(payload: ProductPresetImportPayload): Promise<{ presetId: string }> {
   const p = payload.preset;
   const id = str(p.id);
@@ -30,8 +34,8 @@ export async function importBuildPreset(payload: ProductPresetImportPayload): Pr
     description: str(p.description) ?? null,
     publicDescription: str(p.publicDescription) ?? null,
     targetDistanceLabel: str(p.targetDistanceLabel) ?? null,
-    personaId: str(p.personaId) ?? null,
-    goalId: str(p.goalId) ?? null,
+    personaId: null,
+    goalId: null,
     coachIntent: str(p.coachIntent) ?? null,
     objectiveOfPlan: str(p.objectiveOfPlan) ?? null,
     athletePersonaCapability: (p.athletePersonaCapability as Prisma.training_plan_presetUncheckedCreateInput["athletePersonaCapability"]) ?? null,
@@ -48,10 +52,10 @@ export async function importBuildPreset(payload: ProductPresetImportPayload): Pr
     tempoIdealDow: num(p.tempoIdealDow) ?? 2,
     intervalIdealDow: num(p.intervalIdealDow) ?? 4,
     longRunDefaultDow: num(p.longRunDefaultDow) ?? 6,
-    longRunConfigId: str(p.longRunConfigId) ?? null,
-    intervalsConfigId: str(p.intervalsConfigId) ?? null,
-    tempoConfigId: str(p.tempoConfigId) ?? null,
-    easyConfigId: str(p.easyConfigId) ?? null,
+    longRunConfigId: null,
+    intervalsConfigId: null,
+    tempoConfigId: null,
+    easyConfigId: null,
     easyRunConfig: (p.easyRunConfig as Prisma.InputJsonValue) ?? undefined,
   };
 
