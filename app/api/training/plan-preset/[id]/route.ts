@@ -85,8 +85,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         return NextResponse.json({ success: false, error: "Build preset not found" }, { status: 404 });
       }
       data.buildPresetId = build.id;
-      data.snapPeakLongRunMiles = build.peakLongRunMiles;
-      data.snapPeakWeeklyMiles = build.peakWeeklyMiles;
+      data.snapPeakLongRunMiles = build.peakLongRunPoolMiles;
+      data.snapPeakWeeklyMiles = build.maxWeeklyMiles;
     }
   }
 

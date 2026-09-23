@@ -224,58 +224,81 @@ model training_plan_preset {
   @@index([raceWeekPresetId])
 }
 
-// ─── Build preset (mutable miles + catalogue bolts) ─────────────────────────
+// ─── Build preset (Company HQ core + rotation bolts for build phase) ────────
 
 model build_preset {
-  id               String @id @default(cuid())
-  name             String
-  peakLongRunMiles Float?
-  peakWeeklyMiles  Int?
+  id   String @id @default(cuid())
+  name String
 
-  workouts build_preset_workout[]
-  presets  training_plan_preset[]
+  longRunCycleWeeks     Int   @default(4)
+  minWeeklyMiles        Int   @default(40)
+  maxWeeklyMiles        Int?
+  baseLongRunPoolMiles  Float @default(0)
+  peakLongRunPoolMiles  Float @default(0)
+  taperLongRunPoolMiles Float @default(0)
+  tempoIdealDow         Int   @default(2)
+  intervalIdealDow      Int   @default(4)
+  longRunDefaultDow     Int   @default(6)
+
+  longRunConfigId   String?
+  intervalsConfigId String?
+  tempoConfigId     String?
+  easyConfigId      String?
+  easyRunConfig       Json?
+  coachPlanOverview   Json?
+  workoutStructure    Json?
+
+  longRunConfig   long_run_config?  @relation("BuildLongRun", fields: [longRunConfigId], references: [id], onDelete: SetNull)
+  intervalsConfig intervals_config? @relation("BuildIntervals", fields: [intervalsConfigId], references: [id], onDelete: SetNull)
+  tempoConfig     tempo_config?     @relation("BuildTempo", fields: [tempoConfigId], references: [id], onDelete: SetNull)
+  easyConfig      easy_config?      @relation("BuildEasy", fields: [easyConfigId], references: [id], onDelete: SetNull)
+
+  presets training_plan_preset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([longRunConfigId])
+  @@index([intervalsConfigId])
+  @@index([tempoConfigId])
+  @@index([easyConfigId])
 }
 
-model build_preset_workout {
-  buildPresetId      String
-  catalogueWorkoutId String
-
-  buildPreset build_preset      @relation(fields: [buildPresetId], references: [id], onDelete: Cascade)
-  workout     workout_catalogue @relation(fields: [catalogueWorkoutId], references: [id], onDelete: Cascade)
-
-  @@id([buildPresetId, catalogueWorkoutId])
-  @@index([catalogueWorkoutId])
-}
-
-// ─── Taper preset (mutable miles + catalogue bolts) ─────────────────────────
+// ─── Taper preset (taper miles + rotation bolts) ────────────────────────────
 
 model taper_preset {
-  id                      String @id @default(cuid())
-  name                    String
-  week1TotalMiles         Float?
-  week1LongRunMiles       Float?
-  week2TotalMiles         Float?
-  week2LongRunMiles       Float?
+  id                String @id @default(cuid())
+  name              String
+  week1TotalMiles   Float?
+  week1LongRunMiles Float?
+  week2TotalMiles   Float?
+  week2LongRunMiles Float?
+  taperLongRunPoolMiles Float @default(0)
 
-  workouts taper_preset_workout[]
-  presets  training_plan_preset[]
+  tempoIdealDow     Int @default(2)
+  intervalIdealDow  Int @default(4)
+  longRunDefaultDow Int @default(6)
+
+  longRunConfigId   String?
+  intervalsConfigId String?
+  tempoConfigId     String?
+  easyConfigId      String?
+  easyRunConfig     Json?
+
+  longRunConfig   long_run_config?  @relation("TaperLongRun", fields: [longRunConfigId], references: [id], onDelete: SetNull)
+  intervalsConfig intervals_config? @relation("TaperIntervals", fields: [intervalsConfigId], references: [id], onDelete: SetNull)
+  tempoConfig     tempo_config?     @relation("TaperTempo", fields: [tempoConfigId], references: [id], onDelete: SetNull)
+  easyConfig      easy_config?      @relation("TaperEasy", fields: [easyConfigId], references: [id], onDelete: SetNull)
+
+  presets training_plan_preset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
 
-model taper_preset_workout {
-  taperPresetId      String
-  catalogueWorkoutId String
-
-  taperPreset taper_preset      @relation(fields: [taperPresetId], references: [id], onDelete: Cascade)
-  workout     workout_catalogue @relation(fields: [catalogueWorkoutId], references: [id], onDelete: Cascade)
-
-  @@id([taperPresetId, catalogueWorkoutId])
-  @@index([catalogueWorkoutId])
+  @@index([longRunConfigId])
+  @@index([intervalsConfigId])
+  @@index([tempoConfigId])
+  @@index([easyConfigId])
 }
 
 // ─── Shakeout (no cycle) ────────────────────────────────────────────────────
@@ -353,9 +376,6 @@ model workout_catalogue {
   intervals_config_positions intervals_config_position[]
   tempo_config_positions     tempo_config_position[]
   easy_config_positions      easy_config_position[]
-  build_preset_workouts      build_preset_workout[]
-  taper_preset_workouts      taper_preset_workout[]
-
   @@index([workoutType])
 }
 
@@ -368,8 +388,10 @@ model long_run_config {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  positions     long_run_config_position[]
-  usedByPresets training_plan_preset[]
+  positions        long_run_config_position[]
+  usedByPresets    training_plan_preset[]
+  usedByBuildPresets build_preset[] @relation("BuildLongRun")
+  usedByTaperPresets taper_preset[] @relation("TaperLongRun")
 
   @@index([name])
 }
@@ -398,8 +420,10 @@ model intervals_config {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  positions     intervals_config_position[]
-  usedByPresets training_plan_preset[]
+  positions          intervals_config_position[]
+  usedByPresets      training_plan_preset[]
+  usedByBuildPresets build_preset[] @relation("BuildIntervals")
+  usedByTaperPresets taper_preset[] @relation("TaperIntervals")
 
   @@index([name])
 }
@@ -428,8 +452,10 @@ model tempo_config {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  positions     tempo_config_position[]
-  usedByPresets training_plan_preset[]
+  positions          tempo_config_position[]
+  usedByPresets      training_plan_preset[]
+  usedByBuildPresets build_preset[] @relation("BuildTempo")
+  usedByTaperPresets taper_preset[] @relation("TaperTempo")
 
   @@index([name])
 }
@@ -458,8 +484,10 @@ model easy_config {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  positions     easy_config_position[]
-  usedByPresets training_plan_preset[]
+  positions          easy_config_position[]
+  usedByPresets      training_plan_preset[]
+  usedByBuildPresets build_preset[] @relation("BuildEasy")
+  usedByTaperPresets taper_preset[] @relation("TaperEasy")
 
   @@index([name])
 }

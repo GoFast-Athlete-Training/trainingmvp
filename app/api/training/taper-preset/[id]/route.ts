@@ -2,13 +2,13 @@ export const dynamic = "force-dynamic";
 
 import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
 import { prisma } from "@/lib/prisma";
+import {
+  taperPresetInclude,
+  serializeTaperPhasePreset,
+} from "@/lib/training/phase-preset-serialize";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
-
-const include = {
-  workouts: { include: { workout: { select: { id: true, name: true, workoutType: true } } } },
-} as const;
 
 function numOrNull(v: unknown): number | null | undefined {
   if (v === null || v === "") return null;
@@ -16,13 +16,23 @@ function numOrNull(v: unknown): number | null | undefined {
   return undefined;
 }
 
+function intOrUndef(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+  return undefined;
+}
+
+function configId(body: Record<string, unknown>, key: string): string | null | undefined {
+  if (!(key in body)) return undefined;
+  return typeof body[key] === "string" && body[key] ? (body[key] as string) : null;
+}
+
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await assertTrainingManagerAuth(request);
   if (auth.error) return auth.error;
   const { id } = await params;
-  const row = await prisma.taper_preset.findUnique({ where: { id }, include });
+  const row = await prisma.taper_preset.findUnique({ where: { id }, include: taperPresetInclude });
   if (!row) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ success: true, taper: row });
+  return NextResponse.json({ success: true, taper: serializeTaperPhasePreset(row) });
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -33,27 +43,34 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const data: Record<string, unknown> = {};
   if (typeof body.name === "string") data.name = body.name.trim();
+
   for (const key of [
     "week1TotalMiles",
     "week1LongRunMiles",
     "week2TotalMiles",
     "week2LongRunMiles",
+    "taperLongRunPoolMiles",
   ] as const) {
     const n = numOrNull(body[key]);
     if (n !== undefined) data[key] = n;
   }
 
-  if (Array.isArray(body.catalogueWorkoutIds)) {
-    const ids = body.catalogueWorkoutIds.filter((x): x is string => typeof x === "string");
-    await prisma.taper_preset_workout.deleteMany({ where: { taperPresetId: id } });
-    if (ids.length) {
-      await prisma.taper_preset_workout.createMany({
-        data: ids.map((catalogueWorkoutId) => ({ taperPresetId: id, catalogueWorkoutId })),
-        skipDuplicates: true,
-      });
-    }
+  for (const key of ["tempoIdealDow", "intervalIdealDow", "longRunDefaultDow"] as const) {
+    const n = intOrUndef(body[key]);
+    if (n !== undefined) data[key] = n;
   }
 
-  const row = await prisma.taper_preset.update({ where: { id }, data, include });
-  return NextResponse.json({ success: true, taper: row });
+  if (body.easyRunConfig !== undefined) data.easyRunConfig = body.easyRunConfig;
+
+  for (const key of ["longRunConfigId", "easyConfigId", "tempoConfigId", "intervalsConfigId"] as const) {
+    const v = configId(body, key);
+    if (v !== undefined) data[key] = v;
+  }
+
+  const row = await prisma.taper_preset.update({
+    where: { id },
+    data,
+    include: taperPresetInclude,
+  });
+  return NextResponse.json({ success: true, taper: serializeTaperPhasePreset(row) });
 }

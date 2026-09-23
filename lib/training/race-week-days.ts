@@ -12,7 +12,9 @@ export type RaceWeekDaySlot = {
   day: RaceWeekDayName;
   offsetFromRace: number;
   slotType: "Easy" | "Tempo" | "Intervals" | "Rest" | "Shakeout";
-  catalogueWorkoutId: string | null;
+  easyConfigId?: string | null;
+  tempoConfigId?: string | null;
+  intervalsConfigId?: string | null;
 };
 
 export function defaultRaceWeekDays(): RaceWeekDaySlot[] {
@@ -20,8 +22,14 @@ export function defaultRaceWeekDays(): RaceWeekDaySlot[] {
     day: d.day,
     offsetFromRace: d.offsetFromRace,
     slotType: "Rest",
-    catalogueWorkoutId: null,
+    easyConfigId: null,
+    tempoConfigId: null,
+    intervalsConfigId: null,
   }));
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v ? v : null;
 }
 
 export function parseRaceWeekDays(raw: unknown): RaceWeekDaySlot[] {
@@ -42,8 +50,9 @@ export function parseRaceWeekDays(raw: unknown): RaceWeekDaySlot[] {
       slotType: allowed.includes(slotType as (typeof allowed)[number])
         ? (slotType as RaceWeekDaySlot["slotType"])
         : "Rest",
-      catalogueWorkoutId:
-        typeof found.catalogueWorkoutId === "string" ? found.catalogueWorkoutId : null,
+      easyConfigId: strOrNull(found.easyConfigId),
+      tempoConfigId: strOrNull(found.tempoConfigId),
+      intervalsConfigId: strOrNull(found.intervalsConfigId),
     };
   });
 }

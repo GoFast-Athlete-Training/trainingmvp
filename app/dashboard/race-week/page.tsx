@@ -1,13 +1,9 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
-import {
-  parseRaceWeekDays,
-  type RaceWeekDaySlot,
-} from "@/lib/training/race-week-days";
+import { RaceWeekDaysEditor } from "@/components/training-manager/RaceWeekDaysEditor";
+import { parseRaceWeekDays, type RaceWeekDaySlot } from "@/lib/training/race-week-days";
 import { useCallback, useEffect, useState } from "react";
-
-type CatalogueItem = { id: string; name: string; workoutType: string };
 
 type RaceWeekRow = {
   id: string;
@@ -15,24 +11,19 @@ type RaceWeekRow = {
   slots: unknown;
 };
 
-const SLOT_TYPES = ["Rest", "Easy", "Tempo", "Intervals", "Shakeout"] as const;
-
 export default function RaceWeekPage() {
   const [rows, setRows] = useState<RaceWeekRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [days, setDays] = useState<RaceWeekDaySlot[]>(() => parseRaceWeekDays(null));
-  const [catalogue, setCatalogue] = useState<CatalogueItem[]>([]);
+  const [shakeoutConfigId, setShakeoutConfigId] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [raceRes, catRes] = await Promise.all([
-      authFetch("/api/training/race-week-preset"),
-      authFetch("/api/training/catalogue"),
-    ]);
-    const raceData = (await raceRes.json()) as { presets?: RaceWeekRow[] };
-    const catData = (await catRes.json()) as { items?: CatalogueItem[] };
+    const raceRes = await authFetch("/api/training/race-week-preset");
+    const raceData = (await raceRes.json()) as {
+      presets?: Array<RaceWeekRow & { shakeoutRunConfigId?: string | null }>;
+    };
     setRows(raceData.presets ?? []);
-    setCatalogue(catData.items ?? []);
     setSelectedId((current) => current ?? raceData.presets?.[0]?.id ?? null);
   }, []);
 
@@ -42,7 +33,10 @@ export default function RaceWeekPage() {
 
   useEffect(() => {
     const row = rows.find((r) => r.id === selectedId);
-    if (row) setDays(parseRaceWeekDays(row.slots));
+    if (row) {
+      setDays(parseRaceWeekDays(row.slots));
+      setShakeoutConfigId((row as { shakeoutRunConfigId?: string | null }).shakeoutRunConfigId ?? "");
+    }
   }, [selectedId, rows]);
 
   async function createPreset() {
@@ -63,7 +57,7 @@ export default function RaceWeekPage() {
       await authFetch(`/api/training/race-week-preset/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slots: days }),
+        body: JSON.stringify({ slots: days, shakeoutRunConfigId: shakeoutConfigId || null }),
       });
       await load();
     } finally {
@@ -97,44 +91,12 @@ export default function RaceWeekPage() {
         </select>
       ) : null}
 
-      <ul className="space-y-3">
-        {days.map((day, idx) => (
-          <li key={day.day} className="grid gap-2 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-[8rem_1fr_1fr]">
-            <p className="font-medium">{day.day}</p>
-            <select
-              className="rounded border px-2 py-1 text-sm"
-              value={day.slotType}
-              onChange={(e) => {
-                const next = [...days];
-                next[idx] = { ...day, slotType: e.target.value as RaceWeekDaySlot["slotType"] };
-                setDays(next);
-              }}
-            >
-              {SLOT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded border px-2 py-1 text-sm"
-              value={day.catalogueWorkoutId ?? ""}
-              onChange={(e) => {
-                const next = [...days];
-                next[idx] = { ...day, catalogueWorkoutId: e.target.value || null };
-                setDays(next);
-              }}
-            >
-              <option value="">No catalogue workout</option>
-              {catalogue.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.workoutType}: {item.name}
-                </option>
-              ))}
-            </select>
-          </li>
-        ))}
-      </ul>
+      <RaceWeekDaysEditor
+        days={days}
+        onChange={setDays}
+        shakeoutConfigId={shakeoutConfigId}
+        onShakeoutChange={setShakeoutConfigId}
+      />
 
       <button
         type="button"

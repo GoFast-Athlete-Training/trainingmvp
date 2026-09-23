@@ -438,6 +438,9 @@ async function importGraph(tx: Tx, p: Record<string, unknown>) {
     create: data,
     update: updateData,
   });
+
+  const { syncPhaseRowsFromPlanPreset } = await import("@/lib/training/sync-plan-phase-rows");
+  await syncPhaseRowsFromPlanPreset(tx, id);
 }
 
 export async function importBuildPreset(payload: ProductPresetImportPayload): Promise<{ presetId: string }> {
