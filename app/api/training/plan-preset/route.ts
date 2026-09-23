@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
+import { assertStaffForward } from "@/lib/staff-forward-auth";
 import { prisma } from "@/lib/prisma";
 import { serializeBuildPreset } from "@/lib/training/preset-serialize";
 import { Prisma } from "@prisma/client";
@@ -14,9 +15,16 @@ function slugify(title: string): string {
     .slice(0, 80);
 }
 
-export async function GET(request: NextRequest) {
+async function assertListPresetAuth(request: NextRequest) {
+  const forward = assertStaffForward(request);
+  if (forward.ok) return null;
   const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
+  return auth.error;
+}
+
+export async function GET(request: NextRequest) {
+  const authError = await assertListPresetAuth(request);
+  if (authError) return authError;
 
   const rows = await prisma.training_plan_preset.findMany({
     orderBy: { updatedAt: "desc" },
