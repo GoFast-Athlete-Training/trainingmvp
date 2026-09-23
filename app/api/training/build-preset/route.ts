@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const auth = await assertTrainingManagerAuth(request);
   if (auth.error) return auth.error;
 
-  const rows = await prisma.build_config.findMany({ orderBy: { updatedAt: "desc" }, include });
+  const rows = await prisma.build_preset.findMany({ orderBy: { updatedAt: "desc" }, include });
   return NextResponse.json({ success: true, builds: rows });
 }
 
@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   const body = (await request.json().catch(() => ({}))) as { name?: string };
-  const row = await prisma.build_config.create({
-    data: { name: body.name?.trim() || "New build" },
+  const row = await prisma.build_preset.create({
+    data: { name: body.name?.trim() || "New build preset" },
     include,
   });
   return NextResponse.json({ success: true, build: row });

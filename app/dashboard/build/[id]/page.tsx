@@ -27,7 +27,7 @@ export default function BuildEditorPage({ params }: { params: Promise<{ id: stri
 
   const load = useCallback(async () => {
     if (!id) return;
-    const res = await authFetch(`/api/training/build-config/${id}`);
+    const res = await authFetch(`/api/training/build-preset/${id}`);
     const data = (await res.json()) as { build?: BuildDetail };
     if (!data.build) return;
     setName(data.build.name);
@@ -44,7 +44,7 @@ export default function BuildEditorPage({ params }: { params: Promise<{ id: stri
     if (!id) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/build-config/${id}`, {
+      await authFetch(`/api/training/build-preset/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,7 +65,7 @@ export default function BuildEditorPage({ params }: { params: Promise<{ id: stri
         <Link href="/dashboard/build" className="text-sm text-sky-700 hover:underline">
           ← Builds
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">Build</h1>
+        <h1 className="mt-2 text-2xl font-bold">Build preset</h1>
         <p className="text-sm text-gray-600">Miles and catalogue workouts mutate here. Linked presets keep their snap.</p>
       </div>
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">

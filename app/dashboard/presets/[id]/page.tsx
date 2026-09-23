@@ -10,8 +10,10 @@ type PresetDetail = {
   id: string;
   title: string;
   slug: string;
-  buildConfigId: string | null;
-  taperConfigId: string | null;
+  description: string | null;
+  coachIntent: string | null;
+  buildPresetId: string | null;
+  taperPresetId: string | null;
   raceWeekPresetId: string | null;
   snapPeakLongRunMiles: number | null;
   snapPeakWeeklyMiles: number | null;
@@ -28,10 +30,14 @@ function mi(n: number | null) {
 export default function PresetEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<PresetDetail | null>(null);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [coachIntent, setCoachIntent] = useState("");
   const [builds, setBuilds] = useState<Option[]>([]);
   const [tapers, setTapers] = useState<Option[]>([]);
   const [raceWeeks, setRaceWeeks] = useState<Option[]>([]);
   const [saving, setSaving] = useState(false);
+  const [metaSaved, setMetaSaved] = useState(false);
 
   useEffect(() => {
     void params.then((p) => setPresetId(p.id));
@@ -41,32 +47,38 @@ export default function PresetEditorPage({ params }: { params: Promise<{ id: str
     if (!presetId) return;
     const [presetRes, buildRes, taperRes, raceRes] = await Promise.all([
       authFetch(`/api/training/plan-preset/${presetId}`),
-      authFetch("/api/training/build-config"),
-      authFetch("/api/training/taper-config"),
+      authFetch("/api/training/build-preset"),
+      authFetch("/api/training/taper-preset"),
       authFetch("/api/training/race-week-preset"),
     ]);
     const presetData = (await presetRes.json()) as { preset?: PresetDetail };
     const buildData = (await buildRes.json()) as { builds?: Option[] };
     const taperData = (await taperRes.json()) as { tapers?: Option[] };
     const raceData = (await raceRes.json()) as { presets?: Array<{ id: string; title: string }> };
-    setPreset(presetData.preset ?? null);
+    const p = presetData.preset ?? null;
+    setPreset(p);
+    if (p) {
+      setTitle(p.title);
+      setDescription(p.description ?? "");
+      setCoachIntent(p.coachIntent ?? "");
+    }
     setBuilds(buildData.builds ?? []);
     setTapers(taperData.tapers ?? []);
-    setRaceWeeks((raceData.presets ?? []).map((p) => ({ id: p.id, title: p.title })));
+    setRaceWeeks((raceData.presets ?? []).map((r) => ({ id: r.id, title: r.title })));
   }, [presetId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function link(patch: Record<string, string | null>) {
+  async function patch(body: Record<string, unknown>) {
     if (!presetId) return;
     setSaving(true);
     try {
       const res = await authFetch(`/api/training/plan-preset/${presetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as { preset?: PresetDetail };
       if (data.preset) setPreset(data.preset);
@@ -75,32 +87,79 @@ export default function PresetEditorPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function saveMeta() {
+    await patch({ title, description, coachIntent: coachIntent.trim() || null });
+    setMetaSaved(true);
+    setTimeout(() => setMetaSaved(false), 2000);
+  }
+
   if (!preset) return <p className="text-gray-500">Loading…</p>;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <Link href="/dashboard/presets" className="text-sm text-sky-700 hover:underline">
-          ← Presets
+          ← Plan presets
         </Link>
         <h1 className="mt-2 text-2xl font-bold">{preset.title}</h1>
-        <p className="text-sm text-gray-500">{preset.slug}</p>
         <p className="mt-2 text-sm text-gray-600">
-          Miles below are a snap from the linked build and taper. Edit the numbers on those pages. Linking again copies the current miles.
+          To finish this plan preset, define three things: a build preset, a taper preset, and a race week preset.
+          Linking copies mileage snaps onto this row.
         </p>
       </div>
 
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="font-semibold">Preset</h2>
+        <label className="block text-sm">
+          <span className="text-gray-600">Title</span>
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="text-gray-600">Description</span>
+          <textarea
+            className="mt-1 w-full rounded border px-3 py-2"
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void saveMeta()}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {saving ? "Saving…" : metaSaved ? "Saved" : "Save preset"}
+        </button>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+        <h2 className="text-sm font-semibold text-gray-700">Optional — persona / coach intent</h2>
+        <p className="text-xs text-gray-500">Side quest only. Helps fill meta; not required for the three phase links.</p>
+        <textarea
+          className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+          rows={3}
+          value={coachIntent}
+          onChange={(e) => setCoachIntent(e.target.value)}
+          placeholder="Coach intent…"
+        />
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Build snap</h2>
+          <h2 className="font-semibold">1 — Build preset</h2>
           <Link href="/dashboard/build" className="text-sm text-sky-700 hover:underline">
-            Edit builds
+            Manage build presets
           </Link>
         </div>
         <select
-          className="w-full max-w-md rounded border px-3 py-2 text-sm"
-          value={preset.buildConfigId ?? ""}
-          onChange={(e) => void link({ buildConfigId: e.target.value || null })}
+          className="w-full rounded border px-3 py-2 text-sm"
+          value={preset.buildPresetId ?? ""}
+          onChange={(e) => void patch({ buildPresetId: e.target.value || null })}
         >
           <option value="">— none —</option>
           {builds.map((b) => (
@@ -110,21 +169,21 @@ export default function PresetEditorPage({ params }: { params: Promise<{ id: str
           ))}
         </select>
         <p className="text-sm text-gray-700">
-          Long-run peak {mi(preset.snapPeakLongRunMiles)} · Weekly peak {mi(preset.snapPeakWeeklyMiles)}
+          Snap: long-run peak {mi(preset.snapPeakLongRunMiles)} · weekly peak {mi(preset.snapPeakWeeklyMiles)}
         </p>
       </section>
 
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Taper snap</h2>
+          <h2 className="font-semibold">2 — Taper preset</h2>
           <Link href="/dashboard/taper" className="text-sm text-sky-700 hover:underline">
-            Edit tapers
+            Manage taper presets
           </Link>
         </div>
         <select
-          className="w-full max-w-md rounded border px-3 py-2 text-sm"
-          value={preset.taperConfigId ?? ""}
-          onChange={(e) => void link({ taperConfigId: e.target.value || null })}
+          className="w-full rounded border px-3 py-2 text-sm"
+          value={preset.taperPresetId ?? ""}
+          onChange={(e) => void patch({ taperPresetId: e.target.value || null })}
         >
           <option value="">— none —</option>
           {tapers.map((t) => (
@@ -134,24 +193,24 @@ export default function PresetEditorPage({ params }: { params: Promise<{ id: str
           ))}
         </select>
         <p className="text-sm text-gray-700">
-          Week 1 {mi(preset.snapTaperWeek1TotalMiles)} total, {mi(preset.snapTaperWeek1LongRunMiles)} long run
+          Snap week 1: {mi(preset.snapTaperWeek1TotalMiles)} total, {mi(preset.snapTaperWeek1LongRunMiles)} long run
         </p>
         <p className="text-sm text-gray-700">
-          Week 2 {mi(preset.snapTaperWeek2TotalMiles)} total, {mi(preset.snapTaperWeek2LongRunMiles)} long run
+          Snap week 2: {mi(preset.snapTaperWeek2TotalMiles)} total, {mi(preset.snapTaperWeek2LongRunMiles)} long run
         </p>
       </section>
 
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Race week</h2>
+          <h2 className="font-semibold">3 — Race week preset</h2>
           <Link href="/dashboard/race-week" className="text-sm text-sky-700 hover:underline">
-            Edit race weeks
+            Manage race weeks
           </Link>
         </div>
         <select
-          className="w-full max-w-md rounded border px-3 py-2 text-sm"
+          className="w-full rounded border px-3 py-2 text-sm"
           value={preset.raceWeekPresetId ?? ""}
-          onChange={(e) => void link({ raceWeekPresetId: e.target.value || null })}
+          onChange={(e) => void patch({ raceWeekPresetId: e.target.value || null })}
         >
           <option value="">— none —</option>
           {raceWeeks.map((r) => (
@@ -160,10 +219,10 @@ export default function PresetEditorPage({ params }: { params: Promise<{ id: str
             </option>
           ))}
         </select>
-        <p className="text-sm text-gray-600">Monday–Friday is edited on the race week, not here.</p>
+        <p className="text-sm text-gray-600">Monday–Friday routine is edited on the race week preset.</p>
       </section>
 
-      {saving ? <p className="text-sm text-gray-500">Saving snap…</p> : null}
+      {saving ? <p className="text-sm text-gray-500">Saving…</p> : null}
     </div>
   );
 }

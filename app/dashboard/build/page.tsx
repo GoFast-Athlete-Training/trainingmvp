@@ -16,7 +16,7 @@ export default function BuildListPage() {
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await authFetch("/api/training/build-config");
+    const res = await authFetch("/api/training/build-preset");
     const data = (await res.json()) as { builds?: BuildRow[] };
     setRows(data.builds ?? []);
   }, []);
@@ -28,10 +28,10 @@ export default function BuildListPage() {
   async function createBuild() {
     setCreating(true);
     try {
-      await authFetch("/api/training/build-config", {
+      await authFetch("/api/training/build-preset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New build" }),
+        body: JSON.stringify({ name: "New build preset" }),
       });
       await load();
     } finally {
@@ -43,7 +43,7 @@ export default function BuildListPage() {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Build</h1>
+          <h1 className="text-2xl font-bold">Build preset</h1>
           <p className="text-sm text-gray-600">
             Edit long-run peak, weekly peak, and the workouts bolted to this build. Presets snap these miles when linked.
           </p>
@@ -54,7 +54,7 @@ export default function BuildListPage() {
           onClick={() => void createBuild()}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {creating ? "Creating…" : "New build"}
+          {creating ? "Creating…" : "New build preset"}
         </button>
       </div>
       <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">

@@ -20,9 +20,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   const auth = await assertTrainingManagerAuth(request);
   if (auth.error) return auth.error;
   const { id } = await params;
-  const row = await prisma.build_config.findUnique({ where: { id }, include });
+  const row = await prisma.taper_preset.findUnique({ where: { id }, include });
   if (!row) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ success: true, build: row });
+  return NextResponse.json({ success: true, taper: row });
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -33,22 +33,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const data: Record<string, unknown> = {};
   if (typeof body.name === "string") data.name = body.name.trim();
-  const peakLong = numOrNull(body.peakLongRunMiles);
-  const peakWeekly = numOrNull(body.peakWeeklyMiles);
-  if (peakLong !== undefined) data.peakLongRunMiles = peakLong;
-  if (peakWeekly !== undefined) data.peakWeeklyMiles = peakWeekly == null ? null : Math.round(peakWeekly);
+  for (const key of [
+    "week1TotalMiles",
+    "week1LongRunMiles",
+    "week2TotalMiles",
+    "week2LongRunMiles",
+  ] as const) {
+    const n = numOrNull(body[key]);
+    if (n !== undefined) data[key] = n;
+  }
 
   if (Array.isArray(body.catalogueWorkoutIds)) {
     const ids = body.catalogueWorkoutIds.filter((x): x is string => typeof x === "string");
-    await prisma.build_config_workout.deleteMany({ where: { buildConfigId: id } });
+    await prisma.taper_preset_workout.deleteMany({ where: { taperPresetId: id } });
     if (ids.length) {
-      await prisma.build_config_workout.createMany({
-        data: ids.map((catalogueWorkoutId) => ({ buildConfigId: id, catalogueWorkoutId })),
+      await prisma.taper_preset_workout.createMany({
+        data: ids.map((catalogueWorkoutId) => ({ taperPresetId: id, catalogueWorkoutId })),
         skipDuplicates: true,
       });
     }
   }
 
-  const row = await prisma.build_config.update({ where: { id }, data, include });
-  return NextResponse.json({ success: true, build: row });
+  const row = await prisma.taper_preset.update({ where: { id }, data, include });
+  return NextResponse.json({ success: true, taper: row });
 }

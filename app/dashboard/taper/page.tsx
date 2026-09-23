@@ -18,7 +18,7 @@ export default function TaperListPage() {
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await authFetch("/api/training/taper-config");
+    const res = await authFetch("/api/training/taper-preset");
     const data = (await res.json()) as { tapers?: TaperRow[] };
     setRows(data.tapers ?? []);
   }, []);
@@ -30,10 +30,10 @@ export default function TaperListPage() {
   async function createTaper() {
     setCreating(true);
     try {
-      await authFetch("/api/training/taper-config", {
+      await authFetch("/api/training/taper-preset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New taper" }),
+        body: JSON.stringify({ name: "New taper preset" }),
       });
       await load();
     } finally {
@@ -45,7 +45,7 @@ export default function TaperListPage() {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Taper</h1>
+          <h1 className="text-2xl font-bold">Taper preset</h1>
           <p className="text-sm text-gray-600">
             Two weeks of total miles and long-run miles, plus any taper-only workouts.
           </p>

@@ -31,7 +31,7 @@ export default function TaperEditorPage({ params }: { params: Promise<{ id: stri
 
   const load = useCallback(async () => {
     if (!id) return;
-    const res = await authFetch(`/api/training/taper-config/${id}`);
+    const res = await authFetch(`/api/training/taper-preset/${id}`);
     const data = (await res.json()) as { taper?: TaperDetail };
     if (!data.taper) return;
     const t = data.taper;
@@ -55,7 +55,7 @@ export default function TaperEditorPage({ params }: { params: Promise<{ id: stri
     if (!id) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/taper-config/${id}`, {
+      await authFetch(`/api/training/taper-preset/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
