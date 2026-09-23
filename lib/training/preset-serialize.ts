@@ -21,6 +21,9 @@ export function serializeBuildPreset(
     easyConfig?: easy_config | null;
     tempoConfig?: tempo_config | null;
     intervalsConfig?: intervals_config | null;
+    buildConfig?: { id: string; name: string } | null;
+    taperConfig?: { id: string; name: string } | null;
+    raceWeekPreset?: { id: string; title: string } | null;
   },
 ) {
   const presetCore = presetCoreFromPreset({
@@ -47,6 +50,27 @@ export function serializeBuildPreset(
     easyConfigId: row.easyConfigId,
     tempoConfigId: row.tempoConfigId,
     intervalsConfigId: row.intervalsConfigId,
+    buildConfigId: row.buildConfigId,
+    taperConfigId: row.taperConfigId,
+    raceWeekPresetId: row.raceWeekPresetId,
+    snapPeakLongRunMiles: row.snapPeakLongRunMiles,
+    snapPeakWeeklyMiles: row.snapPeakWeeklyMiles,
+    snapTaperWeek1TotalMiles: row.snapTaperWeek1TotalMiles,
+    snapTaperWeek1LongRunMiles: row.snapTaperWeek1LongRunMiles,
+    snapTaperWeek2TotalMiles: row.snapTaperWeek2TotalMiles,
+    snapTaperWeek2LongRunMiles: row.snapTaperWeek2LongRunMiles,
+    buildConfig:
+      "buildConfig" in row && row.buildConfig
+        ? { id: row.buildConfig.id, name: row.buildConfig.name }
+        : null,
+    taperConfig:
+      "taperConfig" in row && row.taperConfig
+        ? { id: row.taperConfig.id, name: row.taperConfig.name }
+        : null,
+    raceWeekPreset:
+      "raceWeekPreset" in row && row.raceWeekPreset
+        ? { id: row.raceWeekPreset.id, title: row.raceWeekPreset.title }
+        : null,
     longRunConfig: row.longRunConfig
       ? {
           id: row.longRunConfig.id,

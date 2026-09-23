@@ -200,11 +200,85 @@ model training_plan_preset {
   tempoConfig     tempo_config?      @relation(fields: [tempoConfigId], references: [id], onDelete: SetNull)
   easyConfig      easy_config?       @relation(fields: [easyConfigId], references: [id], onDelete: SetNull)
 
+  buildConfigId    String?
+  taperConfigId    String?
+  raceWeekPresetId String?
+  buildConfig      build_config?     @relation(fields: [buildConfigId], references: [id], onDelete: SetNull)
+  taperConfig      taper_config?     @relation(fields: [taperConfigId], references: [id], onDelete: SetNull)
+  raceWeekPreset   race_week_preset? @relation(fields: [raceWeekPresetId], references: [id], onDelete: SetNull)
+
+  /// Copied from the linked build. Editing the build does not change this.
+  snapPeakLongRunMiles Float?
+  snapPeakWeeklyMiles  Int?
+  /// Copied from the linked taper.
+  snapTaperWeek1TotalMiles   Float?
+  snapTaperWeek1LongRunMiles Float?
+  snapTaperWeek2TotalMiles   Float?
+  snapTaperWeek2LongRunMiles Float?
+
   parent_as_build training_plan_preset_parent[] @relation("BuildPreset")
   parent_as_taper training_plan_preset_parent[] @relation("TaperPreset")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([buildConfigId])
+  @@index([taperConfigId])
+  @@index([raceWeekPresetId])
+}
+
+// ─── Reusable build (mutable miles + catalogue bolts) ───────────────────────
+
+model build_config {
+  id               String @id @default(cuid())
+  name             String
+  peakLongRunMiles Float?
+  peakWeeklyMiles  Int?
+
+  workouts build_config_workout[]
+  presets  training_plan_preset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model build_config_workout {
+  buildConfigId      String
+  catalogueWorkoutId String
+
+  buildConfig build_config      @relation(fields: [buildConfigId], references: [id], onDelete: Cascade)
+  workout     workout_catalogue @relation(fields: [catalogueWorkoutId], references: [id], onDelete: Cascade)
+
+  @@id([buildConfigId, catalogueWorkoutId])
+  @@index([catalogueWorkoutId])
+}
+
+// ─── Reusable taper (mutable miles + catalogue bolts) ───────────────────────
+
+model taper_config {
+  id                      String @id @default(cuid())
+  name                    String
+  week1TotalMiles         Float?
+  week1LongRunMiles       Float?
+  week2TotalMiles         Float?
+  week2LongRunMiles       Float?
+
+  workouts taper_config_workout[]
+  presets  training_plan_preset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model taper_config_workout {
+  taperConfigId      String
+  catalogueWorkoutId String
+
+  taperConfig taper_config      @relation(fields: [taperConfigId], references: [id], onDelete: Cascade)
+  workout     workout_catalogue @relation(fields: [catalogueWorkoutId], references: [id], onDelete: Cascade)
+
+  @@id([taperConfigId, catalogueWorkoutId])
+  @@index([catalogueWorkoutId])
 }
 
 // ─── Parent rollup (build + taper + race week) ──────────────────────────────
@@ -264,6 +338,7 @@ model race_week_preset {
 
   shakeoutRunConfig shakeout_run_config? @relation(fields: [shakeoutRunConfigId], references: [id], onDelete: SetNull)
   parent_presets    training_plan_preset_parent[]
+  presets           training_plan_preset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,6 +387,8 @@ model workout_catalogue {
   intervals_config_positions intervals_config_position[]
   tempo_config_positions     tempo_config_position[]
   easy_config_positions      easy_config_position[]
+  build_config_workouts      build_config_workout[]
+  taper_config_workouts      taper_config_workout[]
 
   @@index([workoutType])
 }

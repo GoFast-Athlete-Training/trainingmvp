@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
       easyConfig: true,
       tempoConfig: true,
       intervalsConfig: true,
+      buildConfig: { select: { id: true, name: true } },
+      taperConfig: { select: { id: true, name: true } },
+      raceWeekPreset: { select: { id: true, title: true } },
     },
   });
 

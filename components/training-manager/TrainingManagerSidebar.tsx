@@ -1,12 +1,12 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, Flag, Layers, ListTree, Route } from "lucide-react";
+import { CalendarDays, Flag, ListTree, Route, Timer } from "lucide-react";
 
 const NAV = [
   { href: "/dashboard/presets", label: "Presets", icon: ListTree },
-  { href: "/dashboard/parent-presets", label: "Parent presets", icon: Layers },
-  { href: "/dashboard/long-run-config", label: "Long run rotations", icon: Route },
+  { href: "/dashboard/build", label: "Build", icon: Route },
+  { href: "/dashboard/taper", label: "Taper", icon: Timer },
   { href: "/dashboard/race-week", label: "Race week", icon: Flag },
 ] as const;
 
@@ -58,7 +58,7 @@ export default function TrainingManagerSidebar() {
       <div className="border-t border-gray-200 p-4">
         <p className="flex items-center gap-2 text-xs text-gray-500">
           <CalendarDays className="h-3.5 w-3.5" />
-          Presets are home — build, taper, race week
+          Preset snaps miles. Edit them on Build, Taper, and Race week.
         </p>
       </div>
     </aside>

@@ -9,6 +9,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
 
+const presetLinkInclude = {
+  longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" as const } } } },
+  easyConfig: true,
+  tempoConfig: true,
+  intervalsConfig: true,
+  buildConfig: { select: { id: true, name: true } },
+  taperConfig: { select: { id: true, name: true } },
+  raceWeekPreset: { select: { id: true, title: true } },
+} as const;
+
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await assertTrainingManagerAuth(request);
   if (auth.error) return auth.error;
@@ -16,12 +26,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const row = await prisma.training_plan_preset.findUnique({
     where: { id },
-    include: {
-      longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
-      easyConfig: true,
-      tempoConfig: true,
-      intervalsConfig: true,
-    },
+    include: presetLinkInclude,
   });
 
   if (!row) {
@@ -83,15 +88,60 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (body.intervalsConfigId === null) data.intervalsConfigId = null;
   if (typeof body.intervalsConfigId === "string") data.intervalsConfigId = body.intervalsConfigId;
 
+  if ("buildConfigId" in body) {
+    if (typeof body.buildConfigId !== "string" || !body.buildConfigId) {
+      data.buildConfigId = null;
+      data.snapPeakLongRunMiles = null;
+      data.snapPeakWeeklyMiles = null;
+    } else {
+      const build = await prisma.build_config.findUnique({ where: { id: body.buildConfigId } });
+      if (!build) {
+        return NextResponse.json({ success: false, error: "Build not found" }, { status: 404 });
+      }
+      data.buildConfigId = build.id;
+      data.snapPeakLongRunMiles = build.peakLongRunMiles;
+      data.snapPeakWeeklyMiles = build.peakWeeklyMiles;
+    }
+  }
+
+  if ("taperConfigId" in body) {
+    if (typeof body.taperConfigId !== "string" || !body.taperConfigId) {
+      data.taperConfigId = null;
+      data.snapTaperWeek1TotalMiles = null;
+      data.snapTaperWeek1LongRunMiles = null;
+      data.snapTaperWeek2TotalMiles = null;
+      data.snapTaperWeek2LongRunMiles = null;
+    } else {
+      const taper = await prisma.taper_config.findUnique({ where: { id: body.taperConfigId } });
+      if (!taper) {
+        return NextResponse.json({ success: false, error: "Taper not found" }, { status: 404 });
+      }
+      data.taperConfigId = taper.id;
+      data.snapTaperWeek1TotalMiles = taper.week1TotalMiles;
+      data.snapTaperWeek1LongRunMiles = taper.week1LongRunMiles;
+      data.snapTaperWeek2TotalMiles = taper.week2TotalMiles;
+      data.snapTaperWeek2LongRunMiles = taper.week2LongRunMiles;
+    }
+  }
+
+  if ("raceWeekPresetId" in body) {
+    if (typeof body.raceWeekPresetId !== "string" || !body.raceWeekPresetId) {
+      data.raceWeekPresetId = null;
+    } else {
+      const raceWeek = await prisma.race_week_preset.findUnique({
+        where: { id: body.raceWeekPresetId },
+      });
+      if (!raceWeek) {
+        return NextResponse.json({ success: false, error: "Race week not found" }, { status: 404 });
+      }
+      data.raceWeekPresetId = raceWeek.id;
+    }
+  }
+
   const row = await prisma.training_plan_preset.update({
     where: { id },
     data,
-    include: {
-      longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
-      easyConfig: true,
-      tempoConfig: true,
-      intervalsConfig: true,
-    },
+    include: presetLinkInclude,
   });
 
   return NextResponse.json({ success: true, preset: serializeBuildPreset(row) });

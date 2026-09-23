@@ -11,6 +11,11 @@ type PresetRow = {
   slug: string;
   presetCore: PresetCoreMeta;
   longRunConfigId: string | null;
+  snapPeakLongRunMiles: number | null;
+  snapPeakWeeklyMiles: number | null;
+  buildConfig: { name: string } | null;
+  taperConfig: { name: string } | null;
+  raceWeekPreset: { title: string } | null;
 };
 
 function CoreMetaGrid({ core }: { core: PresetCoreMeta }) {
@@ -84,7 +89,7 @@ export default function PresetsListPage() {
         <div>
           <h1 className="text-2xl font-bold">Presets</h1>
           <p className="text-sm text-gray-600">
-            Preset core is five numbers — expand a row, then open to link rotations.
+            A preset snaps mileage from a build and a taper, and points at a race week.
           </p>
         </div>
         <button
@@ -114,6 +119,12 @@ export default function PresetsListPage() {
                   >
                     <p className="font-medium">{row.title}</p>
                     <p className="text-xs text-gray-500">{row.slug}</p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      Snap {row.snapPeakLongRunMiles ?? "—"} mi long run · {row.snapPeakWeeklyMiles ?? "—"} mi week
+                      {row.buildConfig ? ` · ${row.buildConfig.name}` : ""}
+                      {row.taperConfig ? ` · ${row.taperConfig.name}` : ""}
+                      {row.raceWeekPreset ? ` · ${row.raceWeekPreset.title}` : ""}
+                    </p>
                   </button>
                   <Link
                     href={`/dashboard/presets/${row.id}`}
