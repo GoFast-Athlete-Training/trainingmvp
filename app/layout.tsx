@@ -5,6 +5,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Training Manage — GoFast",
   description: "Staff training preset cockpit",
+  icons: {
+    icon: [{ url: "/logo.jpg", type: "image/jpeg" }],
+    apple: [{ url: "/logo.jpg", type: "image/jpeg" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
