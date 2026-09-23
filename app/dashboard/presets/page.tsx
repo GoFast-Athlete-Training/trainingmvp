@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
 import { useCallback, useEffect, useState } from "react";
 
@@ -20,8 +21,10 @@ function mi(n: number | null) {
 }
 
 export default function PresetsListPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<PresetRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,6 +42,25 @@ export default function PresetsListPage() {
     void load();
   }, [load]);
 
+  async function buildPreset() {
+    setCreating(true);
+    try {
+      const res = await authFetch("/api/training/plan-preset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Untitled" }),
+      });
+      const data = (await res.json()) as { preset?: { id: string } };
+      if (data.preset?.id) {
+        router.push(`/dashboard/presets/${data.preset.id}`);
+      } else {
+        await load();
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function deletePreset(id: string, title: string) {
     if (!window.confirm(`Delete preset “${title}”? Build, taper, race week, and catalogue stay.`)) return;
     setDeletingId(id);
@@ -52,16 +74,26 @@ export default function PresetsListPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Plan presets</h1>
-        <p className="text-sm text-gray-600">
-          Each preset links a build preset, taper preset, and race week preset. Mileage snaps live on the preset row.
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Plan presets</h1>
+          <p className="text-sm text-gray-600">
+            Each preset links build, taper, and race week. Mileage snaps live on the preset row.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={creating}
+          onClick={() => void buildPreset()}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        >
+          {creating ? "Opening…" : "Build preset"}
+        </button>
       </div>
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-gray-500">No presets in Training Manage yet. Send from Company HQ or import.</p>
+        <p className="text-gray-500">No presets yet. Use Build preset to start, or send from Company HQ.</p>
       ) : (
         <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
           {rows.map((row) => (

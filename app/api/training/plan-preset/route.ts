@@ -35,3 +35,54 @@ export async function GET(request: NextRequest) {
     presets: rows.map(serializeBuildPreset),
   });
 }
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+/** Minimal plan preset + empty linked build, taper, and race week for the wizard. */
+export async function POST(request: NextRequest) {
+  const auth = await assertTrainingManagerAuth(request);
+  if (auth.error) return auth.error;
+
+  const body = (await request.json().catch(() => ({}))) as { title?: string };
+  const title = body.title?.trim() || "Untitled";
+  const baseSlug = slugify(title);
+  let slug = baseSlug || `preset-${Date.now()}`;
+  let n = 0;
+  while (await prisma.training_plan_preset.findUnique({ where: { slug } })) {
+    n += 1;
+    slug = `${baseSlug || "preset"}-${n}`;
+  }
+
+  const preset = await prisma.$transaction(async (tx) => {
+    const build = await tx.build_preset.create({ data: { name: "Build" } });
+    const taper = await tx.taper_preset.create({ data: { name: "Taper" } });
+    const raceWeek = await tx.race_week_preset.create({ data: { title: "Race week" } });
+    return tx.training_plan_preset.create({
+      data: {
+        slug,
+        title,
+        description: "",
+        buildPresetId: build.id,
+        taperPresetId: taper.id,
+        raceWeekPresetId: raceWeek.id,
+      },
+      include: {
+        longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
+        easyConfig: true,
+        tempoConfig: true,
+        intervalsConfig: true,
+        buildPreset: { select: { id: true, name: true } },
+        taperPreset: { select: { id: true, name: true } },
+        raceWeekPreset: { select: { id: true, title: true } },
+      },
+    });
+  });
+
+  return NextResponse.json({ success: true, preset: serializeBuildPreset(preset) });
+}
