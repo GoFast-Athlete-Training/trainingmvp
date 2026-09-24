@@ -1,70 +1,41 @@
 import type { Prisma, training_plan_preset } from "@prisma/client";
 
-/** Company HQ preset body fields stored on build_preset after modular split. */
-export function planPresetBodyForBuild(
+/** Rotation FKs copied from import onto phase rows when Company still sends monolithic preset. */
+export function rotationIdsFromPlan(
   p: Pick<
     training_plan_preset,
-    | "longRunCycleWeeks"
-    | "minWeeklyMiles"
-    | "maxWeeklyMiles"
-    | "baseLongRunPoolMiles"
-    | "peakLongRunPoolMiles"
-    | "taperLongRunPoolMiles"
-    | "tempoIdealDow"
-    | "intervalIdealDow"
-    | "longRunDefaultDow"
-    | "longRunConfigId"
-    | "intervalsConfigId"
-    | "tempoConfigId"
-    | "easyConfigId"
-    | "easyRunConfig"
-    | "coachPlanOverview"
-    | "workoutStructure"
+    "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
   >,
-): Prisma.build_presetUncheckedUpdateInput {
+): Pick<
+  Prisma.build_presetUncheckedCreateInput,
+  "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
+> {
   return {
-    longRunCycleWeeks: p.longRunCycleWeeks,
-    minWeeklyMiles: p.minWeeklyMiles,
-    maxWeeklyMiles: p.maxWeeklyMiles,
-    baseLongRunPoolMiles: p.baseLongRunPoolMiles,
-    peakLongRunPoolMiles: p.peakLongRunPoolMiles,
-    taperLongRunPoolMiles: p.taperLongRunPoolMiles,
-    tempoIdealDow: p.tempoIdealDow,
-    intervalIdealDow: p.intervalIdealDow,
-    longRunDefaultDow: p.longRunDefaultDow,
     longRunConfigId: p.longRunConfigId,
     intervalsConfigId: p.intervalsConfigId,
     tempoConfigId: p.tempoConfigId,
     easyConfigId: p.easyConfigId,
-    easyRunConfig: p.easyRunConfig ?? undefined,
-    coachPlanOverview: p.coachPlanOverview ?? undefined,
-    workoutStructure: p.workoutStructure ?? undefined,
   };
 }
 
-export function planPresetBodyForTaper(
+export function rotationIdsForTaper(
   p: Pick<
     training_plan_preset,
-    | "taperLongRunPoolMiles"
-    | "tempoIdealDow"
-    | "intervalIdealDow"
-    | "longRunDefaultDow"
-    | "longRunConfigId"
-    | "intervalsConfigId"
-    | "tempoConfigId"
-    | "easyConfigId"
-    | "easyRunConfig"
+    "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
   >,
-): Prisma.taper_presetUncheckedUpdateInput {
-  return {
-    taperLongRunPoolMiles: p.taperLongRunPoolMiles,
-    tempoIdealDow: p.tempoIdealDow,
-    intervalIdealDow: p.intervalIdealDow,
-    longRunDefaultDow: p.longRunDefaultDow,
-    longRunConfigId: p.longRunConfigId,
-    intervalsConfigId: p.intervalsConfigId,
-    tempoConfigId: p.tempoConfigId,
-    easyConfigId: p.easyConfigId,
-    easyRunConfig: p.easyRunConfig ?? undefined,
-  };
+): Pick<
+  Prisma.taper_presetUncheckedCreateInput,
+  "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
+> {
+  return rotationIdsFromPlan(p);
+}
+
+/** @deprecated use rotationIdsFromPlan — pools removed */
+export function planPresetBodyForBuild(): Prisma.build_presetUncheckedUpdateInput {
+  return {};
+}
+
+/** @deprecated */
+export function planPresetBodyForTaper(): Prisma.taper_presetUncheckedUpdateInput {
+  return {};
 }

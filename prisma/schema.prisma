@@ -165,6 +165,7 @@ model training_plan_preset {
   description String?
   publicDescription String?
   targetDistanceLabel String?
+  planDurationWeeks   Int?
 
   personaId String?
   goalId    String?
@@ -182,9 +183,6 @@ model training_plan_preset {
   longRunCycleWeeks  Int    @default(4)
   minWeeklyMiles     Int    @default(40)
   maxWeeklyMiles     Int?
-  baseLongRunPoolMiles  Float @default(0)
-  peakLongRunPoolMiles  Float @default(0)
-  taperLongRunPoolMiles Float @default(0)
   tempoIdealDow      Int    @default(2)
   intervalIdealDow   Int    @default(4)
   longRunDefaultDow  Int    @default(6)
@@ -230,23 +228,14 @@ model build_preset {
   id   String @id @default(cuid())
   name String
 
-  longRunCycleWeeks     Int   @default(4)
-  minWeeklyMiles        Int   @default(40)
-  maxWeeklyMiles        Int?
-  baseLongRunPoolMiles  Float @default(0)
-  peakLongRunPoolMiles  Float @default(0)
-  taperLongRunPoolMiles Float @default(0)
-  tempoIdealDow         Int   @default(2)
-  intervalIdealDow      Int   @default(4)
-  longRunDefaultDow     Int   @default(6)
+  startLongRunMiles Float?
+  peakLongRunMiles  Float?
+  maxWeeklyMiles    Int?
 
   longRunConfigId   String?
   intervalsConfigId String?
   tempoConfigId     String?
   easyConfigId      String?
-  easyRunConfig       Json?
-  coachPlanOverview   Json?
-  workoutStructure    Json?
 
   longRunConfig   long_run_config?  @relation("BuildLongRun", fields: [longRunConfigId], references: [id], onDelete: SetNull)
   intervalsConfig intervals_config? @relation("BuildIntervals", fields: [intervalsConfigId], references: [id], onDelete: SetNull)
@@ -273,17 +262,11 @@ model taper_preset {
   week1LongRunMiles Float?
   week2TotalMiles   Float?
   week2LongRunMiles Float?
-  taperLongRunPoolMiles Float @default(0)
-
-  tempoIdealDow     Int @default(2)
-  intervalIdealDow  Int @default(4)
-  longRunDefaultDow Int @default(6)
 
   longRunConfigId   String?
   intervalsConfigId String?
   tempoConfigId     String?
   easyConfigId      String?
-  easyRunConfig     Json?
 
   longRunConfig   long_run_config?  @relation("TaperLongRun", fields: [longRunConfigId], references: [id], onDelete: SetNull)
   intervalsConfig intervals_config? @relation("TaperIntervals", fields: [intervalsConfigId], references: [id], onDelete: SetNull)

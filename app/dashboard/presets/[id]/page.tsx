@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { authFetch } from "@/components/AppProviders";
 import {
-  PhaseRotationBolts,
-  type PhaseRotationIds,
-} from "@/components/training-manager/PhaseRotationBolts";
+  BuildPhaseFields,
+  buildFormFromApi,
+  buildPatchBody,
+  type BuildFormState,
+} from "@/components/training-manager/BuildPhaseFields";
+import { PhaseChooseOrBuild } from "@/components/training-manager/PhaseChooseOrBuild";
 import { RaceWeekDaysEditor } from "@/components/training-manager/RaceWeekDaysEditor";
-import { DOW_OPTIONS } from "@/lib/training/dow-options";
+import {
+  TaperPhaseFields,
+  taperFormFromApi,
+  taperPatchBody,
+  type TaperFormState,
+} from "@/components/training-manager/TaperPhaseFields";
+import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
 import { parseRaceWeekDays, type RaceWeekDaySlot } from "@/lib/training/race-week-days";
 import { useCallback, useEffect, useState } from "react";
 
@@ -16,55 +25,15 @@ type WizardStep = "build" | "taper" | "raceWeek";
 type PresetDetail = {
   id: string;
   title: string;
-  slug: string;
   description: string | null;
+  publicDescription: string | null;
+  targetDistanceLabel: string | null;
+  planDurationWeeks: number | null;
   buildPresetId: string | null;
   taperPresetId: string | null;
   raceWeekPresetId: string | null;
   snapPeakLongRunMiles: number | null;
   snapPeakWeeklyMiles: number | null;
-  snapTaperWeek1TotalMiles: number | null;
-  snapTaperWeek1LongRunMiles: number | null;
-  snapTaperWeek2TotalMiles: number | null;
-  snapTaperWeek2LongRunMiles: number | null;
-  longRunConfigId?: string | null;
-  easyConfigId?: string | null;
-  tempoConfigId?: string | null;
-  intervalsConfigId?: string | null;
-  minWeeklyMiles?: number;
-  maxWeeklyMiles?: number | null;
-  baseLongRunPoolMiles?: number;
-  peakLongRunPoolMiles?: number;
-  tempoIdealDow?: number;
-  intervalIdealDow?: number;
-  longRunDefaultDow?: number;
-  easyRunConfig?: unknown;
-};
-
-type BuildPhase = {
-  id: string;
-  minWeeklyMiles: number;
-  maxWeeklyMiles: number | null;
-  baseLongRunPoolMiles: number;
-  peakLongRunPoolMiles: number;
-  taperLongRunPoolMiles: number;
-  tempoIdealDow: number;
-  intervalIdealDow: number;
-  longRunDefaultDow: number;
-  easyStandardMiles: number;
-  easyMinMiles: number;
-  easyPaceOffset: number;
-  rotations: PhaseRotationIds;
-};
-
-type TaperPhase = {
-  id: string;
-  week1Total: string;
-  week1Lr: string;
-  week2Total: string;
-  week2Lr: string;
-  taperLongRunPoolMiles: string;
-  rotations: PhaseRotationIds;
 };
 
 function mi(n: number | null) {
@@ -77,29 +46,27 @@ const STEPS: { id: WizardStep; label: string }[] = [
   { id: "raceWeek", label: "Race week" },
 ];
 
-function easyFromJson(raw: unknown): { standard: number; min: number; pace: number } {
-  if (raw == null || typeof raw !== "object") return { standard: 6, min: 4, pace: 90 };
-  const o = raw as Record<string, unknown>;
-  return {
-    standard: typeof o.standardMiles === "number" ? o.standardMiles : 6,
-    min: typeof o.minMiles === "number" ? o.minMiles : 4,
-    pace: typeof o.paceOffsetSecPerMile === "number" ? o.paceOffsetSecPerMile : 90,
-  };
-}
-
 export default function PresetWizardPage({ params }: { params: Promise<{ id: string }> }) {
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<PresetDetail | null>(null);
   const [step, setStep] = useState<WizardStep>("build");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [publicDescription, setPublicDescription] = useState("");
+  const [targetDistanceLabel, setTargetDistanceLabel] = useState("");
+  const [planDurationWeeks, setPlanDurationWeeks] = useState("");
   const [saving, setSaving] = useState(false);
   const [stepSaved, setStepSaved] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
 
-  const [build, setBuild] = useState<BuildPhase | null>(null);
-  const [taper, setTaper] = useState<TaperPhase | null>(null);
+  const [buildForm, setBuildForm] = useState<BuildFormState | null>(null);
+  const [taperForm, setTaperForm] = useState<TaperFormState | null>(null);
   const [raceDays, setRaceDays] = useState<RaceWeekDaySlot[]>(() => parseRaceWeekDays(null));
   const [shakeoutConfigId, setShakeoutConfigId] = useState("");
+
+  const [changeBuild, setChangeBuild] = useState(false);
+  const [changeTaper, setChangeTaper] = useState(false);
+  const [changeRace, setChangeRace] = useState(false);
 
   useEffect(() => {
     void params.then((p) => setPresetId(p.id));
@@ -120,153 +87,16 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     [presetId],
   );
 
-  const ensurePhaseLinks = useCallback(
-    async (p: PresetDetail): Promise<PresetDetail> => {
-      let current = p;
-      if (!current.buildPresetId) {
-        const res = await authFetch("/api/training/build-preset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Build" }),
-        });
-        const data = (await res.json()) as { build?: { id: string } };
-        if (data.build?.id) {
-          const updated = await patchPreset({ buildPresetId: data.build.id });
-          if (updated) current = updated;
-        }
-      }
-      if (!current.taperPresetId) {
-        const res = await authFetch("/api/training/taper-preset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Taper" }),
-        });
-        const data = (await res.json()) as { taper?: { id: string } };
-        if (data.taper?.id) {
-          const updated = await patchPreset({ taperPresetId: data.taper.id });
-          if (updated) current = updated;
-        }
-      }
-      if (!current.raceWeekPresetId) {
-        const res = await authFetch("/api/training/race-week-preset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: "Race week" }),
-        });
-        const data = (await res.json()) as { preset?: { id: string } };
-        if (data.preset?.id) {
-          const updated = await patchPreset({ raceWeekPresetId: data.preset.id });
-          if (updated) current = updated;
-        }
-      }
-      return current;
-    },
-    [patchPreset],
-  );
-
-  const loadBuild = useCallback(
-    async (buildPresetId: string, planFallback?: PresetDetail) => {
-      const res = await authFetch(`/api/training/build-preset/${buildPresetId}`);
-      const data = (await res.json()) as {
-        build?: {
-          id: string;
-          minWeeklyMiles: number;
-          maxWeeklyMiles: number | null;
-          baseLongRunPoolMiles: number;
-          peakLongRunPoolMiles: number;
-          taperLongRunPoolMiles: number;
-          tempoIdealDow: number;
-          intervalIdealDow: number;
-          longRunDefaultDow: number;
-          longRunConfigId: string | null;
-          easyConfigId: string | null;
-          tempoConfigId: string | null;
-          intervalsConfigId: string | null;
-          easyRunConfig: unknown;
-        };
-      };
-      let b = data.build;
-      if (!b) return;
-      if (!b.longRunConfigId && planFallback?.longRunConfigId) {
-        await authFetch(`/api/training/build-preset/${buildPresetId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            minWeeklyMiles: planFallback.minWeeklyMiles,
-            maxWeeklyMiles: planFallback.maxWeeklyMiles,
-            baseLongRunPoolMiles: planFallback.baseLongRunPoolMiles,
-            peakLongRunPoolMiles: planFallback.peakLongRunPoolMiles,
-            tempoIdealDow: planFallback.tempoIdealDow,
-            intervalIdealDow: planFallback.intervalIdealDow,
-            longRunDefaultDow: planFallback.longRunDefaultDow,
-            longRunConfigId: planFallback.longRunConfigId,
-            easyConfigId: planFallback.easyConfigId,
-            tempoConfigId: planFallback.tempoConfigId,
-            intervalsConfigId: planFallback.intervalsConfigId,
-            easyRunConfig: planFallback.easyRunConfig,
-          }),
-        });
-        const again = await authFetch(`/api/training/build-preset/${buildPresetId}`);
-        const againData = (await again.json()) as { build?: typeof b };
-        if (againData.build) b = againData.build;
-      }
-      const easy = easyFromJson(b.easyRunConfig);
-      setBuild({
-        id: b.id,
-        minWeeklyMiles: b.minWeeklyMiles,
-        maxWeeklyMiles: b.maxWeeklyMiles,
-        baseLongRunPoolMiles: b.baseLongRunPoolMiles,
-        peakLongRunPoolMiles: b.peakLongRunPoolMiles,
-        taperLongRunPoolMiles: b.taperLongRunPoolMiles,
-        tempoIdealDow: b.tempoIdealDow,
-        intervalIdealDow: b.intervalIdealDow,
-        longRunDefaultDow: b.longRunDefaultDow,
-        easyStandardMiles: easy.standard,
-        easyMinMiles: easy.min,
-        easyPaceOffset: easy.pace,
-        rotations: {
-          longRunConfigId: b.longRunConfigId ?? planFallback?.longRunConfigId ?? "",
-          easyConfigId: b.easyConfigId ?? "",
-          tempoConfigId: b.tempoConfigId ?? "",
-          intervalsConfigId: b.intervalsConfigId ?? "",
-        },
-      });
-    },
-    [],
-  );
+  const loadBuild = useCallback(async (buildPresetId: string) => {
+    const res = await authFetch(`/api/training/build-preset/${buildPresetId}`);
+    const data = (await res.json()) as { build?: Parameters<typeof buildFormFromApi>[0] };
+    if (data.build) setBuildForm(buildFormFromApi(data.build));
+  }, []);
 
   const loadTaper = useCallback(async (taperPresetId: string) => {
     const res = await authFetch(`/api/training/taper-preset/${taperPresetId}`);
-    const data = (await res.json()) as {
-      taper?: {
-        id: string;
-        week1TotalMiles: number | null;
-        week1LongRunMiles: number | null;
-        week2TotalMiles: number | null;
-        week2LongRunMiles: number | null;
-        taperLongRunPoolMiles: number;
-        longRunConfigId: string | null;
-        easyConfigId: string | null;
-        tempoConfigId: string | null;
-        intervalsConfigId: string | null;
-      };
-    };
-    const t = data.taper;
-    if (!t) return;
-    setTaper({
-      id: t.id,
-      week1Total: t.week1TotalMiles == null ? "" : String(t.week1TotalMiles),
-      week1Lr: t.week1LongRunMiles == null ? "" : String(t.week1LongRunMiles),
-      week2Total: t.week2TotalMiles == null ? "" : String(t.week2TotalMiles),
-      week2Lr: t.week2LongRunMiles == null ? "" : String(t.week2LongRunMiles),
-      taperLongRunPoolMiles: String(t.taperLongRunPoolMiles),
-      rotations: {
-        longRunConfigId: t.longRunConfigId ?? "",
-        easyConfigId: t.easyConfigId ?? "",
-        tempoConfigId: t.tempoConfigId ?? "",
-        intervalsConfigId: t.intervalsConfigId ?? "",
-      },
-    });
+    const data = (await res.json()) as { taper?: Parameters<typeof taperFormFromApi>[0] };
+    if (data.taper) setTaperForm(taperFormFromApi(data.taper));
   }, []);
 
   const loadRace = useCallback(async (raceWeekPresetId: string) => {
@@ -283,17 +113,21 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const load = useCallback(async () => {
     if (!presetId) return;
     const presetRes = await authFetch(`/api/training/plan-preset/${presetId}`);
-    const presetData = (await presetRes.json()) as { preset?: PresetDetail & Record<string, unknown> };
-    let p = presetData.preset ?? null;
+    const presetData = (await presetRes.json()) as { preset?: PresetDetail };
+    const p = presetData.preset ?? null;
     if (!p) return;
-    p = await ensurePhaseLinks(p);
     setPreset(p);
     setTitle(p.title);
     setDescription(p.description ?? "");
-    if (p.buildPresetId) await loadBuild(p.buildPresetId, p);
+    setPublicDescription(p.publicDescription ?? "");
+    setTargetDistanceLabel(p.targetDistanceLabel ?? "");
+    setPlanDurationWeeks(p.planDurationWeeks == null ? "" : String(p.planDurationWeeks));
+    if (p.buildPresetId) await loadBuild(p.buildPresetId);
+    else setBuildForm(null);
     if (p.taperPresetId) await loadTaper(p.taperPresetId);
+    else setTaperForm(null);
     if (p.raceWeekPresetId) await loadRace(p.raceWeekPresetId);
-  }, [presetId, ensurePhaseLinks, loadBuild, loadTaper, loadRace]);
+  }, [presetId, loadBuild, loadTaper, loadRace]);
 
   useEffect(() => {
     void load();
@@ -302,43 +136,65 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   async function saveMeta() {
     setSaving(true);
     try {
-      await patchPreset({ title, description });
+      await patchPreset({
+        title,
+        description,
+        publicDescription,
+        targetDistanceLabel: targetDistanceLabel || null,
+        planDurationWeeks:
+          planDurationWeeks === "" ? null : Math.max(1, Math.round(Number(planDurationWeeks))),
+      });
     } finally {
       setSaving(false);
     }
   }
 
-  function n(v: string) {
-    return v === "" ? null : Number(v);
+  async function developPublicDescription() {
+    if (!presetId) return;
+    setAiBusy(true);
+    try {
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/develop-public-description`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as { publicDescription?: string; error?: string };
+      if (data.publicDescription) {
+        setPublicDescription(data.publicDescription);
+        await patchPreset({ publicDescription: data.publicDescription });
+      }
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function linkPhase(phase: WizardStep, id: string) {
+    const key =
+      phase === "build"
+        ? "buildPresetId"
+        : phase === "taper"
+          ? "taperPresetId"
+          : "raceWeekPresetId";
+    await patchPreset({ [key]: id });
+    if (phase === "build") {
+      setChangeBuild(false);
+      await loadBuild(id);
+    } else if (phase === "taper") {
+      setChangeTaper(false);
+      await loadTaper(id);
+    } else {
+      setChangeRace(false);
+      await loadRace(id);
+    }
+    await load();
   }
 
   async function saveBuildStep() {
-    if (!build || !preset?.buildPresetId) return;
+    if (!buildForm || !preset?.buildPresetId) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/build-preset/${build.id}`, {
+      await authFetch(`/api/training/build-preset/${buildForm.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          minWeeklyMiles: build.minWeeklyMiles,
-          maxWeeklyMiles: build.maxWeeklyMiles,
-          baseLongRunPoolMiles: Math.max(0, build.baseLongRunPoolMiles),
-          peakLongRunPoolMiles: Math.max(0, build.peakLongRunPoolMiles),
-          taperLongRunPoolMiles: Math.max(0, build.taperLongRunPoolMiles),
-          tempoIdealDow: build.tempoIdealDow,
-          intervalIdealDow: build.intervalIdealDow,
-          longRunDefaultDow: build.longRunDefaultDow,
-          longRunConfigId: build.rotations.longRunConfigId || null,
-          easyConfigId: build.rotations.easyConfigId || null,
-          tempoConfigId: build.rotations.tempoConfigId || null,
-          intervalsConfigId: build.rotations.intervalsConfigId || null,
-          easyRunConfig: {
-            standardMiles: build.easyStandardMiles,
-            minMiles: build.easyMinMiles,
-            paceOffsetSecPerMile: build.easyPaceOffset,
-            weeklyTargetBufferMiles: 0,
-          },
-        }),
+        body: JSON.stringify(buildPatchBody(buildForm)),
       });
       await patchPreset({ buildPresetId: preset.buildPresetId });
       await load();
@@ -350,23 +206,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   }
 
   async function saveTaperStep() {
-    if (!taper || !preset?.taperPresetId) return;
+    if (!taperForm || !preset?.taperPresetId) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/taper-preset/${taper.id}`, {
+      await authFetch(`/api/training/taper-preset/${taperForm.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          week1TotalMiles: n(taper.week1Total),
-          week1LongRunMiles: n(taper.week1Lr),
-          week2TotalMiles: n(taper.week2Total),
-          week2LongRunMiles: n(taper.week2Lr),
-          taperLongRunPoolMiles: n(taper.taperLongRunPoolMiles),
-          longRunConfigId: taper.rotations.longRunConfigId || null,
-          easyConfigId: taper.rotations.easyConfigId || null,
-          tempoConfigId: taper.rotations.tempoConfigId || null,
-          intervalsConfigId: taper.rotations.intervalsConfigId || null,
-        }),
+        body: JSON.stringify(taperPatchBody(taperForm)),
       });
       await patchPreset({ taperPresetId: preset.taperPresetId });
       await load();
@@ -384,10 +230,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       await authFetch(`/api/training/race-week-preset/${preset.raceWeekPresetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slots: raceDays,
-          shakeoutRunConfigId: shakeoutConfigId || null,
-        }),
+        body: JSON.stringify({ slots: raceDays, shakeoutRunConfigId: shakeoutConfigId || null }),
       });
       setStepSaved(true);
       setTimeout(() => setStepSaved(false), 2000);
@@ -396,7 +239,11 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
-  if (!preset || !build) return <p className="text-gray-500">Loading…</p>;
+  if (!preset) return <p className="text-gray-500">Loading…</p>;
+
+  const showBuildPicker = !preset.buildPresetId || changeBuild;
+  const showTaperPicker = !preset.taperPresetId || changeTaper;
+  const showRacePicker = !preset.raceWeekPresetId || changeRace;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -432,196 +279,187 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 onBlur={() => void saveMeta()}
               />
             </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="text-gray-600">Target distance</span>
+                <select
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={targetDistanceLabel}
+                  onChange={(e) => {
+                    setTargetDistanceLabel(e.target.value);
+                    void patchPreset({ targetDistanceLabel: e.target.value || null });
+                  }}
+                >
+                  <option value="">Any distance</option>
+                  {TARGET_DISTANCE_OPTIONS.filter(Boolean).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-600">Plan length (weeks)</span>
+                <input
+                  type="number"
+                  min={1}
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={planDurationWeeks}
+                  onChange={(e) => setPlanDurationWeeks(e.target.value)}
+                  onBlur={() => void saveMeta()}
+                />
+              </label>
+            </div>
             <label className="block text-sm">
-              <span className="text-gray-600">Description</span>
+              <span className="text-gray-600">Description (staff)</span>
               <textarea
                 className="mt-1 w-full rounded border px-3 py-2"
-                rows={3}
+                rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 onBlur={() => void saveMeta()}
               />
             </label>
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-sm text-gray-600">Public description (athlete-facing)</span>
+                <button
+                  type="button"
+                  disabled={aiBusy}
+                  onClick={() => void developPublicDescription()}
+                  className="text-sm font-medium text-sky-700 hover:underline disabled:opacity-50"
+                >
+                  {aiBusy ? "Drafting…" : "Develop public description"}
+                </button>
+              </div>
+              <textarea
+                className="w-full rounded border px-3 py-2 text-sm"
+                rows={3}
+                value={publicDescription}
+                onChange={(e) => setPublicDescription(e.target.value)}
+                onBlur={() => void saveMeta()}
+              />
+            </div>
           </section>
 
           {step === "build" ? (
             <section className="space-y-4">
-              <div>
-                <h2 className="text-lg font-semibold">Build</h2>
-                <p className="text-sm text-gray-600">Core volume + run-type rotations (Company HQ pattern).</p>
-                <p className="mt-1 text-xs text-gray-500">
-                  Snap LR {mi(preset.snapPeakLongRunMiles)} · week {mi(preset.snapPeakWeeklyMiles)}
-                </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Build</h2>
+                  <p className="text-xs text-gray-500">
+                    Snap LR {mi(preset.snapPeakLongRunMiles)} · week {mi(preset.snapPeakWeeklyMiles)}
+                  </p>
+                </div>
+                {preset.buildPresetId && !changeBuild ? (
+                  <button
+                    type="button"
+                    className="text-sm text-sky-700 hover:underline"
+                    onClick={() => setChangeBuild(true)}
+                  >
+                    Change build
+                  </button>
+                ) : null}
               </div>
-              <section className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="text-gray-600">Min weekly miles</span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.minWeeklyMiles}
-                    onChange={(e) => setBuild({ ...build, minWeeklyMiles: Number(e.target.value) || 0 })}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Peak weekly miles</span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.maxWeeklyMiles ?? ""}
-                    onChange={(e) =>
-                      setBuild({
-                        ...build,
-                        maxWeeklyMiles: e.target.value === "" ? null : Number(e.target.value),
-                      })
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Base long-run pool</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.1"
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.baseLongRunPoolMiles}
-                    onChange={(e) => setBuild({ ...build, baseLongRunPoolMiles: Number(e.target.value) || 0 })}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Peak long-run pool</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.1"
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.peakLongRunPoolMiles}
-                    onChange={(e) => setBuild({ ...build, peakLongRunPoolMiles: Number(e.target.value) || 0 })}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Tempo day (DOW)</span>
-                  <select
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.tempoIdealDow}
-                    onChange={(e) => setBuild({ ...build, tempoIdealDow: Number(e.target.value) })}
+              {showBuildPicker ? (
+                <PhaseChooseOrBuild
+                  phase="build"
+                  linkedId={preset.buildPresetId}
+                  onLinked={(id) => void linkPhase("build", id)}
+                />
+              ) : null}
+              {buildForm && !showBuildPicker ? (
+                <>
+                  <BuildPhaseFields value={buildForm} onChange={setBuildForm} />
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveBuildStep()}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                   >
-                    {DOW_OPTIONS.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Intervals day (DOW)</span>
-                  <select
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.intervalIdealDow}
-                    onChange={(e) => setBuild({ ...build, intervalIdealDow: Number(e.target.value) })}
-                  >
-                    {DOW_OPTIONS.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Long run day (DOW)</span>
-                  <select
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={build.longRunDefaultDow}
-                    onChange={(e) => setBuild({ ...build, longRunDefaultDow: Number(e.target.value) })}
-                  >
-                    {DOW_OPTIONS.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </section>
-              <PhaseRotationBolts
-                value={build.rotations}
-                onChange={(rotations) => setBuild({ ...build, rotations })}
-              />
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void saveBuildStep()}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
-              </button>
+                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
+                  </button>
+                </>
+              ) : null}
             </section>
           ) : null}
 
-          {step === "taper" && taper ? (
+          {step === "taper" ? (
             <section className="space-y-4">
-              <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Taper</h2>
-                <p className="text-sm text-gray-600">Taper miles + same rotation bolt pattern.</p>
+                {preset.taperPresetId && !changeTaper ? (
+                  <button
+                    type="button"
+                    className="text-sm text-sky-700 hover:underline"
+                    onClick={() => setChangeTaper(true)}
+                  >
+                    Change taper
+                  </button>
+                ) : null}
               </div>
-              <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="text-gray-600">Week 1 total (mi)</span>
-                  <input type="number" min={0} className="mt-1 w-full rounded border px-3 py-2" value={taper.week1Total} onChange={(e) => setTaper({ ...taper, week1Total: e.target.value })} />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Week 1 long run (mi)</span>
-                  <input type="number" min={0} className="mt-1 w-full rounded border px-3 py-2" value={taper.week1Lr} onChange={(e) => setTaper({ ...taper, week1Lr: e.target.value })} />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Week 2 total (mi)</span>
-                  <input type="number" min={0} className="mt-1 w-full rounded border px-3 py-2" value={taper.week2Total} onChange={(e) => setTaper({ ...taper, week2Total: e.target.value })} />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-gray-600">Week 2 long run (mi)</span>
-                  <input type="number" min={0} className="mt-1 w-full rounded border px-3 py-2" value={taper.week2Lr} onChange={(e) => setTaper({ ...taper, week2Lr: e.target.value })} />
-                </label>
-                <label className="block text-sm sm:col-span-2">
-                  <span className="text-gray-600">Taper long-run pool</span>
-                  <input type="number" min={0} step="0.1" className="mt-1 w-full rounded border px-3 py-2" value={taper.taperLongRunPoolMiles} onChange={(e) => setTaper({ ...taper, taperLongRunPoolMiles: e.target.value })} />
-                </label>
-              </div>
-              <PhaseRotationBolts
-                value={taper.rotations}
-                onChange={(rotations) => setTaper({ ...taper, rotations })}
-              />
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void saveTaperStep()}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {saving ? "Saving…" : stepSaved ? "Saved" : "Save taper"}
-              </button>
+              {showTaperPicker ? (
+                <PhaseChooseOrBuild
+                  phase="taper"
+                  linkedId={preset.taperPresetId}
+                  onLinked={(id) => void linkPhase("taper", id)}
+                />
+              ) : null}
+              {taperForm && !showTaperPicker ? (
+                <>
+                  <TaperPhaseFields value={taperForm} onChange={setTaperForm} />
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveTaperStep()}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save taper"}
+                  </button>
+                </>
+              ) : null}
             </section>
           ) : null}
 
           {step === "raceWeek" ? (
             <section className="space-y-4">
-              <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Race week</h2>
-                <p className="text-sm text-gray-600">Monday–Friday slot types bolt to rotation configs.</p>
+                {preset.raceWeekPresetId && !changeRace ? (
+                  <button
+                    type="button"
+                    className="text-sm text-sky-700 hover:underline"
+                    onClick={() => setChangeRace(true)}
+                  >
+                    Change race week
+                  </button>
+                ) : null}
               </div>
-              <RaceWeekDaysEditor
-                days={raceDays}
-                onChange={setRaceDays}
-                shakeoutConfigId={shakeoutConfigId}
-                onShakeoutChange={setShakeoutConfigId}
-              />
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void saveRaceStep()}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {saving ? "Saving…" : stepSaved ? "Saved" : "Save race week"}
-              </button>
+              {showRacePicker ? (
+                <PhaseChooseOrBuild
+                  phase="raceWeek"
+                  linkedId={preset.raceWeekPresetId}
+                  onLinked={(id) => void linkPhase("raceWeek", id)}
+                />
+              ) : null}
+              {preset.raceWeekPresetId && !showRacePicker ? (
+                <>
+                  <RaceWeekDaysEditor
+                    days={raceDays}
+                    onChange={setRaceDays}
+                    shakeoutConfigId={shakeoutConfigId}
+                    onShakeoutChange={setShakeoutConfigId}
+                  />
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveRaceStep()}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save race week"}
+                  </button>
+                </>
+              ) : null}
             </section>
           ) : null}
         </div>

@@ -43,7 +43,7 @@ export default function RaceWeekPage() {
     const res = await authFetch("/api/training/race-week-preset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Race week" }),
+        body: JSON.stringify({ title: "Untitled" }),
     });
     const data = (await res.json()) as { preset?: { id: string } };
     await load();

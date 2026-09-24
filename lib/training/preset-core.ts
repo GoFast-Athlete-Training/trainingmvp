@@ -20,10 +20,11 @@ export type PresetCoreMeta = {
 };
 
 export type PresetCoreSource = {
-  minWeeklyMiles: number;
+  minWeeklyMiles?: number;
   maxWeeklyMiles: number | null;
   coachPlanOverview: unknown;
-  peakLongRunPoolMiles?: number | null;
+  snapPeakLongRunMiles?: number | null;
+  peakLongRunMiles?: number | null;
 };
 
 const DEFAULT_COMPOSITION: WeeklyWorkoutComposition = {
@@ -82,11 +83,11 @@ export function presetCoreFromPreset(input: PresetCoreSource): PresetCoreMeta {
   const weeklyVolumePeakMiles =
     input.maxWeeklyMiles != null && input.maxWeeklyMiles > 0
       ? Math.round(input.maxWeeklyMiles)
-      : Math.max(1, Math.round(input.minWeeklyMiles));
+      : Math.max(1, Math.round(input.minWeeklyMiles ?? 40));
   const weeklyAverageMiles = calculateWeeklyAverageFromVolumePeak(weeklyVolumePeakMiles);
   const longRunPeakMiles =
     readLongRunPeakFromOverview(input.coachPlanOverview) ??
-    legacyPoolLooksLikeSingleRun(input.peakLongRunPoolMiles);
+    legacyPoolLooksLikeSingleRun(input.snapPeakLongRunMiles ?? input.peakLongRunMiles);
 
   return {
     longRunPeakMiles,

@@ -44,33 +44,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {};
   if (typeof body.name === "string") data.name = body.name.trim();
 
-  const ints = [
-    ["longRunCycleWeeks", body.longRunCycleWeeks],
-    ["minWeeklyMiles", body.minWeeklyMiles],
-    ["maxWeeklyMiles", body.maxWeeklyMiles],
-    ["tempoIdealDow", body.tempoIdealDow],
-    ["intervalIdealDow", body.intervalIdealDow],
-    ["longRunDefaultDow", body.longRunDefaultDow],
-  ] as const;
-  for (const [key, val] of ints) {
-    const n = intOrUndef(val);
-    if (n !== undefined) data[key] = n;
-    if (val === null) data[key] = null;
-  }
-
-  const floats = [
-    ["baseLongRunPoolMiles", body.baseLongRunPoolMiles],
-    ["peakLongRunPoolMiles", body.peakLongRunPoolMiles],
-    ["taperLongRunPoolMiles", body.taperLongRunPoolMiles],
-  ] as const;
-  for (const [key, val] of floats) {
-    const n = numOrNull(val);
+  for (const key of ["startLongRunMiles", "peakLongRunMiles"] as const) {
+    const n = numOrNull(body[key]);
     if (n !== undefined) data[key] = n;
   }
-
-  if (body.easyRunConfig !== undefined) data.easyRunConfig = body.easyRunConfig;
-  if (body.coachPlanOverview !== undefined) data.coachPlanOverview = body.coachPlanOverview;
-  if (body.workoutStructure !== undefined) data.workoutStructure = body.workoutStructure;
+  const maxWeekly = intOrUndef(body.maxWeeklyMiles);
+  if (maxWeekly !== undefined) data.maxWeeklyMiles = maxWeekly;
+  if (body.maxWeeklyMiles === null) data.maxWeeklyMiles = null;
 
   for (const key of ["longRunConfigId", "easyConfigId", "tempoConfigId", "intervalsConfigId"] as const) {
     const v = configId(body, key);

@@ -70,6 +70,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (typeof body.title === "string") data.title = body.title.trim();
   if (typeof body.description === "string") data.description = body.description.trim();
   if (body.description === null) data.description = null;
+  if (typeof body.publicDescription === "string") data.publicDescription = body.publicDescription.trim();
+  if (body.publicDescription === null) data.publicDescription = null;
+  if (typeof body.targetDistanceLabel === "string") {
+    data.targetDistanceLabel = body.targetDistanceLabel.trim() || null;
+  }
+  if (body.targetDistanceLabel === null) data.targetDistanceLabel = null;
+  if (typeof body.planDurationWeeks === "number" && Number.isFinite(body.planDurationWeeks)) {
+    data.planDurationWeeks = Math.max(1, Math.round(body.planDurationWeeks));
+  }
+  if (body.planDurationWeeks === null) data.planDurationWeeks = null;
   if (typeof body.coachIntent === "string") data.coachIntent = body.coachIntent.trim();
   if (body.coachIntent === null) data.coachIntent = null;
 
@@ -85,7 +95,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         return NextResponse.json({ success: false, error: "Build preset not found" }, { status: 404 });
       }
       data.buildPresetId = build.id;
-      data.snapPeakLongRunMiles = build.peakLongRunPoolMiles;
+      data.snapPeakLongRunMiles = build.peakLongRunMiles;
       data.snapPeakWeeklyMiles = build.maxWeeklyMiles;
     }
   }

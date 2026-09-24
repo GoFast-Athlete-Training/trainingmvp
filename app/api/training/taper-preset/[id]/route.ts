@@ -16,11 +16,6 @@ function numOrNull(v: unknown): number | null | undefined {
   return undefined;
 }
 
-function intOrUndef(v: unknown): number | undefined {
-  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
-  return undefined;
-}
-
 function configId(body: Record<string, unknown>, key: string): string | null | undefined {
   if (!(key in body)) return undefined;
   return typeof body[key] === "string" && body[key] ? (body[key] as string) : null;
@@ -49,18 +44,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "week1LongRunMiles",
     "week2TotalMiles",
     "week2LongRunMiles",
-    "taperLongRunPoolMiles",
   ] as const) {
     const n = numOrNull(body[key]);
     if (n !== undefined) data[key] = n;
   }
-
-  for (const key of ["tempoIdealDow", "intervalIdealDow", "longRunDefaultDow"] as const) {
-    const n = intOrUndef(body[key]);
-    if (n !== undefined) data[key] = n;
-  }
-
-  if (body.easyRunConfig !== undefined) data.easyRunConfig = body.easyRunConfig;
 
   for (const key of ["longRunConfigId", "easyConfigId", "tempoConfigId", "intervalsConfigId"] as const) {
     const v = configId(body, key);

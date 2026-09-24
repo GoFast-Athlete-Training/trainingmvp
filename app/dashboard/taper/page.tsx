@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
 import { useCallback, useEffect, useState } from "react";
 
@@ -14,6 +15,7 @@ type TaperRow = {
 };
 
 export default function TaperListPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<TaperRow[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -30,12 +32,14 @@ export default function TaperListPage() {
   async function createTaper() {
     setCreating(true);
     try {
-      await authFetch("/api/training/taper-preset", {
+      const res = await authFetch("/api/training/taper-preset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New taper preset" }),
+        body: JSON.stringify({ name: "Untitled" }),
       });
-      await load();
+      const data = (await res.json()) as { taper?: { id: string } };
+      if (data.taper?.id) router.push(`/dashboard/taper/${data.taper.id}`);
+      else await load();
     } finally {
       setCreating(false);
     }
@@ -45,10 +49,8 @@ export default function TaperListPage() {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Taper preset</h1>
-          <p className="text-sm text-gray-600">
-            Two weeks of total miles and long-run miles, plus any taper-only workouts.
-          </p>
+          <h1 className="text-2xl font-bold">Taper presets</h1>
+          <p className="text-sm text-gray-600">Two taper weeks plus run-type rotations.</p>
         </div>
         <button
           type="button"
@@ -76,6 +78,9 @@ export default function TaperListPage() {
         ))}
         {rows.length === 0 ? <li className="px-4 py-6 text-sm text-gray-500">No tapers yet.</li> : null}
       </ul>
+      <Link href="/dashboard/presets" className="text-sm text-sky-700 hover:underline">
+        ← Plan presets
+      </Link>
     </div>
   );
 }

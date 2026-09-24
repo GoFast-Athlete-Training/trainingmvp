@@ -1,45 +1,47 @@
 import type { Prisma } from "@prisma/client";
-import { planPresetBodyForBuild, planPresetBodyForTaper } from "@/lib/training/copy-plan-body-to-build";
+import { rotationIdsForTaper, rotationIdsFromPlan } from "@/lib/training/copy-plan-body-to-build";
 
 type Tx = Prisma.TransactionClient;
 
 export async function syncPhaseRowsFromPlanPreset(tx: Tx, planId: string) {
-  const plan = await tx.training_plan_preset.findUnique({ where: { id: planId } });
+  const plan = await tx.training_plan_preset.findUnique({
+    where: { id: planId },
+    include: { goal: { select: { planDurationWeeks: true } } },
+  });
   if (!plan) return;
 
-  const buildBody = planPresetBodyForBuild(plan) as Prisma.build_presetUncheckedCreateInput;
-  let buildPresetId = plan.buildPresetId;
-  if (!buildPresetId) {
-    const created = await tx.build_preset.create({
-      data: { ...buildBody, name: "Build" },
-    });
-    buildPresetId = created.id;
-  } else {
-    await tx.build_preset.update({
-      where: { id: buildPresetId },
-      data: buildBody,
+  if (plan.planDurationWeeks == null && plan.goal?.planDurationWeeks != null) {
+    await tx.training_plan_preset.update({
+      where: { id: planId },
+      data: { planDurationWeeks: plan.goal.planDurationWeeks },
     });
   }
 
-  const taperBody = planPresetBodyForTaper(plan) as Prisma.taper_presetUncheckedCreateInput;
+  const rotations = rotationIdsFromPlan(plan);
+  let buildPresetId = plan.buildPresetId;
+  if (!buildPresetId) {
+    const created = await tx.build_preset.create({
+      data: { name: "Untitled", ...rotations },
+    });
+    buildPresetId = created.id;
+  } else {
+    await tx.build_preset.update({ where: { id: buildPresetId }, data: rotations });
+  }
+
+  const taperRotations = rotationIdsForTaper(plan);
   let taperPresetId = plan.taperPresetId;
   if (!taperPresetId) {
     const created = await tx.taper_preset.create({
-      data: { ...taperBody, name: "Taper" },
+      data: { name: "Untitled", ...taperRotations },
     });
     taperPresetId = created.id;
   } else {
-    await tx.taper_preset.update({
-      where: { id: taperPresetId },
-      data: taperBody,
-    });
+    await tx.taper_preset.update({ where: { id: taperPresetId }, data: taperRotations });
   }
 
   let raceWeekPresetId = plan.raceWeekPresetId;
   if (!raceWeekPresetId) {
-    const created = await tx.race_week_preset.create({
-      data: { title: "Race week" },
-    });
+    const created = await tx.race_week_preset.create({ data: { title: "Untitled" } });
     raceWeekPresetId = created.id;
   }
 
@@ -52,7 +54,7 @@ export async function syncPhaseRowsFromPlanPreset(tx: Tx, planId: string) {
       buildPresetId,
       taperPresetId,
       raceWeekPresetId,
-      snapPeakLongRunMiles: build?.peakLongRunPoolMiles ?? null,
+      snapPeakLongRunMiles: build?.peakLongRunMiles ?? null,
       snapPeakWeeklyMiles: build?.maxWeeklyMiles ?? null,
       snapTaperWeek1TotalMiles: taper?.week1TotalMiles ?? null,
       snapTaperWeek1LongRunMiles: taper?.week1LongRunMiles ?? null,

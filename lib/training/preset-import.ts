@@ -419,9 +419,12 @@ async function importGraph(tx: Tx, p: Record<string, unknown>) {
     longRunCycleWeeks: num(p.longRunCycleWeeks) ?? 4,
     minWeeklyMiles: num(p.minWeeklyMiles) ?? 40,
     maxWeeklyMiles: num(p.maxWeeklyMiles) ?? null,
-    baseLongRunPoolMiles: num(p.baseLongRunPoolMiles) ?? 0,
-    peakLongRunPoolMiles: num(p.peakLongRunPoolMiles) ?? 0,
-    taperLongRunPoolMiles: num(p.taperLongRunPoolMiles) ?? 0,
+    planDurationWeeks:
+      num(p.planDurationWeeks) ??
+      (goalId
+        ? ((await tx.training_plan_goal.findUnique({ where: { id: goalId }, select: { planDurationWeeks: true } }))
+            ?.planDurationWeeks ?? undefined)
+        : undefined),
     tempoIdealDow: num(p.tempoIdealDow) ?? 2,
     intervalIdealDow: num(p.intervalIdealDow) ?? 4,
     longRunDefaultDow: num(p.longRunDefaultDow) ?? 6,

@@ -60,17 +60,11 @@ export async function POST(request: NextRequest) {
   }
 
   const preset = await prisma.$transaction(async (tx) => {
-    const build = await tx.build_preset.create({ data: { name: "Build" } });
-    const taper = await tx.taper_preset.create({ data: { name: "Taper" } });
-    const raceWeek = await tx.race_week_preset.create({ data: { title: "Race week" } });
     return tx.training_plan_preset.create({
       data: {
         slug,
         title,
         description: "",
-        buildPresetId: build.id,
-        taperPresetId: taper.id,
-        raceWeekPresetId: raceWeek.id,
       },
       include: {
         longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
