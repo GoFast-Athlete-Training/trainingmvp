@@ -2,6 +2,7 @@
 
 import { authFetch } from "@/components/AppProviders";
 import { RotationCombobox } from "@/components/training-manager/RotationCombobox";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type ConfigRow = { id: string; name: string };
@@ -12,6 +13,8 @@ export type PhaseRotationIds = {
   tempoConfigId: string;
   intervalsConfigId: string;
 };
+
+const RUN_TYPE_CONFIG_HREF = "/dashboard/long-run-config";
 
 export function PhaseRotationBolts({
   value,
@@ -43,7 +46,11 @@ export function PhaseRotationBolts({
     <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
       <h2 className="font-semibold">Run-type rotations</h2>
       <p className="text-sm text-gray-600">
-        Bolt ordered rotation presets (Company HQ pattern). Plan generate resolves catalogue workouts through these configs.
+        Choose a preset for run rotation or{" "}
+        <Link href={RUN_TYPE_CONFIG_HREF} className="font-medium text-sky-700 hover:underline">
+          create one
+        </Link>{" "}
+        in Run Type Config. Each slot is a catalogue workout in order (no pool percentages).
       </p>
       <div className="grid gap-6 md:grid-cols-2">
         <RotationCombobox
@@ -51,28 +58,28 @@ export function PhaseRotationBolts({
           options={longConfigs}
           value={value.longRunConfigId}
           onChange={(id) => onChange({ ...value, longRunConfigId: id })}
-          manageHref="/dashboard/long-run-config"
+          manageHref={RUN_TYPE_CONFIG_HREF}
         />
         <RotationCombobox
           label="Easy rotation"
           options={easyConfigs}
           value={value.easyConfigId}
           onChange={(id) => onChange({ ...value, easyConfigId: id })}
-          manageHref="/dashboard/long-run-config"
+          manageHref={RUN_TYPE_CONFIG_HREF}
         />
         <RotationCombobox
           label="Tempo rotation"
           options={tempoConfigs}
           value={value.tempoConfigId}
           onChange={(id) => onChange({ ...value, tempoConfigId: id })}
-          manageHref="/dashboard/long-run-config"
+          manageHref={RUN_TYPE_CONFIG_HREF}
         />
         <RotationCombobox
           label="Intervals rotation"
           options={intervalsConfigs}
           value={value.intervalsConfigId}
           onChange={(id) => onChange({ ...value, intervalsConfigId: id })}
-          manageHref="/dashboard/long-run-config"
+          manageHref={RUN_TYPE_CONFIG_HREF}
         />
       </div>
     </section>

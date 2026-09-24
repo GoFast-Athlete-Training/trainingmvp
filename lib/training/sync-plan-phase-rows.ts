@@ -4,18 +4,8 @@ import { rotationIdsForTaper, rotationIdsFromPlan } from "@/lib/training/copy-pl
 type Tx = Prisma.TransactionClient;
 
 export async function syncPhaseRowsFromPlanPreset(tx: Tx, planId: string) {
-  const plan = await tx.training_plan_preset.findUnique({
-    where: { id: planId },
-    include: { goal: { select: { planDurationWeeks: true } } },
-  });
+  const plan = await tx.training_plan_preset.findUnique({ where: { id: planId } });
   if (!plan) return;
-
-  if (plan.planDurationWeeks == null && plan.goal?.planDurationWeeks != null) {
-    await tx.training_plan_preset.update({
-      where: { id: planId },
-      data: { planDurationWeeks: plan.goal.planDurationWeeks },
-    });
-  }
 
   const rotations = rotationIdsFromPlan(plan);
   let buildPresetId = plan.buildPresetId;

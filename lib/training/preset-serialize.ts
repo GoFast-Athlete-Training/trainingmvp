@@ -31,7 +31,6 @@ export function serializeBuildPreset(
     description: row.description,
     publicDescription: row.publicDescription,
     targetDistanceLabel: row.targetDistanceLabel,
-    planDurationWeeks: row.planDurationWeeks,
     coachIntent: row.coachIntent,
     personaId: row.personaId,
     minWeeklyMiles: row.minWeeklyMiles,

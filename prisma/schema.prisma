@@ -165,7 +165,6 @@ model training_plan_preset {
   description String?
   publicDescription String?
   targetDistanceLabel String?
-  planDurationWeeks   Int?
 
   personaId String?
   goalId    String?

@@ -20,7 +20,7 @@ import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
 import { parseRaceWeekDays, type RaceWeekDaySlot } from "@/lib/training/race-week-days";
 import { useCallback, useEffect, useState } from "react";
 
-type WizardStep = "build" | "taper" | "raceWeek";
+type WizardStep = "core" | "build" | "taper" | "raceWeek";
 
 type PresetDetail = {
   id: string;
@@ -28,7 +28,6 @@ type PresetDetail = {
   description: string | null;
   publicDescription: string | null;
   targetDistanceLabel: string | null;
-  planDurationWeeks: number | null;
   buildPresetId: string | null;
   taperPresetId: string | null;
   raceWeekPresetId: string | null;
@@ -41,20 +40,27 @@ function mi(n: number | null) {
 }
 
 const STEPS: { id: WizardStep; label: string }[] = [
+  { id: "core", label: "Core" },
   { id: "build", label: "Build" },
   { id: "taper", label: "Taper" },
   { id: "raceWeek", label: "Race week" },
 ];
 
+const NEXT_STEP: Record<WizardStep, WizardStep | null> = {
+  core: "build",
+  build: "taper",
+  taper: "raceWeek",
+  raceWeek: null,
+};
+
 export default function PresetWizardPage({ params }: { params: Promise<{ id: string }> }) {
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<PresetDetail | null>(null);
-  const [step, setStep] = useState<WizardStep>("build");
+  const [step, setStep] = useState<WizardStep>("core");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [publicDescription, setPublicDescription] = useState("");
   const [targetDistanceLabel, setTargetDistanceLabel] = useState("");
-  const [planDurationWeeks, setPlanDurationWeeks] = useState("");
   const [saving, setSaving] = useState(false);
   const [stepSaved, setStepSaved] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -121,7 +127,6 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     setDescription(p.description ?? "");
     setPublicDescription(p.publicDescription ?? "");
     setTargetDistanceLabel(p.targetDistanceLabel ?? "");
-    setPlanDurationWeeks(p.planDurationWeeks == null ? "" : String(p.planDurationWeeks));
     if (p.buildPresetId) await loadBuild(p.buildPresetId);
     else setBuildForm(null);
     if (p.taperPresetId) await loadTaper(p.taperPresetId);
@@ -141,22 +146,23 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         description,
         publicDescription,
         targetDistanceLabel: targetDistanceLabel || null,
-        planDurationWeeks:
-          planDurationWeeks === "" ? null : Math.max(1, Math.round(Number(planDurationWeeks))),
       });
     } finally {
       setSaving(false);
     }
   }
 
-  async function developPublicDescription() {
-    if (!presetId) return;
+  async function cleanupPublicDescription() {
+    const draft = publicDescription.trim();
+    if (!draft || !presetId) return;
     setAiBusy(true);
     try {
       const res = await authFetch(`/api/training/plan-preset/${presetId}/develop-public-description`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft }),
       });
-      const data = (await res.json()) as { publicDescription?: string; error?: string };
+      const data = (await res.json()) as { publicDescription?: string };
       if (data.publicDescription) {
         setPublicDescription(data.publicDescription);
         await patchPreset({ publicDescription: data.publicDescription });
@@ -166,7 +172,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
-  async function linkPhase(phase: WizardStep, id: string) {
+  async function linkPhase(phase: Exclude<WizardStep, "core">, id: string) {
     const key =
       phase === "build"
         ? "buildPresetId"
@@ -239,11 +245,21 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function goNext() {
+    if (step === "core") await saveMeta();
+    else if (step === "build") await saveBuildStep();
+    else if (step === "taper") await saveTaperStep();
+    else if (step === "raceWeek") await saveRaceStep();
+    const next = NEXT_STEP[step];
+    if (next) setStep(next);
+  }
+
   if (!preset) return <p className="text-gray-500">Loading…</p>;
 
   const showBuildPicker = !preset.buildPresetId || changeBuild;
   const showTaperPicker = !preset.taperPresetId || changeTaper;
   const showRacePicker = !preset.raceWeekPresetId || changeRace;
+  const nextLabel = step === "raceWeek" ? "Save" : "Next";
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -268,27 +284,29 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         </nav>
 
         <div className="min-w-0 flex-1 space-y-6">
-          <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="font-semibold">Preset</h2>
-            <label className="block text-sm">
-              <span className="text-gray-600">Name</span>
-              <input
-                className="mt-1 w-full rounded border px-3 py-2"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => void saveMeta()}
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
+          {step === "core" ? (
+            <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+              <div>
+                <h2 className="text-lg font-semibold">Core</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  This is the plan preset: how staff identify the template and what athletes read publicly.
+                  Athletes choose how many weeks to train when they start a plan.
+                </p>
+              </div>
+              <label className="block text-sm">
+                <span className="text-gray-600">Name</span>
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </label>
               <label className="block text-sm">
                 <span className="text-gray-600">Target distance</span>
                 <select
-                  className="mt-1 w-full rounded border px-3 py-2"
+                  className="mt-1 w-full max-w-md rounded border px-3 py-2"
                   value={targetDistanceLabel}
-                  onChange={(e) => {
-                    setTargetDistanceLabel(e.target.value);
-                    void patchPreset({ targetDistanceLabel: e.target.value || null });
-                  }}
+                  onChange={(e) => setTargetDistanceLabel(e.target.value)}
                 >
                   <option value="">Any distance</option>
                   {TARGET_DISTANCE_OPTIONS.filter(Boolean).map((d) => (
@@ -299,48 +317,44 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="text-gray-600">Plan length (weeks)</span>
-                <input
-                  type="number"
-                  min={1}
+                <span className="text-gray-600">Description (staff)</span>
+                <textarea
                   className="mt-1 w-full rounded border px-3 py-2"
-                  value={planDurationWeeks}
-                  onChange={(e) => setPlanDurationWeeks(e.target.value)}
-                  onBlur={() => void saveMeta()}
+                  rows={2}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
               </label>
-            </div>
-            <label className="block text-sm">
-              <span className="text-gray-600">Description (staff)</span>
-              <textarea
-                className="mt-1 w-full rounded border px-3 py-2"
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onBlur={() => void saveMeta()}
-              />
-            </label>
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
+              <div>
                 <span className="text-sm text-gray-600">Public description (athlete-facing)</span>
-                <button
-                  type="button"
-                  disabled={aiBusy}
-                  onClick={() => void developPublicDescription()}
-                  className="text-sm font-medium text-sky-700 hover:underline disabled:opacity-50"
-                >
-                  {aiBusy ? "Drafting…" : "Develop public description"}
-                </button>
+                <textarea
+                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  rows={3}
+                  value={publicDescription}
+                  onChange={(e) => setPublicDescription(e.target.value)}
+                  placeholder="Write what athletes should see, then clean up with AI if you want."
+                />
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    disabled={aiBusy || !publicDescription.trim()}
+                    onClick={() => void cleanupPublicDescription()}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {aiBusy ? "Cleaning up…" : "Clean up"}
+                  </button>
+                </div>
               </div>
-              <textarea
-                className="w-full rounded border px-3 py-2 text-sm"
-                rows={3}
-                value={publicDescription}
-                onChange={(e) => setPublicDescription(e.target.value)}
-                onBlur={() => void saveMeta()}
-              />
-            </div>
-          </section>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void goNext()}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Next — Build"}
+              </button>
+            </section>
+          ) : null}
 
           {step === "build" ? (
             <section className="space-y-4">
@@ -371,14 +385,24 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
               {buildForm && !showBuildPicker ? (
                 <>
                   <BuildPhaseFields value={buildForm} onChange={setBuildForm} />
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void saveBuildStep()}
-                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void saveBuildStep()}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void goNext()}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : nextLabel}
+                    </button>
+                  </div>
                 </>
               ) : null}
             </section>
@@ -408,14 +432,24 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
               {taperForm && !showTaperPicker ? (
                 <>
                   <TaperPhaseFields value={taperForm} onChange={setTaperForm} />
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void saveTaperStep()}
-                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save taper"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void saveTaperStep()}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save taper"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void goNext()}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : nextLabel}
+                    </button>
+                  </div>
                 </>
               ) : null}
             </section>
@@ -453,7 +487,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   <button
                     type="button"
                     disabled={saving}
-                    onClick={() => void saveRaceStep()}
+                    onClick={() => void goNext()}
                     className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {saving ? "Saving…" : stepSaved ? "Saved" : "Save race week"}

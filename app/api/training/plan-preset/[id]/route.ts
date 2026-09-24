@@ -76,10 +76,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     data.targetDistanceLabel = body.targetDistanceLabel.trim() || null;
   }
   if (body.targetDistanceLabel === null) data.targetDistanceLabel = null;
-  if (typeof body.planDurationWeeks === "number" && Number.isFinite(body.planDurationWeeks)) {
-    data.planDurationWeeks = Math.max(1, Math.round(body.planDurationWeeks));
-  }
-  if (body.planDurationWeeks === null) data.planDurationWeeks = null;
   if (typeof body.coachIntent === "string") data.coachIntent = body.coachIntent.trim();
   if (body.coachIntent === null) data.coachIntent = null;
 

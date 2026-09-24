@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, ChevronDown, ChevronRight, Layers, ListTree } from "lucide-react";
+import { ChevronDown, ChevronRight, Layers, ListTree, Repeat } from "lucide-react";
 import { useState } from "react";
 
 const PHASE_LINKS = [
@@ -24,6 +24,8 @@ export default function TrainingManagerSidebar() {
   const phaseActive = PHASE_LINKS.some(
     (p) => pathname === p.href || pathname.startsWith(`${p.href}/`),
   );
+  const runTypeActive =
+    pathname === "/dashboard/long-run-config" || pathname.startsWith("/dashboard/long-run-config/");
   const [presetsOpen, setPresetsOpen] = useState(presetsActive || phaseActive);
 
   return (
@@ -88,6 +90,15 @@ export default function TrainingManagerSidebar() {
 
           <button
             type="button"
+            onClick={() => router.push("/dashboard/long-run-config")}
+            className={navButtonClass(runTypeActive)}
+          >
+            <Repeat className="h-4 w-4 shrink-0" />
+            <span className="font-medium">Run Type Config</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => router.push("/dashboard/catalogue")}
             className={navButtonClass(
               pathname === "/dashboard/catalogue" || pathname.startsWith("/dashboard/catalogue/"),
@@ -98,13 +109,6 @@ export default function TrainingManagerSidebar() {
           </button>
         </div>
       </nav>
-
-      <div className="border-t border-gray-200 p-4">
-        <p className="flex items-center gap-2 text-xs text-gray-500">
-          <CalendarDays className="h-3.5 w-3.5" />
-          Build or choose phase presets under each plan.
-        </p>
-      </div>
     </aside>
   );
 }

@@ -8,10 +8,9 @@ export function rotationIdsFromPlan(
   >,
 ): Pick<
   Prisma.build_presetUncheckedCreateInput,
-  "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
+  "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
 > {
   return {
-    longRunConfigId: p.longRunConfigId,
     intervalsConfigId: p.intervalsConfigId,
     tempoConfigId: p.tempoConfigId,
     easyConfigId: p.easyConfigId,
@@ -25,7 +24,7 @@ export function rotationIdsForTaper(
   >,
 ): Pick<
   Prisma.taper_presetUncheckedCreateInput,
-  "longRunConfigId" | "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
+  "intervalsConfigId" | "tempoConfigId" | "easyConfigId"
 > {
   return rotationIdsFromPlan(p);
 }

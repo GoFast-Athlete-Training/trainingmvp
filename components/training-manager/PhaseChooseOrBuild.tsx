@@ -17,6 +17,8 @@ export function PhaseChooseOrBuild({
   const [rows, setRows] = useState<Row[]>([]);
   const [selected, setSelected] = useState(linkedId ?? "");
   const [busy, setBusy] = useState(false);
+  const [namingNew, setNamingNew] = useState(false);
+  const [newName, setNewName] = useState("");
 
   const listUrl =
     phase === "build"
@@ -59,13 +61,13 @@ export function PhaseChooseOrBuild({
     onLinked(selected);
   }
 
-  async function buildNew() {
+  async function createWithName() {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
     setBusy(true);
     try {
       const body =
-        phase === "raceWeek"
-          ? { title: "Untitled" }
-          : { name: "Untitled" };
+        phase === "raceWeek" ? { title: trimmed } : { name: trimmed };
       const res = await authFetch(listUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,7 +80,11 @@ export function PhaseChooseOrBuild({
           : phase === "taper"
             ? (data.taper?.id as string)
             : (data.preset?.id as string);
-      if (id) onLinked(id);
+      if (id) {
+        setNamingNew(false);
+        setNewName("");
+        onLinked(id);
+      }
     } finally {
       setBusy(false);
     }
@@ -87,10 +93,50 @@ export function PhaseChooseOrBuild({
   const phaseLabel =
     phase === "build" ? "build preset" : phase === "taper" ? "taper preset" : "race week";
 
+  if (namingNew) {
+    return (
+      <section className="space-y-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+        <p className="text-sm text-gray-700">
+          Name this {phaseLabel}. You will pick it by this name when you link it on another plan.
+        </p>
+        <label className="block text-sm">
+          <span className="text-gray-600">Name</span>
+          <input
+            className="mt-1 w-full max-w-md rounded border px-3 py-2"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            autoFocus
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy || !newName.trim()}
+            onClick={() => void createWithName()}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Creating…" : "Create and continue"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setNamingNew(false);
+              setNewName("");
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
       <p className="text-sm text-gray-700">
-        Choose an existing {phaseLabel} or build a new one (starts as <strong>Untitled</strong>).
+        Choose an existing {phaseLabel} or build a new one.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block min-w-[12rem] flex-1 text-sm">
@@ -119,10 +165,10 @@ export function PhaseChooseOrBuild({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void buildNew()}
+          onClick={() => setNamingNew(true)}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {busy ? "Creating…" : "Build new"}
+          Build new
         </button>
       </div>
     </section>
