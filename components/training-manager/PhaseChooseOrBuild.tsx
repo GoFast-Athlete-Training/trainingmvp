@@ -1,6 +1,7 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
+import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { useEffect, useState } from "react";
 
 type Row = { id: string; label: string };
@@ -139,21 +140,13 @@ export function PhaseChooseOrBuild({
         Choose an existing {phaseLabel} or build a new one.
       </p>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="block min-w-[12rem] flex-1 text-sm">
-          <span className="text-gray-600">Choose</span>
-          <select
-            className="mt-1 w-full rounded border px-3 py-2"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            <option value="">Select…</option>
-            {rows.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SearchCombobox
+          label="Choose"
+          options={rows}
+          value={selected}
+          onChange={setSelected}
+          placeholder="Search presets…"
+        />
         <button
           type="button"
           disabled={!selected}

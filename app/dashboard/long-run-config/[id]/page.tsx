@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
-import { useCallback, useEffect, useState } from "react";
-
-type CatalogueItem = { id: string; name: string; workoutType: string };
+import {
+  CatalogueSlotCombobox,
+  type CataloguePickerItem,
+} from "@/components/training-manager/CatalogueSlotCombobox";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type PositionRow = {
   cyclePosition: number;
@@ -12,33 +15,39 @@ type PositionRow = {
 };
 
 export default function LongRunConfigEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const pathname = usePathname();
   const [configId, setConfigId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [catalogue, setCatalogue] = useState<CatalogueItem[]>([]);
+  const [catalogue, setCatalogue] = useState<CataloguePickerItem[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void params.then((p) => setConfigId(p.id));
   }, [params]);
 
+  const createHref = useMemo(() => {
+    const returnTo = encodeURIComponent(pathname ?? "/dashboard/long-run-config");
+    return `/dashboard/catalogue?new=1&type=LongRun&returnTo=${returnTo}`;
+  }, [pathname]);
+
   const load = useCallback(async () => {
     if (!configId) return;
     const [configRes, catRes] = await Promise.all([
       authFetch(`/api/training/long-run-config/${configId}`),
-      authFetch("/api/training/catalogue"),
+      authFetch("/api/training/catalogue?workoutType=LongRun"),
     ]);
     const configData = (await configRes.json()) as {
       config?: { name: string; positions: PositionRow[] };
     };
-    const catData = (await catRes.json()) as { items?: CatalogueItem[] };
+    const catData = (await catRes.json()) as { items?: CataloguePickerItem[] };
     if (configData.config) {
       setName(configData.config.name);
       setPositions(
         [...configData.config.positions].sort((a, b) => a.cyclePosition - b.cyclePosition),
       );
     }
-    setCatalogue((catData.items ?? []).filter((i) => i.workoutType === "LongRun"));
+    setCatalogue(catData.items ?? []);
   }, [configId]);
 
   useEffect(() => {
@@ -75,8 +84,7 @@ export default function LongRunConfigEditorPage({ params }: { params: Promise<{ 
       <div>
         <h1 className="text-2xl font-bold">Long run rotation</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Ordered catalogue workouts for each week in the cycle. Miles come from the build preset, not pool
-          percentages.
+          Search catalogue workouts for each slot in order. Miles come from the build preset.
         </p>
       </div>
       <label className="block text-sm">
@@ -87,29 +95,21 @@ export default function LongRunConfigEditorPage({ params }: { params: Promise<{ 
           onChange={(e) => setName(e.target.value)}
         />
       </label>
-      <ol className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <ol className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         {positions.map((pos, idx) => (
-          <li key={pos.cyclePosition} className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="w-24 shrink-0 font-medium text-gray-700">Week {idx + 1}</span>
-            <select
-              className="min-w-[12rem] flex-1 rounded border px-3 py-2"
+          <li key={pos.cyclePosition} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+            <p className="mb-2 text-sm font-medium text-gray-700">Slot {idx + 1}</p>
+            <CatalogueSlotCombobox
+              options={catalogue}
               value={pos.catalogueWorkoutId ?? ""}
-              onChange={(e) => {
+              createHref={createHref}
+              workoutTypeLabel="LongRun"
+              onChange={(id) => {
                 const next = [...positions];
-                next[idx] = {
-                  ...pos,
-                  catalogueWorkoutId: e.target.value || null,
-                };
+                next[idx] = { ...pos, catalogueWorkoutId: id || null };
                 setPositions(next);
               }}
-            >
-              <option value="">Select catalogue workout…</option>
-              {catalogue.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            />
           </li>
         ))}
       </ol>
