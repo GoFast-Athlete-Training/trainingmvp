@@ -9,15 +9,16 @@ import {
   type BuildFormState,
 } from "@/components/training-manager/BuildPhaseFields";
 import { PhaseChooseOrBuild } from "@/components/training-manager/PhaseChooseOrBuild";
-import { RaceWeekDaysEditor } from "@/components/training-manager/RaceWeekDaysEditor";
+import { PhaseWeekChrome } from "@/components/training-manager/PhaseWeekChrome";
 import {
   TaperPhaseFields,
   taperFormFromApi,
   taperPatchBody,
   type TaperFormState,
 } from "@/components/training-manager/TaperPhaseFields";
+import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
-import { parseRaceWeekDays, type RaceWeekDaySlot } from "@/lib/training/race-week-days";
+import { defaultPhaseWeekRows, parsePhaseWeekRows } from "@/lib/training/phase-week-pins";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -34,6 +35,8 @@ type PresetDetail = {
   raceWeekPresetId: string | null;
   snapPeakLongRunMiles: number | null;
   snapPeakWeeklyMiles: number | null;
+  minWeeklyMiles: number;
+  maxWeeklyMiles: number | null;
 };
 
 function mi(n: number | null) {
@@ -62,14 +65,18 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [description, setDescription] = useState("");
   const [publicDescription, setPublicDescription] = useState("");
   const [targetDistanceLabel, setTargetDistanceLabel] = useState("");
+  const [minWeeklyMiles, setMinWeeklyMiles] = useState("45");
+  const [maxWeeklyMiles, setMaxWeeklyMiles] = useState("55");
   const [saving, setSaving] = useState(false);
   const [stepSaved, setStepSaved] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
 
   const [buildForm, setBuildForm] = useState<BuildFormState | null>(null);
   const [taperForm, setTaperForm] = useState<TaperFormState | null>(null);
-  const [raceDays, setRaceDays] = useState<RaceWeekDaySlot[]>(() => parseRaceWeekDays(null));
+  const [raceWeekTitle, setRaceWeekTitle] = useState("");
+  const [raceWeekPins, setRaceWeekPins] = useState(() => defaultPhaseWeekRows());
   const [shakeoutConfigId, setShakeoutConfigId] = useState("");
+  const [shakeoutDaysPrior, setShakeoutDaysPrior] = useState(2);
 
   const [changeBuild, setChangeBuild] = useState(false);
   const [changeTaper, setChangeTaper] = useState(false);
@@ -109,11 +116,18 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const loadRace = useCallback(async (raceWeekPresetId: string) => {
     const res = await authFetch(`/api/training/race-week-preset/${raceWeekPresetId}`);
     const data = (await res.json()) as {
-      preset?: { slots: unknown; shakeoutRunConfigId: string | null };
+      preset?: {
+        title: string;
+        weekPins: unknown;
+        shakeoutRunConfigId: string | null;
+        shakeoutDaysPriorToRace: number;
+      };
     };
     if (data.preset) {
-      setRaceDays(parseRaceWeekDays(data.preset.slots));
+      setRaceWeekTitle(data.preset.title ?? "");
+      setRaceWeekPins(parsePhaseWeekRows(data.preset.weekPins));
       setShakeoutConfigId(data.preset.shakeoutRunConfigId ?? "");
+      setShakeoutDaysPrior(data.preset.shakeoutDaysPriorToRace ?? 2);
     }
   }, []);
 
@@ -128,6 +142,8 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     setDescription(p.description ?? "");
     setPublicDescription(p.publicDescription ?? "");
     setTargetDistanceLabel(p.targetDistanceLabel ?? "");
+    setMinWeeklyMiles(String(p.minWeeklyMiles ?? 45));
+    setMaxWeeklyMiles(p.maxWeeklyMiles == null ? "" : String(p.maxWeeklyMiles));
     if (p.buildPresetId) await loadBuild(p.buildPresetId);
     else setBuildForm(null);
     if (p.taperPresetId) await loadTaper(p.taperPresetId);
@@ -142,11 +158,16 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   async function saveMeta() {
     setSaving(true);
     try {
+      const min = Math.round(Number(minWeeklyMiles) || 40);
+      const maxRaw = maxWeeklyMiles.trim();
+      const max = maxRaw === "" ? null : Math.round(Number(maxRaw));
       await patchPreset({
         title,
         description,
         publicDescription,
         targetDistanceLabel: targetDistanceLabel || null,
+        minWeeklyMiles: min,
+        maxWeeklyMiles: max,
       });
     } finally {
       setSaving(false);
@@ -194,15 +215,20 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     await load();
   }
 
+  const saveBuildFieldsOnly = useCallback(async () => {
+    if (!buildForm) return;
+    await authFetch(`/api/training/build-preset/${buildForm.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPatchBody(buildForm)),
+    });
+  }, [buildForm]);
+
   async function saveBuildStep() {
     if (!buildForm || !preset?.buildPresetId) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/build-preset/${buildForm.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPatchBody(buildForm)),
-      });
+      await saveBuildFieldsOnly();
       await patchPreset({ buildPresetId: preset.buildPresetId });
       await load();
       setStepSaved(true);
@@ -237,7 +263,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       await authFetch(`/api/training/race-week-preset/${preset.raceWeekPresetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slots: raceDays, shakeoutRunConfigId: shakeoutConfigId || null }),
+        body: JSON.stringify({
+          title: raceWeekTitle.trim() || "Race week",
+          weekPins: raceWeekPins,
+          shakeoutRunConfigId: shakeoutConfigId || null,
+          shakeoutDaysPriorToRace: shakeoutDaysPrior,
+        }),
       });
       setStepSaved(true);
       setTimeout(() => setStepSaved(false), 2000);
@@ -313,6 +344,32 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="text-gray-600">Typical weekly miles (low)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    value={minWeeklyMiles}
+                    onChange={(e) => setMinWeeklyMiles(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-gray-600">Peak weekly miles</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    value={maxWeeklyMiles}
+                    onChange={(e) => setMaxWeeklyMiles(e.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="text-sm text-gray-600">
+                Most weeks stay in this band. Mileage builds to the peak week (top of the range), then
+                taper and race week take over.
+              </p>
               <label className="block text-sm">
                 <span className="text-gray-600">Target distance</span>
                 <select
@@ -374,7 +431,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 <div>
                   <h2 className="text-lg font-semibold">Build</h2>
                   <p className="text-xs text-gray-500">
-                    Snap LR {mi(preset.snapPeakLongRunMiles)} · week {mi(preset.snapPeakWeeklyMiles)}
+                    {formatPeakMileageSummary(
+                      preset.snapPeakLongRunMiles,
+                      preset.snapPeakWeeklyMiles,
+                    ) ?? "Peak mileage appears after you save the build step"}
                   </p>
                 </div>
                 {preset.buildPresetId && !changeBuild ? (
@@ -396,7 +456,11 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
               ) : null}
               {buildForm && !showBuildPicker ? (
                 <>
-                  <BuildPhaseFields value={buildForm} onChange={setBuildForm} />
+                  <BuildPhaseFields
+                    value={buildForm}
+                    onChange={setBuildForm}
+                    onBeforeManageNavigate={saveBuildFieldsOnly}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -490,11 +554,18 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
               ) : null}
               {preset.raceWeekPresetId && !showRacePicker ? (
                 <>
-                  <RaceWeekDaysEditor
-                    days={raceDays}
-                    onChange={setRaceDays}
-                    shakeoutConfigId={shakeoutConfigId}
-                    onShakeoutChange={setShakeoutConfigId}
+                  <PhaseWeekChrome
+                    name={raceWeekTitle}
+                    onNameChange={setRaceWeekTitle}
+                    nameLabel="Race week title"
+                    weeks={raceWeekPins}
+                    onWeeksChange={setRaceWeekPins}
+                    raceWeekMeta={{
+                      shakeoutConfigId,
+                      onShakeoutChange: setShakeoutConfigId,
+                      shakeoutDaysPrior,
+                      onShakeoutDaysPriorChange: setShakeoutDaysPrior,
+                    }}
                   />
                   <button
                     type="button"

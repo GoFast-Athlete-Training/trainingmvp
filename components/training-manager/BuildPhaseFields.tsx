@@ -17,9 +17,11 @@ export type BuildFormState = {
 export function BuildPhaseFields({
   value,
   onChange,
+  onBeforeManageNavigate,
 }: {
   value: BuildFormState;
   onChange: (v: BuildFormState) => void;
+  onBeforeManageNavigate?: () => void | Promise<void>;
 }) {
   return (
     <div className="space-y-4">
@@ -68,6 +70,7 @@ export function BuildPhaseFields({
       <PhaseRotationBolts
         value={value.rotations}
         onChange={(rotations) => onChange({ ...value, rotations })}
+        onBeforeManageNavigate={onBeforeManageNavigate}
       />
     </div>
   );

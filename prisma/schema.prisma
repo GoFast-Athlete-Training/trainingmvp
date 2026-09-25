@@ -261,6 +261,8 @@ model taper_preset {
   week1LongRunMiles Float?
   week2TotalMiles   Float?
   week2LongRunMiles Float?
+  /// W1–W4 week caps and catalogue pins (non-easy workouts only).
+  weekPins          Json   @default("[]")
 
   longRunConfigId   String?
   intervalsConfigId String?
@@ -307,6 +309,8 @@ model race_week_preset {
   shakeoutDaysPriorToRace Int    @default(2)
   /// [{ offsetFromRace, slotType, easyConfigId?, tempoConfigId?, intervalsConfigId? }]
   slots                   Json   @default("[]")
+  /// W1–W4 week caps and catalogue pins (shared taper/race-week chrome).
+  weekPins                Json   @default("[]")
 
   shakeoutRunConfig shakeout_run_config? @relation(fields: [shakeoutRunConfigId], references: [id], onDelete: SetNull)
   presets           training_plan_preset[]

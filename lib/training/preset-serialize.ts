@@ -88,6 +88,7 @@ export function serializeRaceWeekPreset(row: race_week_preset & { shakeoutRunCon
     shakeoutRunConfigId: row.shakeoutRunConfigId,
     shakeoutDaysPriorToRace: row.shakeoutDaysPriorToRace,
     slots: row.slots,
+    weekPins: row.weekPins,
     shakeoutRunConfig: row.shakeoutRunConfig
       ? {
           id: row.shakeoutRunConfig.id,

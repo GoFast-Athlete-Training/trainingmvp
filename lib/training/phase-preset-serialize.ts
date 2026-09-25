@@ -41,6 +41,7 @@ export function serializeTaperPhasePreset(row: TaperWithConfigs) {
     week1LongRunMiles: row.week1LongRunMiles,
     week2TotalMiles: row.week2TotalMiles,
     week2LongRunMiles: row.week2LongRunMiles,
+    weekPins: row.weekPins,
     longRunConfigId: row.longRunConfigId,
     easyConfigId: row.easyConfigId,
     tempoConfigId: row.tempoConfigId,

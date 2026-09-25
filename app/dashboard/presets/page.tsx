@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
+import { presetListMetaParts } from "@/lib/training/preset-list-copy";
 import { useCallback, useEffect, useState } from "react";
 
 type PresetRow = {
@@ -17,28 +18,6 @@ type PresetRow = {
   taperPreset: { name: string } | null;
   raceWeekPreset: { title: string } | null;
 };
-
-function mi(n: number | null) {
-  return n == null ? null : `${n} mi`;
-}
-
-function presetMetaParts(row: PresetRow): string[] {
-  const parts: string[] = [];
-  if (row.targetDistanceLabel?.trim()) {
-    parts.push(row.targetDistanceLabel.trim());
-  }
-  const peakLr = mi(row.snapPeakLongRunMiles);
-  const peakWk = mi(row.snapPeakWeeklyMiles);
-  if (peakLr != null || peakWk != null) {
-    parts.push(`Snap LR ${peakLr ?? "—"} · week ${peakWk ?? "—"}`);
-  } else if (row.buildPreset) {
-    parts.push("Snaps update after build phase is saved");
-  }
-  if (row.buildPreset?.name) parts.push(`Build: ${row.buildPreset.name}`);
-  if (row.taperPreset?.name) parts.push(`Taper: ${row.taperPreset.name}`);
-  if (row.raceWeekPreset?.title) parts.push(`Race week: ${row.raceWeekPreset.title}`);
-  return parts;
-}
 
 export default function PresetsListPage() {
   const router = useRouter();
@@ -98,7 +77,7 @@ export default function PresetsListPage() {
         <div>
           <h1 className="text-2xl font-bold">Plan presets</h1>
           <p className="text-sm text-gray-600">
-            Each preset links build, taper, and race week. Mileage snaps live on the preset row.
+            Full plan templates — core details plus build, taper, and race week.
           </p>
         </div>
         <button
@@ -117,7 +96,7 @@ export default function PresetsListPage() {
       ) : (
         <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
           {rows.map((row) => {
-            const meta = presetMetaParts(row);
+            const meta = presetListMetaParts(row);
             const staffDesc = row.description?.trim();
             return (
               <li key={row.id} className="flex items-start justify-between gap-3 px-4 py-3">

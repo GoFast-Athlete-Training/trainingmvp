@@ -53,6 +53,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const v = configId(body, key);
     if (v !== undefined) data[key] = v;
   }
+  if (body.weekPins !== undefined) data.weekPins = body.weekPins;
 
   const row = await prisma.taper_preset.update({
     where: { id },

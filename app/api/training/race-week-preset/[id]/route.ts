@@ -39,6 +39,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     data.shakeoutDaysPriorToRace = Math.round(body.shakeoutDaysPriorToRace);
   }
   if (body.slots !== undefined) data.slots = body.slots;
+  if (body.weekPins !== undefined) data.weekPins = body.weekPins;
 
   const row = await prisma.race_week_preset.update({
     where: { id },

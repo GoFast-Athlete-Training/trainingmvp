@@ -1,8 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 type Option = { id: string; name: string };
 
 type RotationComboboxProps = {
@@ -11,6 +9,8 @@ type RotationComboboxProps = {
   value: string;
   onChange: (id: string) => void;
   manageHref: string;
+  /** Persist wizard fields before navigating to Run Type Config. */
+  onBeforeManageNavigate?: () => void | Promise<void>;
 };
 
 export function RotationCombobox({
@@ -19,7 +19,15 @@ export function RotationCombobox({
   value,
   onChange,
   manageHref,
+  onBeforeManageNavigate,
 }: RotationComboboxProps) {
+  async function goManage(e: ReactMouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
+    if (onBeforeManageNavigate) {
+      await onBeforeManageNavigate();
+    }
+    window.location.assign(manageHref);
+  }
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,9 +82,9 @@ export function RotationCombobox({
       {options.length === 0 ? (
         <p className="text-sm text-gray-500">
           No rotations yet.{" "}
-          <Link href={manageHref} className="text-sky-700 hover:underline">
+          <a href={manageHref} onClick={(e) => void goManage(e)} className="text-sky-700 hover:underline">
             Create one
-          </Link>
+          </a>
         </p>
       ) : (
         <div className="relative">
@@ -119,9 +127,9 @@ export function RotationCombobox({
         </div>
       )}
       <p className="mt-1 text-xs text-gray-500">
-        <Link href={manageHref} className="text-sky-700 hover:underline">
+        <a href={manageHref} onClick={(e) => void goManage(e)} className="text-sky-700 hover:underline">
           Manage rotation order & catalogue slots
-        </Link>
+        </a>
       </p>
     </div>
   );

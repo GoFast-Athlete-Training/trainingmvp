@@ -2,7 +2,6 @@
 
 import { authFetch } from "@/components/AppProviders";
 import { RotationCombobox } from "@/components/training-manager/RotationCombobox";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type ConfigRow = { id: string; name: string };
@@ -19,9 +18,11 @@ const RUN_TYPE_CONFIG_HREF = "/dashboard/long-run-config";
 export function PhaseRotationBolts({
   value,
   onChange,
+  onBeforeManageNavigate,
 }: {
   value: PhaseRotationIds;
   onChange: (next: PhaseRotationIds) => void;
+  onBeforeManageNavigate?: () => void | Promise<void>;
 }) {
   const [longConfigs, setLongConfigs] = useState<ConfigRow[]>([]);
   const [easyConfigs, setEasyConfigs] = useState<ConfigRow[]>([]);
@@ -47,9 +48,19 @@ export function PhaseRotationBolts({
       <h2 className="font-semibold">Run-type rotations</h2>
       <p className="text-sm text-gray-600">
         Choose a preset for run rotation or{" "}
-        <Link href={RUN_TYPE_CONFIG_HREF} className="font-medium text-sky-700 hover:underline">
+        <a
+          href={RUN_TYPE_CONFIG_HREF}
+          className="font-medium text-sky-700 hover:underline"
+          onClick={(e) => {
+            e.preventDefault();
+            void (async () => {
+              if (onBeforeManageNavigate) await onBeforeManageNavigate();
+              window.location.assign(RUN_TYPE_CONFIG_HREF);
+            })();
+          }}
+        >
           create one
-        </Link>{" "}
+        </a>{" "}
         in Run Type Config. Each slot is a catalogue workout in order (no pool percentages).
       </p>
       <div className="grid gap-6 md:grid-cols-2">
@@ -59,6 +70,7 @@ export function PhaseRotationBolts({
           value={value.longRunConfigId}
           onChange={(id) => onChange({ ...value, longRunConfigId: id })}
           manageHref={RUN_TYPE_CONFIG_HREF}
+          onBeforeManageNavigate={onBeforeManageNavigate}
         />
         <RotationCombobox
           label="Easy rotation"
@@ -66,6 +78,7 @@ export function PhaseRotationBolts({
           value={value.easyConfigId}
           onChange={(id) => onChange({ ...value, easyConfigId: id })}
           manageHref={RUN_TYPE_CONFIG_HREF}
+          onBeforeManageNavigate={onBeforeManageNavigate}
         />
         <RotationCombobox
           label="Tempo rotation"
@@ -73,6 +86,7 @@ export function PhaseRotationBolts({
           value={value.tempoConfigId}
           onChange={(id) => onChange({ ...value, tempoConfigId: id })}
           manageHref={RUN_TYPE_CONFIG_HREF}
+          onBeforeManageNavigate={onBeforeManageNavigate}
         />
         <RotationCombobox
           label="Intervals rotation"
@@ -80,6 +94,7 @@ export function PhaseRotationBolts({
           value={value.intervalsConfigId}
           onChange={(id) => onChange({ ...value, intervalsConfigId: id })}
           manageHref={RUN_TYPE_CONFIG_HREF}
+          onBeforeManageNavigate={onBeforeManageNavigate}
         />
       </div>
     </section>
