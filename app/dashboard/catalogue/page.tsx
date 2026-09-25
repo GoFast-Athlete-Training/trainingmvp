@@ -3,15 +3,23 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
+import { CataloguePasteIngestPanel } from "@/components/training-manager/CataloguePasteIngestPanel";
 import {
   CatalogueEditForm,
   type CatalogueFormItem,
 } from "@/components/training-manager/CatalogueEditForm";
+import {
+  paceCell,
+  repsCell,
+  trainingIntentListCell,
+  type CatalogueListRow,
+} from "@/lib/training/catalogue-list-cells";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const WORKOUT_TYPES = ["LongRun", "Easy", "Tempo", "Intervals", "Race"] as const;
 
-type ListItem = {
+type ListItem = CatalogueListRow & {
   id: string;
   name: string;
   slug: string | null;
@@ -44,6 +52,8 @@ export default function CatalogueListPage() {
   const newParam = searchParams.get("new");
   const typeParam = searchParams.get("type");
   const editParam = searchParams.get("edit");
+
+  const aiParsedReady = Boolean(aiPrefill && !prefillNotice && creating && !editing);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,47 +162,58 @@ export default function CatalogueListPage() {
     setDraftKey((k) => k + 1);
   }
 
+  function startOverIngest() {
+    setAiPrefill(null);
+    setPrefillNotice(null);
+    setCreating(false);
+    setEditing(null);
+    setAiDescription("");
+  }
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-6xl space-y-6">
+      {returnTo ? (
+        <Link
+          href={returnTo}
+          className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:text-sky-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to rotation editor
+        </Link>
+      ) : null}
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Workout catalogue</h1>
-          <p className="text-sm text-gray-600">
-            Same catalogue model as Company HQ — search, AI parse, full editor.
+          <h1 className="text-3xl font-bold text-gray-900">Workout catalogue</h1>
+          <p className="mt-1 text-gray-600">
+            Coach-defined workouts (intervals, tempo, etc.). Product app uses these when materializing
+            plan weeks.
           </p>
         </div>
         <button
           type="button"
           onClick={startNew}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+          className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"
         >
+          <Plus className="h-4 w-4" />
           New workout
         </button>
       </div>
 
       {message ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{message}</p>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {message}
+        </div>
       ) : null}
 
-      <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-        <h2 className="font-semibold">AI parse</h2>
-        <p className="text-sm text-gray-600">Paste a coach workout description; review the draft before saving.</p>
-        <textarea
-          className="w-full rounded border px-3 py-2 text-sm"
-          rows={4}
-          value={aiDescription}
-          onChange={(e) => setAiDescription(e.target.value)}
-          placeholder="e.g. WU 2mi easy, 6×800 @ 5K with 400 jog, CD 1mi"
-        />
-        <button
-          type="button"
-          disabled={aiBusy || !aiDescription.trim()}
-          onClick={() => void runAiParse()}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-        >
-          {aiBusy ? "Parsing…" : "Parse with AI"}
-        </button>
-      </section>
+      <CataloguePasteIngestPanel
+        description={aiDescription}
+        onDescriptionChange={setAiDescription}
+        busy={aiBusy}
+        onGenerate={() => void runAiParse()}
+        parsedReady={aiParsedReady}
+        onStartOver={startOverIngest}
+      />
 
       {(creating || editing) && (
         <CatalogueEditForm
@@ -207,71 +228,92 @@ export default function CatalogueListPage() {
             setCreating(false);
             setEditing(null);
             setAiPrefill(null);
+            setPrefillNotice(null);
           }}
         />
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <label className="text-sm">
-          <span className="text-gray-600">Type</span>
-          <select
-            className="ml-2 rounded border px-2 py-1"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-          >
-            <option value="">All</option>
-            {WORKOUT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="min-w-[12rem] flex-1 text-sm">
-          <span className="text-gray-600">Search</span>
-          <input
-            className="mt-1 w-full rounded border px-3 py-1.5"
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder="Name or slug…"
-          />
-        </label>
-      </div>
-
-      {loading ? (
-        <p className="text-gray-500">Loading…</p>
-      ) : (
-        <div className="space-y-6">
-          {[...grouped.entries()].map(([type, rows]) => (
-            <section key={type}>
-              <h2 className="mb-2 text-lg font-semibold">{type}</h2>
-              <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
-                {rows.map((it) => (
-                  <li key={it.id} className="flex items-start justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="font-medium">
-                        {it.name}
-                        {it.slug ? (
-                          <span className="ml-2 text-xs font-normal text-gray-500">({it.slug})</span>
-                        ) : null}
-                      </p>
-                      {it.description ? (
-                        <p className="mt-1 line-clamp-2 text-sm text-gray-600">{it.description}</p>
-                      ) : null}
-                    </div>
-                    <Link
-                      href={`/dashboard/catalogue/${it.id}`}
-                      className="shrink-0 text-sm font-medium text-sky-700 hover:underline"
-                    >
-                      Edit
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">All workouts</h2>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <label className="text-sm">
+            <span className="text-gray-600">Type</span>
+            <select
+              className="ml-2 rounded-lg border border-gray-300 px-2 py-1"
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <option value="">All</option>
+              {WORKOUT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-[12rem] flex-1 text-sm">
+            <span className="text-gray-600">Search</span>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Name or slug…"
+            />
+          </label>
         </div>
-      )}
+
+        {loading ? (
+          <p className="text-gray-500">Loading…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-gray-500">No catalogue workouts yet. Paste text above or add one.</p>
+        ) : (
+          <div className="space-y-8">
+            {[...grouped.entries()].map(([type, list]) => (
+              <div key={type}>
+                <h3 className="text-md mb-2 font-medium text-gray-800">{type}</h3>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left">
+                        <th className="p-2">Name</th>
+                        <th className="p-2">Slug</th>
+                        <th className="p-2">Sub-type</th>
+                        <th className="p-2">Pace</th>
+                        <th className="p-2">Reps / m</th>
+                        <th className="p-2 max-w-[10rem]">Purpose</th>
+                        <th className="w-24 p-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((it) => (
+                        <tr key={it.id} className="border-t border-gray-100">
+                          <td className="p-2 font-medium">{it.name}</td>
+                          <td className="p-2 font-mono text-xs text-gray-600">{it.slug ?? "—"}</td>
+                          <td className="p-2 text-gray-600">{it.runSubType ? String(it.runSubType) : "—"}</td>
+                          <td className="p-2">{paceCell(it)}</td>
+                          <td className="p-2">{repsCell(it)}</td>
+                          <td className="max-w-[10rem] break-words p-2 text-xs text-gray-600">
+                            {trainingIntentListCell(it)}
+                          </td>
+                          <td className="p-2">
+                            <Link
+                              href={`/dashboard/catalogue/${it.id}`}
+                              className="inline-flex p-1 text-gray-600 hover:text-gray-900"
+                              aria-label="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

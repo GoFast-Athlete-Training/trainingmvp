@@ -18,6 +18,7 @@ import {
 } from "@/components/training-manager/TaperPhaseFields";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
 import { parseRaceWeekDays, type RaceWeekDaySlot } from "@/lib/training/race-week-days";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 type WizardStep = "core" | "build" | "taper" | "raceWeek";
@@ -263,19 +264,30 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Link href="/dashboard/presets" className="text-sm text-sky-700 hover:underline">
-        ← Plan presets
+      <Link
+        href="/dashboard/presets"
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Plan presets
       </Link>
 
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
+        <p className="text-sm text-gray-500">Core → build → taper → race week</p>
+      </div>
+
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
-        <nav className="flex shrink-0 flex-row gap-1 md:w-36 md:flex-col">
+        <nav className="flex shrink-0 flex-row gap-1 md:w-40 md:flex-col md:space-y-1">
           {STEPS.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setStep(s.id)}
-              className={`rounded-lg px-3 py-2 text-left text-sm font-medium ${
-                step === s.id ? "bg-sky-700 text-white" : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+              className={`rounded-lg px-3 py-2 text-left text-sm ${
+                step === s.id
+                  ? "bg-sky-100 font-medium text-sky-900"
+                  : "text-gray-600 hover:bg-gray-100"
               }`}
             >
               {s.label}

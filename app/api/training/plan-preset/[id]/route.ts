@@ -67,7 +67,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const data: Record<string, unknown> = {};
-  if (typeof body.title === "string") data.title = body.title.trim();
+  if (typeof body.title === "string") {
+    const title = body.title.trim();
+    data.title = title;
+    if (existing.slug === "untitled" && title) {
+      data.slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 80);
+    }
+  }
   if (typeof body.description === "string") data.description = body.description.trim();
   if (body.description === null) data.description = null;
   if (typeof body.publicDescription === "string") data.publicDescription = body.publicDescription.trim();

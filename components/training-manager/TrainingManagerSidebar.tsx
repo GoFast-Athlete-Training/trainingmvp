@@ -26,7 +26,7 @@ export default function TrainingManagerSidebar() {
   );
   const runTypeActive =
     pathname === "/dashboard/long-run-config" || pathname.startsWith("/dashboard/long-run-config/");
-  const [presetsOpen, setPresetsOpen] = useState(presetsActive || phaseActive);
+  const [phaseLibsOpen, setPhaseLibsOpen] = useState(phaseActive);
 
   return (
     <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
@@ -46,47 +46,45 @@ export default function TrainingManagerSidebar() {
         <div className="space-y-1">
           <button
             type="button"
-            onClick={() => {
-              setPresetsOpen((o) => !o);
-              if (!presetsOpen) router.push("/dashboard/presets");
-            }}
-            className={navButtonClass(presetsActive && !phaseActive)}
+            onClick={() => router.push("/dashboard/presets")}
+            className={navButtonClass(presetsActive)}
           >
-            {presetsOpen ? (
-              <ChevronDown className="h-4 w-4 shrink-0" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0" />
-            )}
             <ListTree className="h-4 w-4 shrink-0" />
             <span className="font-medium">Plan presets</span>
           </button>
-          {presetsOpen ? (
-            <ul className="ml-4 space-y-0.5 border-l border-gray-200 pl-2">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => router.push("/dashboard/presets")}
-                  className={`${navButtonClass(pathname === "/dashboard/presets")} text-xs`}
-                >
-                  All presets
-                </button>
-              </li>
-              {PHASE_LINKS.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                return (
-                  <li key={item.href}>
-                    <button
-                      type="button"
-                      onClick={() => router.push(item.href)}
-                      className={`${navButtonClass(active)} text-xs`}
-                    >
-                      {item.label}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setPhaseLibsOpen((o) => !o)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+            >
+              {phaseLibsOpen ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+              )}
+              Phase libraries
+            </button>
+            {phaseLibsOpen ? (
+              <ul className="ml-1 mt-0.5 space-y-0.5 border-l border-gray-200 pl-2">
+                {PHASE_LINKS.map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  return (
+                    <li key={item.href}>
+                      <button
+                        type="button"
+                        onClick={() => router.push(item.href)}
+                        className={`${navButtonClass(active)} text-xs`}
+                      >
+                        {item.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
 
           <button
             type="button"

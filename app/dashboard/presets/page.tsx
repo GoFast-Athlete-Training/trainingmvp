@@ -9,6 +9,8 @@ type PresetRow = {
   id: string;
   title: string;
   slug: string;
+  description: string | null;
+  targetDistanceLabel: string | null;
   snapPeakLongRunMiles: number | null;
   snapPeakWeeklyMiles: number | null;
   buildPreset: { name: string } | null;
@@ -17,7 +19,25 @@ type PresetRow = {
 };
 
 function mi(n: number | null) {
-  return n == null ? "—" : `${n} mi`;
+  return n == null ? null : `${n} mi`;
+}
+
+function presetMetaParts(row: PresetRow): string[] {
+  const parts: string[] = [];
+  if (row.targetDistanceLabel?.trim()) {
+    parts.push(row.targetDistanceLabel.trim());
+  }
+  const peakLr = mi(row.snapPeakLongRunMiles);
+  const peakWk = mi(row.snapPeakWeeklyMiles);
+  if (peakLr != null || peakWk != null) {
+    parts.push(`Snap LR ${peakLr ?? "—"} · week ${peakWk ?? "—"}`);
+  } else if (row.buildPreset) {
+    parts.push("Snaps update after build phase is saved");
+  }
+  if (row.buildPreset?.name) parts.push(`Build: ${row.buildPreset.name}`);
+  if (row.taperPreset?.name) parts.push(`Taper: ${row.taperPreset.name}`);
+  if (row.raceWeekPreset?.title) parts.push(`Race week: ${row.raceWeekPreset.title}`);
+  return parts;
 }
 
 export default function PresetsListPage() {
@@ -96,36 +116,44 @@ export default function PresetsListPage() {
         <p className="text-gray-500">No presets yet. Use Build preset to start, or send from Company HQ.</p>
       ) : (
         <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
-          {rows.map((row) => (
-            <li key={row.id} className="flex items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="font-medium">{row.title}</p>
-                <p className="text-xs text-gray-500">{row.slug}</p>
-                <p className="mt-1 text-xs text-gray-600">
-                  Snap LR {mi(row.snapPeakLongRunMiles)} · week {mi(row.snapPeakWeeklyMiles)}
-                  {row.buildPreset ? ` · ${row.buildPreset.name}` : ""}
-                  {row.taperPreset ? ` · ${row.taperPreset.name}` : ""}
-                  {row.raceWeekPreset ? ` · ${row.raceWeekPreset.title}` : ""}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <Link
-                  href={`/dashboard/presets/${row.id}`}
-                  className="text-sm font-medium text-sky-700 hover:underline"
-                >
-                  Edit
-                </Link>
-                <button
-                  type="button"
-                  disabled={deletingId === row.id}
-                  onClick={() => void deletePreset(row.id, row.title)}
-                  className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50"
-                >
-                  {deletingId === row.id ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </li>
-          ))}
+          {rows.map((row) => {
+            const meta = presetMetaParts(row);
+            const staffDesc = row.description?.trim();
+            return (
+              <li key={row.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{row.title}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-gray-600">
+                    {staffDesc || (
+                      <span className="italic text-gray-400">No staff description yet</span>
+                    )}
+                  </p>
+                  {meta.length > 0 ? (
+                    <p className="mt-1 text-xs text-gray-500">{meta.join(" · ")}</p>
+                  ) : null}
+                  {row.slug !== "untitled" ? (
+                    <p className="mt-1 font-mono text-[10px] text-gray-400">{row.slug}</p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <Link
+                    href={`/dashboard/presets/${row.id}`}
+                    className="text-sm font-medium text-sky-700 hover:underline"
+                  >
+                    Edit
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={deletingId === row.id}
+                    onClick={() => void deletePreset(row.id, row.title)}
+                    className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50"
+                  >
+                    {deletingId === row.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
