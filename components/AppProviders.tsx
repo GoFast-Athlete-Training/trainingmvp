@@ -1,6 +1,7 @@
 "use client";
 
 import { auth } from "@/lib/firebase";
+import { TRAINING_MANAGER_ID_KEY } from "@/lib/training-manager-session";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   createContext,
@@ -33,8 +34,6 @@ const AuthContext = createContext<AuthContextValue>({
   refreshManager: async () => {},
 });
 
-const STAFF_STORAGE_KEY = "trainingmgmt_staff_id";
-
 async function fetchManagerSession(token: string): Promise<TrainingManagerSession | null> {
   const response = await fetch("/api/training-managers/me", {
     headers: { Authorization: `Bearer ${token}` },
@@ -44,9 +43,10 @@ async function fetchManagerSession(token: string): Promise<TrainingManagerSessio
     manager?: TrainingManagerSession;
   };
   if (response.ok && payload.manager) {
-    localStorage.setItem(STAFF_STORAGE_KEY, payload.manager.id);
+    localStorage.setItem(TRAINING_MANAGER_ID_KEY, payload.manager.id);
     return payload.manager;
   }
+  localStorage.removeItem(TRAINING_MANAGER_ID_KEY);
   return null;
 }
 
@@ -75,7 +75,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       setUser(nextUser);
       if (!nextUser) {
         setManager(null);
-        localStorage.removeItem(STAFF_STORAGE_KEY);
+        localStorage.removeItem(TRAINING_MANAGER_ID_KEY);
         setLoading(false);
         return;
       }
@@ -104,11 +104,4 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-export async function authFetch(path: string, init?: RequestInit): Promise<Response> {
-  const user = auth?.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-  const headers = new Headers(init?.headers);
-  headers.set("Authorization", `Bearer ${token}`);
-  return fetch(path, { ...init, headers });
-}
+export { authFetch } from "@/lib/api";

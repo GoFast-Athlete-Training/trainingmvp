@@ -7,7 +7,7 @@ import { serializeBuildPreset } from "@/lib/training/preset-serialize";
 import { NextRequest, NextResponse } from "next/server";
 
 async function assertListPresetAuth(request: NextRequest) {
-  const forward = assertStaffForward(request);
+  const forward = await assertStaffForward(request);
   if (forward.ok) return null;
   const auth = await assertTrainingManagerAuth(request);
   return auth.error;

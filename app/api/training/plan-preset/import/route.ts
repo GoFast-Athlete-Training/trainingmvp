@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 /** Human lane — upsert one product preset by preserved id (Bearer + x-gofast-staff-id). */
 export async function POST(request: NextRequest) {
-  const auth = assertStaffForward(request);
+  const auth = await assertStaffForward(request);
   if (!auth.ok) return auth.response;
 
   let body: ProductPresetImportPayload;
