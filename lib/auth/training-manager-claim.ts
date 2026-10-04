@@ -47,38 +47,15 @@ function managerHasSeat(manager: { gofastCompanyId: string | null; isActive: boo
   return manager.isActive && Boolean(manager.gofastCompanyId);
 }
 
-async function bindSeatToFirebaseUser(row: ManagerRow, uid: string): Promise<ManagerRow> {
-  if (row.firebaseUid === uid) return row;
-  return prisma.training_managers.update({
-    where: { id: row.id },
-    data: { firebaseUid: uid },
-    include: managerInclude,
-  });
-}
-
-async function findActiveTrainingManagerRow(uid: string, email: string): Promise<ManagerRow | null> {
-  const byUid = await prisma.training_managers.findFirst({
+async function findActiveTrainingManagerRow(uid: string): Promise<ManagerRow | null> {
+  return prisma.training_managers.findFirst({
     where: { firebaseUid: uid, ...activeSeat },
     include: managerInclude,
   });
-  if (byUid) return byUid;
-
-  if (email) {
-    return prisma.training_managers.findFirst({
-      where: {
-        ...activeSeat,
-        email: { equals: email, mode: "insensitive" },
-      },
-      include: managerInclude,
-    });
-  }
-
-  return null;
 }
 
 async function resolveTrainingManagerSeatForFirebaseUser(
   uid: string,
-  email: string,
 ): Promise<
   | { ok: true; manager: TrainingManager }
   | {
@@ -87,18 +64,17 @@ async function resolveTrainingManagerSeatForFirebaseUser(
       detail?: string;
     }
 > {
-  const row = await findActiveTrainingManagerRow(uid, email);
+  const row = await findActiveTrainingManagerRow(uid);
 
   if (!row || !managerHasSeat(row)) {
     return {
       ok: false,
       reason: "no_manager_seat",
-      detail: "No Training Manager seat for this account",
+      detail: "No Training Manager seat for this Firebase account",
     };
   }
 
-  const claimed = await bindSeatToFirebaseUser(row, uid);
-  const manager = toManager(claimed);
+  const manager = toManager(row);
   if (!manager) {
     return {
       ok: false,
@@ -110,7 +86,7 @@ async function resolveTrainingManagerSeatForFirebaseUser(
   return { ok: true, manager };
 }
 
-/** Find active training_managers seat by Firebase personhood (uid, then email). No Company call. */
+/** Local training_managers seat lookup by firebaseUid only. */
 export async function findOrClaimTrainingManager(
   request: Pick<Request, "headers">,
 ): Promise<ManagerClaimResult> {
@@ -124,8 +100,8 @@ export async function findOrClaimTrainingManager(
     return { ok: false, reason: "invalid_token", detail: firebase.detail };
   }
 
-  const { uid, email } = firebase.user;
-  const seat = await resolveTrainingManagerSeatForFirebaseUser(uid, email);
+  const { uid } = firebase.user;
+  const seat = await resolveTrainingManagerSeatForFirebaseUser(uid);
 
   if (!seat.ok) {
     return { ok: false, reason: seat.reason, detail: seat.detail };
