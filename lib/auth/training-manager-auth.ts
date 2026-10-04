@@ -19,10 +19,7 @@ export type TrainingManager = {
 export async function requireTrainingManagerFromRequest(
   request: Pick<Request, "headers">,
 ): Promise<TrainingManager | null> {
-  const staffId = request.headers.get(STAFF_ID_HEADER)?.trim();
-  if (!staffId) return null;
-
-  const result = await findOrClaimTrainingManager(request, { requiredStaffId: staffId });
+  const result = await findOrClaimTrainingManager(request);
   return result.ok ? result.manager : null;
 }
 

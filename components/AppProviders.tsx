@@ -108,9 +108,7 @@ export async function authFetch(path: string, init?: RequestInit): Promise<Respo
   const user = auth?.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
-  const staffId = localStorage.getItem(STAFF_STORAGE_KEY);
   const headers = new Headers(init?.headers);
   headers.set("Authorization", `Bearer ${token}`);
-  if (staffId) headers.set("x-gofast-staff-id", staffId);
   return fetch(path, { ...init, headers });
 }
