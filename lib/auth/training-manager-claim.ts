@@ -1,11 +1,10 @@
 import type { TrainingManager } from "@/lib/auth/training-manager-auth";
-import { verifyStaffViaCompanyFindOrCreate } from "@/lib/company-staff-verify";
+import { verifyFirebaseBearer } from "@/lib/auth/verify-firebase-bearer";
 import { prisma } from "@/lib/prisma";
 
 export type ManagerClaimFailure =
   | "missing_token"
   | "invalid_token"
-  | "not_company_staff"
   | "no_manager_seat"
   | "seat_account_mismatch";
 
@@ -15,6 +14,11 @@ export type ManagerClaimResult =
 
 const managerInclude = {
   gofast_company: { select: { name: true } },
+} as const;
+
+const activeSeat = {
+  isActive: true,
+  gofastCompanyId: { not: null },
 } as const;
 
 type ManagerRow = {
@@ -62,6 +66,75 @@ async function claimSeatIfNeeded(row: ManagerRow, uid: string): Promise<ManagerR
   });
 }
 
+async function resolveTrainingManagerSeatForFirebaseUser(
+  uid: string,
+  email: string,
+  options?: { preferredStaffId?: string },
+): Promise<
+  | { ok: true; manager: TrainingManager }
+  | {
+      ok: false;
+      reason: Exclude<ManagerClaimFailure, "missing_token" | "invalid_token">;
+      detail?: string;
+    }
+> {
+  const preferredStaffId = options?.preferredStaffId?.trim();
+
+  let row: ManagerRow | null =
+    preferredStaffId != null
+      ? await prisma.training_managers.findFirst({
+          where: { id: preferredStaffId, ...activeSeat },
+          include: managerInclude,
+        })
+      : null;
+
+  if (!row) {
+    row =
+      (await prisma.training_managers.findFirst({
+        where: { firebaseUid: uid, ...activeSeat },
+        include: managerInclude,
+      })) ??
+      (email
+        ? await prisma.training_managers.findFirst({
+            where: {
+              ...activeSeat,
+              email: { equals: email, mode: "insensitive" },
+            },
+            include: managerInclude,
+          })
+        : null);
+  }
+
+  if (!row || !managerHasSeat(row)) {
+    return {
+      ok: false,
+      reason: "no_manager_seat",
+      detail: "No Training Manager seat for this account",
+    };
+  }
+
+  if (!seatMatchesIdentity(row, uid, email)) {
+    return {
+      ok: false,
+      reason: "seat_account_mismatch",
+      detail: "This Training Manager seat is bound to a different Firebase account",
+    };
+  }
+
+  const claimed = await claimSeatIfNeeded(row, uid);
+  const manager = toManager(claimed);
+  if (!manager) {
+    return {
+      ok: false,
+      reason: "no_manager_seat",
+      detail: "Training Manager seat is missing company assignment",
+    };
+  }
+
+  return { ok: true, manager };
+}
+
+/** Find active training_managers seat locally; bind Firebase on first claim. No Company call. */
 export async function findOrClaimTrainingManager(
   request: Pick<Request, "headers">,
   options?: { requiredStaffId?: string },
@@ -71,83 +144,39 @@ export async function findOrClaimTrainingManager(
     return { ok: false, reason: "missing_token" };
   }
 
-  const companyStaff = await verifyStaffViaCompanyFindOrCreate(token);
-  if (!companyStaff.ok) {
-    return {
-      ok: false,
-      reason:
-        companyStaff.error === "not_company_staff" ? "not_company_staff" : "invalid_token",
-      detail: companyStaff.detail,
-    };
+  const firebase = await verifyFirebaseBearer(token);
+  if (!firebase.ok) {
+    return { ok: false, reason: "invalid_token", detail: firebase.detail };
   }
 
-  const { staff } = companyStaff;
+  const { uid, email } = firebase.user;
+  const seat = await resolveTrainingManagerSeatForFirebaseUser(uid, email, {
+    preferredStaffId: options?.requiredStaffId,
+  });
+
+  if (!seat.ok) {
+    return { ok: false, reason: seat.reason, detail: seat.detail };
+  }
+
   const requiredStaffId = options?.requiredStaffId?.trim();
-
-  if (requiredStaffId && requiredStaffId !== staff.id) {
+  if (requiredStaffId && seat.manager.id !== requiredStaffId) {
     return {
       ok: false,
-      reason: "seat_account_mismatch",
-      detail: "Staff header does not match Company session",
+      reason: "invalid_token",
+      detail: "Staff header does not match this Training Manager",
     };
   }
 
-  let row =
-    (await prisma.training_managers.findFirst({
-      where: { id: staff.id, isActive: true },
-      include: managerInclude,
-    })) ??
-    (await prisma.training_managers.findFirst({
-      where: {
-        isActive: true,
-        gofastCompanyId: { not: null },
-        OR: [
-          { firebaseUid: staff.firebaseUid },
-          ...(staff.email
-            ? [{ email: { equals: staff.email, mode: "insensitive" as const } }]
-            : []),
-        ],
-      },
-      include: managerInclude,
-    }));
-
-  if (!row || !managerHasSeat(row)) {
-    return {
-      ok: false,
-      reason: "no_manager_seat",
-      detail: "No Training Manage seat assigned for this Company staff member",
-    };
-  }
-
-  if (!seatMatchesIdentity(row, staff.firebaseUid, staff.email)) {
-    return {
-      ok: false,
-      reason: "seat_account_mismatch",
-      detail: "This Training Manage seat is bound to a different Firebase account",
-    };
-  }
-
-  const claimed = await claimSeatIfNeeded(row, staff.firebaseUid);
-
-  const manager = toManager(claimed);
-  if (!manager) {
-    return { ok: false, reason: "no_manager_seat" };
-  }
-
-  return { ok: true, manager };
+  return seat;
 }
 
 export function claimFailureStatus(reason: ManagerClaimFailure): number {
   switch (reason) {
     case "missing_token":
     case "invalid_token":
-    case "not_company_staff":
-    case "seat_account_mismatch":
       return 401;
-    case "no_manager_seat":
-      return 403;
     default:
-      return 401;
+      return 403;
   }
 }
 
@@ -156,14 +185,12 @@ export function claimFailureMessage(reason: ManagerClaimFailure, detail?: string
     case "missing_token":
       return "Missing authorization token";
     case "invalid_token":
-      return detail ?? "Invalid token";
-    case "not_company_staff":
-      return detail ?? "Not a Company staff account";
+      return detail ?? "Invalid or expired sign-in token";
     case "no_manager_seat":
-      return detail ?? "No Training Manage seat assigned for this staff account";
+      return detail ?? "No Training Manage seat assigned for this account";
     case "seat_account_mismatch":
-      return detail ?? "Staff id does not match this session";
+      return detail ?? "This Training Manage seat belongs to a different account";
     default:
-      return "Unauthorized";
+      return detail ?? "Unauthorized";
   }
 }
