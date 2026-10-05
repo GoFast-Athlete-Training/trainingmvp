@@ -1,12 +1,5 @@
-import {
-  claimFailureMessage,
-  claimFailureStatus,
-  findOrClaimTrainingManager,
-} from "@/lib/auth/training-manager-claim";
 import { resolveTrainingManagerFromRequest } from "@/lib/auth/training-manager-me";
 import { NextRequest, NextResponse } from "next/server";
-
-export const STAFF_ID_HEADER = "x-gofast-staff-id";
 
 export type TrainingManager = {
   id: string;
@@ -43,15 +36,7 @@ export async function requireTrainingManagerByTokenOnlyWithDetail(
   | { ok: true; manager: TrainingManager }
   | { ok: false; status: number; error: string }
 > {
-  const result = await findOrClaimTrainingManager(request);
-  if (result.ok) {
-    return { ok: true, manager: result.manager };
-  }
-  return {
-    ok: false,
-    status: claimFailureStatus(result.reason),
-    error: claimFailureMessage(result.reason, result.detail),
-  };
+  return resolveTrainingManagerFromRequest(request);
 }
 
 export async function assertTrainingManagerForward(

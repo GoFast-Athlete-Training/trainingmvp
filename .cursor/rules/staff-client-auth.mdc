@@ -1,0 +1,11 @@
+---
+description: Staff satellite client auth — Bearer only, local seat by firebaseUid
+alwaysApply: true
+---
+
+# Staff client auth (Training Manage)
+
+- Browser: [`lib/api.ts`](lib/api.ts) / `authFetch` → **Firebase Bearer only** (never `x-gofast-staff-id`).
+- Server: `verifyFirebaseBearer` → active `training_managers` row by **token `firebaseUid`** ([`lib/auth/training-manager-me.ts`](lib/auth/training-manager-me.ts)).
+- Do **not** read, require, or forward `x-gofast-staff-id` at runtime. Use `auth.manager.id` from local resolve when an id is needed in a payload.
+- Outbound HTTP: **Authorization Bearer only**.

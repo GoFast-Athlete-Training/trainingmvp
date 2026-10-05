@@ -35,52 +35,15 @@ export type TrainingManagerMeResult =
   | { ok: true; manager: TrainingManager }
   | { ok: false; status: number; error: string };
 
-function normalizeEmail(value: string | null | undefined): string {
-  return value?.trim().toLowerCase() ?? "";
-}
+async function findLocalTrainingManagerByFirebaseUid(uid: string): Promise<ManagerRow | null> {
+  const firebaseUid = uid.trim();
+  if (!firebaseUid || firebaseUid.startsWith("temp-")) return null;
 
-function normalizeName(value: string | null | undefined): string {
-  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
-}
-
-async function findLocalTrainingManager(input: {
-  uid: string;
-  email: string;
-  displayName: string;
-}): Promise<ManagerRow | null> {
-  const uid = input.uid.trim();
-  if (uid) {
-    const byUid = await prisma.training_managers.findFirst({
-      where: { firebaseUid: uid, isActive: true, gofastCompanyId: { not: null } },
-      include: managerInclude,
-    });
-    if (isActiveSeat(byUid)) return byUid;
-  }
-
-  const email = normalizeEmail(input.email);
-  if (email) {
-    const byEmail = await prisma.training_managers.findFirst({
-      where: {
-        isActive: true,
-        gofastCompanyId: { not: null },
-        email: { equals: email, mode: "insensitive" },
-      },
-      include: managerInclude,
-    });
-    if (isActiveSeat(byEmail)) return byEmail;
-  }
-
-  const name = normalizeName(input.displayName);
-  if (name) {
-    const candidates = await prisma.training_managers.findMany({
-      where: { isActive: true, gofastCompanyId: { not: null }, name: { not: null } },
-      include: managerInclude,
-    });
-    const byName = candidates.find((row) => normalizeName(row.name) === name);
-    if (isActiveSeat(byName ?? null)) return byName ?? null;
-  }
-
-  return null;
+  const row = await prisma.training_managers.findUnique({
+    where: { firebaseUid },
+    include: managerInclude,
+  });
+  return isActiveSeat(row) ? row : null;
 }
 
 export async function resolveTrainingManagerFromRequest(
@@ -100,12 +63,7 @@ export async function resolveTrainingManagerFromRequest(
     };
   }
 
-  const row = await findLocalTrainingManager({
-    uid: firebase.user.uid,
-    email: firebase.user.email,
-    displayName: firebase.user.name ?? "",
-  });
-
+  const row = await findLocalTrainingManagerByFirebaseUid(firebase.user.uid);
   if (!row) {
     return { ok: false, status: 403, error: "Not a Training Manager" };
   }
