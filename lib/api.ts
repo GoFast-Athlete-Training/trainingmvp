@@ -2,6 +2,9 @@
 
 import axios, { type AxiosResponse, type InternalAxiosRequestConfig, type Method } from "axios";
 import { auth } from "@/lib/firebase";
+import { TRAINING_MANAGER_ID_KEY } from "@/lib/training-manager-session";
+
+const STAFF_ID_HEADER = "x-gofast-staff-id";
 
 type RetriableConfig = InternalAxiosRequestConfig & { _gofastAuthRetried?: boolean };
 
@@ -43,6 +46,13 @@ apiClient.interceptors.request.use(
       } catch {
         const freshToken = await user.getIdToken(true);
         config.headers.Authorization = `Bearer ${freshToken}`;
+      }
+
+      if (typeof window !== "undefined" && !isSessionProbe(config.url)) {
+        const staffId = localStorage.getItem(TRAINING_MANAGER_ID_KEY);
+        if (staffId) {
+          config.headers[STAFF_ID_HEADER] = staffId;
+        }
       }
     } catch (error) {
       console.error("API token fetch failed:", error);
