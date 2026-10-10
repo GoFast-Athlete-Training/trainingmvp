@@ -20,9 +20,16 @@ export type TrainingManagerSession = {
   gofastCompanyName: string | null;
 };
 
+export type ManagerSessionProbe = {
+  manager: TrainingManagerSession | null;
+  status: number | null;
+  error: string | null;
+};
+
 type AuthContextValue = {
   user: User | null;
   manager: TrainingManagerSession | null;
+  sessionProbe: ManagerSessionProbe | null;
   loading: boolean;
   refreshManager: () => Promise<void>;
 };
@@ -30,40 +37,50 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   manager: null,
+  sessionProbe: null,
   loading: true,
   refreshManager: async () => {},
 });
 
-async function fetchManagerSession(token: string): Promise<TrainingManagerSession | null> {
+async function fetchManagerSession(token: string): Promise<ManagerSessionProbe> {
   const response = await fetch("/api/training-managers/me", {
     headers: { Authorization: `Bearer ${token}` },
   });
   const payload = (await response.json()) as {
     success?: boolean;
     manager?: TrainingManagerSession;
+    error?: string;
   };
   if (response.ok && payload.manager) {
     localStorage.setItem(TRAINING_MANAGER_ID_KEY, payload.manager.id);
-    return payload.manager;
+    return { manager: payload.manager, status: response.status, error: null };
   }
   localStorage.removeItem(TRAINING_MANAGER_ID_KEY);
-  return null;
+  return {
+    manager: null,
+    status: response.status,
+    error: payload.error ?? null,
+  };
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [manager, setManager] = useState<TrainingManagerSession | null>(null);
+  const [sessionProbe, setSessionProbe] = useState<ManagerSessionProbe | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshManager = useCallback(async () => {
     const currentUser = auth?.currentUser;
     if (!currentUser) {
       setManager(null);
+      setSessionProbe(null);
+      localStorage.removeItem(TRAINING_MANAGER_ID_KEY);
       return;
     }
     const token = await currentUser.getIdToken();
-    const nextManager = await fetchManagerSession(token);
-    setManager(nextManager);
+    const probe = await fetchManagerSession(token);
+    setManager(probe.manager);
+    setSessionProbe(probe.manager ? null : probe);
   }, []);
 
   useEffect(() => {
@@ -71,10 +88,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+
     return onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
       if (!nextUser) {
         setManager(null);
+        setSessionProbe(null);
         localStorage.removeItem(TRAINING_MANAGER_ID_KEY);
         setLoading(false);
         return;
@@ -83,10 +102,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
       setLoading(true);
       try {
         const token = await nextUser.getIdToken();
-        const nextManager = await fetchManagerSession(token);
-        setManager(nextManager);
+        const probe = await fetchManagerSession(token);
+        setManager(probe.manager);
+        setSessionProbe(probe.manager ? null : probe);
       } catch {
         setManager(null);
+        setSessionProbe(null);
       } finally {
         setLoading(false);
       }
@@ -94,7 +115,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, manager, loading, refreshManager }}>
+    <AuthContext.Provider value={{ user, manager, sessionProbe, loading, refreshManager }}>
       {children}
     </AuthContext.Provider>
   );

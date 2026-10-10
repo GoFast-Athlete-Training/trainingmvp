@@ -1,4 +1,5 @@
 import { verifyFirebaseBearer } from "@/lib/auth/verify-firebase-bearer";
+import { normalizeOperatorFirebaseUid } from "@/lib/auth/firebase-uid-normalize";
 import { prisma } from "@/lib/prisma";
 import type { TrainingManager } from "@/lib/auth/training-manager-auth";
 
@@ -27,24 +28,56 @@ function toManager(row: ManagerRow): TrainingManager {
   };
 }
 
-function isActiveSeat(row: ManagerRow | null): row is ManagerRow {
-  return Boolean(row?.isActive && row.gofastCompanyId);
+function isActiveManager(row: ManagerRow | null): row is ManagerRow {
+  return Boolean(row?.isActive);
 }
 
-export type TrainingManagerMeResult =
-  | { ok: true; manager: TrainingManager }
-  | { ok: false; status: number; error: string };
-
 async function findLocalTrainingManagerByFirebaseUid(uid: string): Promise<ManagerRow | null> {
-  const firebaseUid = uid.trim();
-  if (!firebaseUid || firebaseUid.startsWith("temp-")) return null;
+  const firebaseUid = normalizeOperatorFirebaseUid(uid);
+  if (!firebaseUid) return null;
 
   const row = await prisma.training_managers.findUnique({
     where: { firebaseUid },
     include: managerInclude,
   });
-  return isActiveSeat(row) ? row : null;
+  return isActiveManager(row) ? row : null;
 }
+
+async function findLocalTrainingManagerByEmail(email: string): Promise<ManagerRow | null> {
+  const trimmed = email.trim();
+  if (!trimmed) return null;
+
+  const row = await prisma.training_managers.findFirst({
+    where: {
+      isActive: true,
+      email: { equals: trimmed, mode: "insensitive" },
+    },
+    include: managerInclude,
+  });
+  return isActiveManager(row) ? row : null;
+}
+
+async function backfillFirebaseUidIfNeeded(
+  row: ManagerRow,
+  signedInUid: string,
+): Promise<ManagerRow> {
+  const firebaseUid = normalizeOperatorFirebaseUid(signedInUid);
+  if (!firebaseUid) return row;
+
+  const existing = normalizeOperatorFirebaseUid(row.firebaseUid);
+  if (existing === firebaseUid) return row;
+  if (existing) return row;
+
+  return prisma.training_managers.update({
+    where: { id: row.id },
+    data: { firebaseUid },
+    include: managerInclude,
+  });
+}
+
+export type TrainingManagerMeResult =
+  | { ok: true; manager: TrainingManager }
+  | { ok: false; status: number; error: string };
 
 export async function resolveTrainingManagerFromRequest(
   request: Pick<Request, "headers">,
@@ -63,7 +96,14 @@ export async function resolveTrainingManagerFromRequest(
     };
   }
 
-  const row = await findLocalTrainingManagerByFirebaseUid(firebase.user.uid);
+  let row = await findLocalTrainingManagerByFirebaseUid(firebase.user.uid);
+  if (!row && firebase.user.email) {
+    row = await findLocalTrainingManagerByEmail(firebase.user.email);
+    if (row) {
+      row = await backfillFirebaseUidIfNeeded(row, firebase.user.uid);
+    }
+  }
+
   if (!row) {
     return { ok: false, status: 403, error: "Not a Training Manager" };
   }

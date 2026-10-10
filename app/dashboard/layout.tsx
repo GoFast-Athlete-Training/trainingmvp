@@ -2,7 +2,6 @@
 
 import { useAuth } from "@/components/AppProviders";
 import { DashboardShell } from "@/components/DashboardShell";
-import { hasCompletedOnboarding } from "@/lib/training-manager-onboarding";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -12,23 +11,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
+    if (!user || !manager) {
       router.replace("/welcome");
-      return;
-    }
-    if (!manager) {
-      router.replace("/no-access");
-      return;
-    }
-    if (!hasCompletedOnboarding(manager.id)) {
-      router.replace("/onboarding");
     }
   }, [user, manager, loading, router]);
 
-  if (loading || !user || !manager || !hasCompletedOnboarding(manager.id)) {
+  if (loading || !user || !manager) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
+        <p className="text-zinc-500">Loading…</p>
       </div>
     );
   }

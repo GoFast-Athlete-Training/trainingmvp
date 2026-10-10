@@ -19,9 +19,10 @@ export function AuthForm({ onSignedIn }: { onSignedIn?: () => void }) {
     setError(null);
     try {
       await signInWithGoogle();
-      onSignedIn?.();
+      await onSignedIn?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed");
+    } finally {
       setActiveMethod(null);
     }
   }
@@ -32,9 +33,10 @@ export function AuthForm({ onSignedIn }: { onSignedIn?: () => void }) {
     setError(null);
     try {
       await signInWithEmail(email, password);
-      onSignedIn?.();
+      await onSignedIn?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
+    } finally {
       setActiveMethod(null);
     }
   }

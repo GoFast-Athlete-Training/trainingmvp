@@ -15,7 +15,7 @@ export default function HomePage() {
       router.replace("/welcome");
       return;
     }
-    router.replace(getPostAuthPath(Boolean(manager), manager?.id));
+    router.replace(getPostAuthPath(Boolean(manager)));
   }, [user, manager, loading, router]);
 
   return (
