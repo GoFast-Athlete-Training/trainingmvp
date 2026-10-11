@@ -37,3 +37,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const row = await prisma.shakeout_run_config.update({ where: { id }, data });
   return NextResponse.json({ success: true, config: row });
 }
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await assertTrainingManagerAuth(request);
+  if (auth.error) return auth.error;
+  const { id } = await params;
+  const ex = await prisma.shakeout_run_config.findUnique({ where: { id } });
+  if (!ex) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+  await prisma.shakeout_run_config.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

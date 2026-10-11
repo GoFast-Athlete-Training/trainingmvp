@@ -2,23 +2,53 @@ import { prisma } from "@/lib/prisma";
 
 type ConfigKind = "easy" | "tempo" | "intervals";
 
+const listInclude = {
+  _count: {
+    select: {
+      positions: true,
+      usedByPresets: true,
+      usedByBuildPresets: true,
+      usedByTaperPresets: true,
+    },
+  },
+} as const;
+
 export async function listRotationConfigs(kind: ConfigKind) {
   if (kind === "easy") {
     return prisma.easy_config.findMany({
       orderBy: { name: "asc" },
-      include: { positions: { orderBy: { cyclePosition: "asc" } } },
+      include: listInclude,
     });
   }
   if (kind === "tempo") {
     return prisma.tempo_config.findMany({
       orderBy: { name: "asc" },
-      include: { positions: { orderBy: { cyclePosition: "asc" } } },
+      include: listInclude,
     });
   }
   return prisma.intervals_config.findMany({
     orderBy: { name: "asc" },
-    include: { positions: { orderBy: { cyclePosition: "asc" } } },
+    include: listInclude,
   });
+}
+
+export async function deleteRotationConfig(kind: ConfigKind, id: string): Promise<boolean> {
+  if (kind === "easy") {
+    const ex = await prisma.easy_config.findUnique({ where: { id } });
+    if (!ex) return false;
+    await prisma.easy_config.delete({ where: { id } });
+    return true;
+  }
+  if (kind === "tempo") {
+    const ex = await prisma.tempo_config.findUnique({ where: { id } });
+    if (!ex) return false;
+    await prisma.tempo_config.delete({ where: { id } });
+    return true;
+  }
+  const ex = await prisma.intervals_config.findUnique({ where: { id } });
+  if (!ex) return false;
+  await prisma.intervals_config.delete({ where: { id } });
+  return true;
 }
 
 export async function createRotationConfig(kind: ConfigKind, name: string, positionCount = 4) {

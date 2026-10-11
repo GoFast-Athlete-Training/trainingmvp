@@ -62,3 +62,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   return NextResponse.json({ success: true, config: row });
 }
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await assertTrainingManagerAuth(request);
+  if (auth.error) return auth.error;
+
+  const { id } = await params;
+  const ex = await prisma.long_run_config.findUnique({ where: { id } });
+  if (!ex) {
+    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+  }
+  await prisma.long_run_config.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

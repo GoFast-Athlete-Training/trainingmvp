@@ -11,7 +11,14 @@ export async function GET(request: NextRequest) {
   const rows = await prisma.long_run_config.findMany({
     orderBy: { name: "asc" },
     include: {
-      positions: { orderBy: { cyclePosition: "asc" } },
+      _count: {
+        select: {
+          positions: true,
+          usedByPresets: true,
+          usedByBuildPresets: true,
+          usedByTaperPresets: true,
+        },
+      },
     },
   });
 
