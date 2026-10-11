@@ -1,15 +1,15 @@
 export const dynamic = "force-dynamic";
 
-import { verifyInternalApiKey } from "@/lib/internal-api-auth";
+import { assertFirebaseBearerOnly } from "@/lib/auth/firebase-bearer-only";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
 
-/** Machine lane — distance template metadata for athlete preset create (sourcePresetId). */
-export async function GET(_request: NextRequest, { params }: Params) {
-  const denied = verifyInternalApiKey(_request);
-  if (denied) return denied;
+/** Distance template metadata for athlete preset create — Prod forwards Firebase Bearer. */
+export async function GET(request: NextRequest, { params }: Params) {
+  const authError = await assertFirebaseBearerOnly(request);
+  if (authError) return authError;
 
   const { id } = await params;
   const row = await prisma.training_plan_preset.findUnique({
