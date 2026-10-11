@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { parsePhaseWeekRows, phaseWeekRowsFromLegacyTaper } from "@/lib/training/phase-week-pins";
+import { phaseWeekRowsFromLegacyTaper } from "@/lib/training/phase-week-pins";
+import { parseRaceWeekSlots } from "@/lib/training/race-week-slots";
 
 const rotationInclude = {
   include: {
@@ -12,6 +13,13 @@ const rotationInclude = {
       },
     },
   },
+} as const;
+
+const planLegacyRotationInclude = {
+  longRunConfig: rotationInclude,
+  easyConfig: rotationInclude,
+  tempoConfig: rotationInclude,
+  intervalsConfig: rotationInclude,
 } as const;
 
 function mapRotation(config: {
@@ -37,14 +45,23 @@ function mapRotation(config: {
 
 export type TrainingManagePresetForGenerate = {
   id: string;
+  slug: string;
+  title: string;
   minWeeklyMiles: number;
   maxWeeklyMiles: number | null;
   publicDescription: string | null;
   targetDistanceLabel: string | null;
+  tempoIdealDow: number;
+  intervalIdealDow: number;
+  longRunDefaultDow: number;
+  coachPlanOverview: unknown;
+  workoutStructure: unknown;
+  easyRunConfig: unknown;
   build: {
     startLongRunMiles: number | null;
     peakLongRunMiles: number | null;
     peakWeeklyMiles: number | null;
+    longRunCutback: number | null;
     longRunConfigId: string | null;
     easyConfigId: string | null;
     tempoConfigId: string | null;
@@ -60,9 +77,7 @@ export type TrainingManagePresetForGenerate = {
   } | null;
   raceWeek: {
     title: string;
-    shakeoutRunConfigId: string | null;
-    shakeoutDaysPriorToRace: number;
-    weeks: ReturnType<typeof parsePhaseWeekRows>;
+    slots: ReturnType<typeof parseRaceWeekSlots>;
   } | null;
 };
 
@@ -72,6 +87,7 @@ export async function loadPresetForGenerate(
   const row = await prisma.training_plan_preset.findUnique({
     where: { id: presetId },
     include: {
+      ...planLegacyRotationInclude,
       buildPreset: {
         include: {
           longRunConfig: rotationInclude,
@@ -87,27 +103,62 @@ export async function loadPresetForGenerate(
   if (!row) return null;
 
   const build = row.buildPreset;
+
+  const buildLongRun = mapRotation(build?.longRunConfig ?? null);
+  const buildEasy = mapRotation(build?.easyConfig ?? null);
+  const buildTempo = mapRotation(build?.tempoConfig ?? null);
+  const buildIntervals = mapRotation(build?.intervalsConfig ?? null);
+
+  const legacyLongRun = mapRotation(row.longRunConfig);
+  const legacyEasy = mapRotation(row.easyConfig);
+  const legacyTempo = mapRotation(row.tempoConfig);
+  const legacyIntervals = mapRotation(row.intervalsConfig);
+
   return {
     id: row.id,
+    slug: row.slug,
+    title: row.title,
     minWeeklyMiles: row.minWeeklyMiles,
     maxWeeklyMiles: row.maxWeeklyMiles,
     publicDescription: row.publicDescription,
     targetDistanceLabel: row.targetDistanceLabel,
+    tempoIdealDow: row.tempoIdealDow,
+    intervalIdealDow: row.intervalIdealDow,
+    longRunDefaultDow: row.longRunDefaultDow,
+    coachPlanOverview: row.coachPlanOverview,
+    workoutStructure: row.workoutStructure,
+    easyRunConfig: row.easyRunConfig,
     build: build
       ? {
           startLongRunMiles: build.startLongRunMiles,
           peakLongRunMiles: build.peakLongRunMiles,
           peakWeeklyMiles: build.maxWeeklyMiles,
+          longRunCutback: build.longRunCutback,
           longRunConfigId: build.longRunConfigId,
           easyConfigId: build.easyConfigId,
           tempoConfigId: build.tempoConfigId,
           intervalsConfigId: build.intervalsConfigId,
-          longRunConfig: mapRotation(build.longRunConfig),
-          easyConfig: mapRotation(build.easyConfig),
-          tempoConfig: mapRotation(build.tempoConfig),
-          intervalsConfig: mapRotation(build.intervalsConfig),
+          longRunConfig: buildLongRun ?? legacyLongRun,
+          easyConfig: buildEasy ?? legacyEasy,
+          tempoConfig: buildTempo ?? legacyTempo,
+          intervalsConfig: buildIntervals ?? legacyIntervals,
         }
-      : null,
+      : legacyLongRun || legacyEasy || legacyTempo || legacyIntervals
+        ? {
+            startLongRunMiles: null,
+            peakLongRunMiles: row.snapPeakLongRunMiles,
+            peakWeeklyMiles: row.snapPeakWeeklyMiles,
+            longRunCutback: null,
+            longRunConfigId: row.longRunConfigId,
+            easyConfigId: row.easyConfigId,
+            tempoConfigId: row.tempoConfigId,
+            intervalsConfigId: row.intervalsConfigId,
+            longRunConfig: legacyLongRun,
+            easyConfig: legacyEasy,
+            tempoConfig: legacyTempo,
+            intervalsConfig: legacyIntervals,
+          }
+        : null,
     taper: row.taperPreset
       ? {
           name: row.taperPreset.name,
@@ -117,9 +168,7 @@ export async function loadPresetForGenerate(
     raceWeek: row.raceWeekPreset
       ? {
           title: row.raceWeekPreset.title,
-          shakeoutRunConfigId: row.raceWeekPreset.shakeoutRunConfigId,
-          shakeoutDaysPriorToRace: row.raceWeekPreset.shakeoutDaysPriorToRace,
-          weeks: parsePhaseWeekRows(row.raceWeekPreset.weekPins),
+          slots: parseRaceWeekSlots(row.raceWeekPreset.slots),
         }
       : null,
   };

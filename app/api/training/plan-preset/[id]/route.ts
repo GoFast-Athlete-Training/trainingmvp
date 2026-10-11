@@ -95,6 +95,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   if (typeof body.coachIntent === "string") data.coachIntent = body.coachIntent.trim();
   if (body.coachIntent === null) data.coachIntent = null;
+  if ("personaId" in body) {
+    data.personaId =
+      typeof body.personaId === "string" && body.personaId.trim() ? body.personaId.trim() : null;
+  }
+  if ("goalId" in body) {
+    data.goalId = typeof body.goalId === "string" && body.goalId.trim() ? body.goalId.trim() : null;
+  }
 
   const buildId = linkBuildPresetId(body);
   if (buildId !== undefined) {

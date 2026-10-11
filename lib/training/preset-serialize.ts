@@ -4,7 +4,6 @@ import type {
   long_run_config,
   long_run_config_position,
   race_week_preset,
-  shakeout_run_config,
   tempo_config,
   training_plan_preset,
 } from "@prisma/client";
@@ -81,21 +80,10 @@ export function serializeBuildPreset(
   };
 }
 
-export function serializeRaceWeekPreset(row: race_week_preset & { shakeoutRunConfig?: shakeout_run_config | null }) {
+export function serializeRaceWeekPreset(row: race_week_preset) {
   return {
     id: row.id,
     title: row.title,
-    shakeoutRunConfigId: row.shakeoutRunConfigId,
-    shakeoutDaysPriorToRace: row.shakeoutDaysPriorToRace,
     slots: row.slots,
-    weekPins: row.weekPins,
-    shakeoutRunConfig: row.shakeoutRunConfig
-      ? {
-          id: row.shakeoutRunConfig.id,
-          name: row.shakeoutRunConfig.name,
-          totalMiles: row.shakeoutRunConfig.totalMiles,
-          paceOffsetSecPerMile: row.shakeoutRunConfig.paceOffsetSecPerMile,
-        }
-      : null,
   };
 }

@@ -11,6 +11,7 @@ export type BuildFormState = {
   startLongRunMiles: string;
   peakLongRunMiles: string;
   maxWeeklyMiles: string;
+  longRunCutback: string;
   rotations: PhaseRotationIds;
 };
 
@@ -33,7 +34,7 @@ export function BuildPhaseFields({
           onChange={(e) => onChange({ ...value, name: e.target.value })}
         />
       </label>
-      <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-3">
+      <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="block text-sm">
           <span className="text-gray-600">Starting long run (mi)</span>
           <input
@@ -66,6 +67,19 @@ export function BuildPhaseFields({
             onChange={(e) => onChange({ ...value, maxWeeklyMiles: e.target.value })}
           />
         </label>
+        <label className="block text-sm">
+          <span className="text-gray-600">Long-run cutback (week 4, 8…)</span>
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step="0.01"
+            className="mt-1 w-full rounded border px-3 py-2"
+            placeholder="0.25 = 25% off"
+            value={value.longRunCutback}
+            onChange={(e) => onChange({ ...value, longRunCutback: e.target.value })}
+          />
+        </label>
       </div>
       <PhaseRotationBolts
         value={value.rotations}
@@ -82,6 +96,7 @@ export function buildFormFromApi(build: {
   startLongRunMiles: number | null;
   peakLongRunMiles: number | null;
   maxWeeklyMiles: number | null;
+  longRunCutback: number | null;
   longRunConfigId: string | null;
   easyConfigId: string | null;
   tempoConfigId: string | null;
@@ -93,6 +108,7 @@ export function buildFormFromApi(build: {
     startLongRunMiles: build.startLongRunMiles == null ? "" : String(build.startLongRunMiles),
     peakLongRunMiles: build.peakLongRunMiles == null ? "" : String(build.peakLongRunMiles),
     maxWeeklyMiles: build.maxWeeklyMiles == null ? "" : String(build.maxWeeklyMiles),
+    longRunCutback: build.longRunCutback == null ? "" : String(build.longRunCutback),
     rotations: {
       longRunConfigId: build.longRunConfigId ?? "",
       easyConfigId: build.easyConfigId ?? "",
@@ -109,6 +125,7 @@ export function buildPatchBody(value: BuildFormState) {
     startLongRunMiles: n(value.startLongRunMiles),
     peakLongRunMiles: n(value.peakLongRunMiles),
     maxWeeklyMiles: n(value.maxWeeklyMiles) == null ? null : Math.round(n(value.maxWeeklyMiles)!),
+    longRunCutback: n(value.longRunCutback),
     longRunConfigId: value.rotations.longRunConfigId || null,
     easyConfigId: value.rotations.easyConfigId || null,
     tempoConfigId: value.rotations.tempoConfigId || null,

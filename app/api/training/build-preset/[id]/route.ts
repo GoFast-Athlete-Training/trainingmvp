@@ -44,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {};
   if (typeof body.name === "string") data.name = body.name.trim();
 
-  for (const key of ["startLongRunMiles", "peakLongRunMiles"] as const) {
+  for (const key of ["startLongRunMiles", "peakLongRunMiles", "longRunCutback"] as const) {
     const n = numOrNull(body[key]);
     if (n !== undefined) data[key] = n;
   }

@@ -229,6 +229,8 @@ model build_preset {
 
   startLongRunMiles Float?
   peakLongRunMiles  Float?
+  /// Fraction off ramp on weeks 4, 8, 12… before taper (not peak week). Null/0 = no dip.
+  longRunCutback    Float?
   maxWeeklyMiles    Int?
 
   longRunConfigId   String?
@@ -295,25 +297,18 @@ model shakeout_run_config {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  race_week_presets race_week_preset[]
-
   @@index([name])
 }
 
-// ─── Race week (notional race pin + day marks) ──────────────────────────────
+// ─── Race week (offsets from race day) ──────────────────────────────────────
 
 model race_week_preset {
-  id                      String @id @default(cuid())
-  title                   String
-  shakeoutRunConfigId     String?
-  shakeoutDaysPriorToRace Int    @default(2)
-  /// [{ offsetFromRace, slotType, easyConfigId?, tempoConfigId?, intervalsConfigId? }]
-  slots                   Json   @default("[]")
-  /// W1–W4 week caps and catalogue pins (shared taper/race-week chrome).
-  weekPins                Json   @default("[]")
+  id    String @id @default(cuid())
+  title String
+  /// [{ offsetFromRace, runName, type, catalogueWorkoutId, prescribedMiles, shakeoutRunConfigId? }]
+  slots Json   @default("[]")
 
-  shakeoutRunConfig shakeout_run_config? @relation(fields: [shakeoutRunConfigId], references: [id], onDelete: SetNull)
-  presets           training_plan_preset[]
+  presets training_plan_preset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1,31 +1,119 @@
+export type RaceWeekSlotType =
+  | "easy"
+  | "tempo"
+  | "intervals"
+  | "shakeout-easy"
+  | "off"
+  | "race";
+
 export type RaceWeekSlot = {
   offsetFromRace: number;
-  slotType: "Easy" | "Tempo" | "Intervals" | "Rest" | "Shakeout" | "Race";
-  easyConfigId?: string | null;
-  tempoConfigId?: string | null;
-  intervalsConfigId?: string | null;
+  runName: string;
+  type: RaceWeekSlotType;
+  catalogueWorkoutId: string | null;
+  prescribedMiles: number | null;
+  shakeoutRunConfigId: string | null;
 };
 
-/** Default marathon race week anchored on notional race day (offset 0). */
+export const RACE_WEEK_OFFSETS = [-6, -5, -4, -3, -2, -1, 0] as const;
+
+const SLOT_TYPES: RaceWeekSlotType[] = [
+  "easy",
+  "tempo",
+  "intervals",
+  "shakeout-easy",
+  "off",
+  "race",
+];
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v ? v : null;
+}
+
+function numOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+}
+
+function defaultSlot(offsetFromRace: number): RaceWeekSlot {
+  if (offsetFromRace === -2) {
+    return {
+      offsetFromRace,
+      runName: "Shakeout",
+      type: "shakeout-easy",
+      catalogueWorkoutId: null,
+      prescribedMiles: null,
+      shakeoutRunConfigId: null,
+    };
+  }
+  if (offsetFromRace === -1) {
+    return {
+      offsetFromRace,
+      runName: "Off",
+      type: "off",
+      catalogueWorkoutId: null,
+      prescribedMiles: null,
+      shakeoutRunConfigId: null,
+    };
+  }
+  if (offsetFromRace === 0) {
+    return {
+      offsetFromRace,
+      runName: "Race",
+      type: "race",
+      catalogueWorkoutId: null,
+      prescribedMiles: null,
+      shakeoutRunConfigId: null,
+    };
+  }
+  return {
+    offsetFromRace,
+    runName: offsetFromRace === -5 ? "Light tempo" : "Easy",
+    type: offsetFromRace === -5 ? "tempo" : "easy",
+    catalogueWorkoutId: null,
+    prescribedMiles: null,
+    shakeoutRunConfigId: null,
+  };
+}
+
+/** Default marathon race week anchored on race day (offset 0). */
 export function defaultRaceWeekSlots(): RaceWeekSlot[] {
-  return [
-    { offsetFromRace: -6, slotType: "Easy" },
-    { offsetFromRace: -5, slotType: "Intervals" },
-    { offsetFromRace: -4, slotType: "Easy" },
-    { offsetFromRace: -3, slotType: "Rest" },
-    { offsetFromRace: -2, slotType: "Shakeout" },
-    { offsetFromRace: -1, slotType: "Rest" },
-    { offsetFromRace: 0, slotType: "Race" },
-  ];
+  return RACE_WEEK_OFFSETS.map((offsetFromRace) => defaultSlot(offsetFromRace));
 }
 
 export function parseRaceWeekSlots(raw: unknown): RaceWeekSlot[] {
-  if (!Array.isArray(raw)) return defaultRaceWeekSlots();
-  return raw.filter(
-    (s): s is RaceWeekSlot =>
-      typeof s === "object" &&
-      s !== null &&
-      typeof (s as RaceWeekSlot).offsetFromRace === "number" &&
-      typeof (s as RaceWeekSlot).slotType === "string",
-  );
+  const defaults = defaultRaceWeekSlots();
+  if (!Array.isArray(raw) || raw.length === 0) return defaults;
+
+  return defaults.map((def) => {
+    const found = raw.find((item) => {
+      if (item == null || typeof item !== "object") return false;
+      const row = item as Record<string, unknown>;
+      return Number(row.offsetFromRace) === def.offsetFromRace;
+    }) as Record<string, unknown> | undefined;
+
+    if (!found) return def;
+
+    const typeRaw = found.type ?? found.slotType;
+    const type = SLOT_TYPES.includes(typeRaw as RaceWeekSlotType)
+      ? (typeRaw as RaceWeekSlotType)
+      : def.type;
+
+    return {
+      offsetFromRace: def.offsetFromRace,
+      runName:
+        typeof found.runName === "string" && found.runName.trim()
+          ? found.runName.trim()
+          : def.runName,
+      type,
+      catalogueWorkoutId: strOrNull(found.catalogueWorkoutId),
+      prescribedMiles: numOrNull(found.prescribedMiles),
+      shakeoutRunConfigId: strOrNull(found.shakeoutRunConfigId),
+    };
+  });
+}
+
+export function offsetLabel(offsetFromRace: number): string {
+  if (offsetFromRace === 0) return "Race day (n)";
+  return `n${offsetFromRace}`;
 }

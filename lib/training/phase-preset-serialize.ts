@@ -21,6 +21,7 @@ export function serializeBuildPhasePreset(row: BuildWithConfigs) {
     name: row.name,
     startLongRunMiles: row.startLongRunMiles,
     peakLongRunMiles: row.peakLongRunMiles,
+    longRunCutback: row.longRunCutback,
     maxWeeklyMiles: row.maxWeeklyMiles,
     longRunConfigId: row.longRunConfigId,
     easyConfigId: row.easyConfigId,

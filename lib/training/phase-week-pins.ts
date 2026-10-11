@@ -14,13 +14,18 @@ export type PhaseWeekRow = {
 
 export const PHASE_WEEK_LABELS = ["W1", "W2", "W3", "W4"] as const;
 
-export function defaultPhaseWeekRows(): PhaseWeekRow[] {
-  return [1, 2, 3, 4].map((weekIndex) => ({
-    weekIndex,
+export function defaultPhaseWeekRows(weekCount = 4): PhaseWeekRow[] {
+  const count = Math.max(1, Math.min(4, weekCount));
+  return Array.from({ length: count }, (_, i) => ({
+    weekIndex: i + 1,
     totalMilesCap: null,
     longRunCapMiles: null,
     pins: [],
   }));
+}
+
+export function defaultTaperPhaseWeekRows(): PhaseWeekRow[] {
+  return defaultPhaseWeekRows(2);
 }
 
 function numOrNull(v: unknown): number | null {
@@ -28,8 +33,8 @@ function numOrNull(v: unknown): number | null {
   return null;
 }
 
-export function parsePhaseWeekRows(raw: unknown): PhaseWeekRow[] {
-  const base = defaultPhaseWeekRows();
+export function parsePhaseWeekRows(raw: unknown, weekCount = 4): PhaseWeekRow[] {
+  const base = defaultPhaseWeekRows(weekCount);
   if (!Array.isArray(raw)) return base;
   return base.map((row) => {
     const found = raw.find((item) => {
@@ -70,7 +75,7 @@ export function phaseWeekRowsFromLegacyTaper(taper: {
   week2LongRunMiles: number | null;
   weekPins?: unknown;
 }): PhaseWeekRow[] {
-  const parsed = parsePhaseWeekRows(taper.weekPins);
+  const parsed = parsePhaseWeekRows(taper.weekPins, 2);
   const hasPinData = parsed.some(
     (r) => r.totalMilesCap != null || r.longRunCapMiles != null || r.pins.length > 0,
   );

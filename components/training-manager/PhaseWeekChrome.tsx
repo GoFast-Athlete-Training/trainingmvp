@@ -19,6 +19,7 @@ export function PhaseWeekChrome({
   nameLabel = "Name",
   weeks,
   onWeeksChange,
+  weekCount = 4,
   raceWeekMeta,
 }: {
   name: string;
@@ -26,6 +27,8 @@ export function PhaseWeekChrome({
   nameLabel?: string;
   weeks: PhaseWeekRow[];
   onWeeksChange: (weeks: PhaseWeekRow[]) => void;
+  /** Taper uses 2; default chrome is 4. */
+  weekCount?: number;
   raceWeekMeta?: {
     shakeoutConfigId: string;
     onShakeoutChange: (id: string) => void;
@@ -134,7 +137,7 @@ export function PhaseWeekChrome({
         Pin catalogue workouts for non-easy days. Generate fills other preferred days with easy runs
         under each week&apos;s cap.
       </p>
-      {weeks.map((week) => {
+      {weeks.filter((w) => w.weekIndex <= weekCount).map((week) => {
         const label = PHASE_WEEK_LABELS[week.weekIndex - 1] ?? `W${week.weekIndex}`;
         return (
           <section

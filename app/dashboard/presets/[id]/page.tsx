@@ -9,7 +9,7 @@ import {
   type BuildFormState,
 } from "@/components/training-manager/BuildPhaseFields";
 import { PhaseChooseOrBuild } from "@/components/training-manager/PhaseChooseOrBuild";
-import { PhaseWeekChrome } from "@/components/training-manager/PhaseWeekChrome";
+import { RaceWeekSlotsEditor } from "@/components/training-manager/RaceWeekSlotsEditor";
 import {
   TaperPhaseFields,
   taperFormFromApi,
@@ -18,7 +18,11 @@ import {
 } from "@/components/training-manager/TaperPhaseFields";
 import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
-import { defaultPhaseWeekRows, parsePhaseWeekRows } from "@/lib/training/phase-week-pins";
+import {
+  defaultRaceWeekSlots,
+  parseRaceWeekSlots,
+  type RaceWeekSlot,
+} from "@/lib/training/race-week-slots";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -74,9 +78,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [buildForm, setBuildForm] = useState<BuildFormState | null>(null);
   const [taperForm, setTaperForm] = useState<TaperFormState | null>(null);
   const [raceWeekTitle, setRaceWeekTitle] = useState("");
-  const [raceWeekPins, setRaceWeekPins] = useState(() => defaultPhaseWeekRows());
-  const [shakeoutConfigId, setShakeoutConfigId] = useState("");
-  const [shakeoutDaysPrior, setShakeoutDaysPrior] = useState(2);
+  const [raceWeekSlots, setRaceWeekSlots] = useState<RaceWeekSlot[]>(() => defaultRaceWeekSlots());
 
   const [changeBuild, setChangeBuild] = useState(false);
   const [changeTaper, setChangeTaper] = useState(false);
@@ -118,16 +120,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     const data = (await res.json()) as {
       preset?: {
         title: string;
-        weekPins: unknown;
-        shakeoutRunConfigId: string | null;
-        shakeoutDaysPriorToRace: number;
+        slots: unknown;
       };
     };
     if (data.preset) {
       setRaceWeekTitle(data.preset.title ?? "");
-      setRaceWeekPins(parsePhaseWeekRows(data.preset.weekPins));
-      setShakeoutConfigId(data.preset.shakeoutRunConfigId ?? "");
-      setShakeoutDaysPrior(data.preset.shakeoutDaysPriorToRace ?? 2);
+      setRaceWeekSlots(parseRaceWeekSlots(data.preset.slots));
     }
   }, []);
 
@@ -265,9 +263,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: raceWeekTitle.trim() || "Race week",
-          weekPins: raceWeekPins,
-          shakeoutRunConfigId: shakeoutConfigId || null,
-          shakeoutDaysPriorToRace: shakeoutDaysPrior,
+          slots: raceWeekSlots,
         }),
       });
       setStepSaved(true);
@@ -554,19 +550,19 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
               ) : null}
               {preset.raceWeekPresetId && !showRacePicker ? (
                 <>
-                  <PhaseWeekChrome
-                    name={raceWeekTitle}
-                    onNameChange={setRaceWeekTitle}
-                    nameLabel="Race week title"
-                    weeks={raceWeekPins}
-                    onWeeksChange={setRaceWeekPins}
-                    raceWeekMeta={{
-                      shakeoutConfigId,
-                      onShakeoutChange: setShakeoutConfigId,
-                      shakeoutDaysPrior,
-                      onShakeoutDaysPriorChange: setShakeoutDaysPrior,
-                    }}
-                  />
+                  <label className="block text-sm">
+                    <span className="text-gray-600">Race week title</span>
+                    <input
+                      className="mt-1 w-full max-w-md rounded border px-3 py-2"
+                      value={raceWeekTitle}
+                      onChange={(e) => setRaceWeekTitle(e.target.value)}
+                    />
+                  </label>
+                  <p className="text-sm text-gray-600">
+                    Each row is counted back from race day. Catalogue workout plus miles. Shakeout
+                    uses an easy workout with optional shakeout pace config.
+                  </p>
+                  <RaceWeekSlotsEditor slots={raceWeekSlots} onChange={setRaceWeekSlots} />
                   <button
                     type="button"
                     disabled={saving}

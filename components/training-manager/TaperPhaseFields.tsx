@@ -26,6 +26,7 @@ export function TaperPhaseFields({
       onNameChange={(name) => onChange({ ...value, name })}
       weeks={value.weeks}
       onWeeksChange={(weeks) => onChange({ ...value, weeks })}
+      weekCount={2}
     />
   );
 }
