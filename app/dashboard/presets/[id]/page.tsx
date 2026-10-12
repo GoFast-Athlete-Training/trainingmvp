@@ -30,6 +30,7 @@ type WizardStep = "core" | "build" | "taper" | "raceWeek";
 
 type PresetDetail = {
   id: string;
+  slug: string;
   title: string;
   description: string | null;
   publicDescription: string | null;
@@ -65,6 +66,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<PresetDetail | null>(null);
   const [step, setStep] = useState<WizardStep>("core");
+  const [slug, setSlug] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [publicDescription, setPublicDescription] = useState("");
@@ -136,6 +138,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     const p = presetData.preset ?? null;
     if (!p) return;
     setPreset(p);
+    setSlug(p.slug ?? "");
     setTitle(p.title);
     setDescription(p.description ?? "");
     setPublicDescription(p.publicDescription ?? "");
@@ -159,7 +162,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       const min = Math.round(Number(minWeeklyMiles) || 40);
       const maxRaw = maxWeeklyMiles.trim();
       const max = maxRaw === "" ? null : Math.round(Number(maxRaw));
-      await patchPreset({
+      const updated = await patchPreset({
         title,
         description,
         publicDescription,
@@ -167,6 +170,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         minWeeklyMiles: min,
         maxWeeklyMiles: max,
       });
+      if (updated?.slug) setSlug(updated.slug);
     } finally {
       setSaving(false);
     }
@@ -340,6 +344,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </label>
+              {slug ? (
+                <p className="text-xs text-gray-500">
+                  Slug: <span className="font-mono text-gray-700">{slug}</span>
+                  <span className="text-gray-400"> — updates when you save Core</span>
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="text-gray-600">Typical weekly miles (low)</span>

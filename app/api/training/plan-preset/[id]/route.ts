@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 import { serializeBuildPreset } from "@/lib/training/preset-serialize";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -70,12 +71,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (typeof body.title === "string") {
     const title = body.title.trim();
     data.title = title;
-    if (existing.slug === "untitled" && title) {
-      data.slug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 80);
+    if (title) {
+      const nextSlug = normalizeSlug(title).slice(0, 80);
+      if (nextSlug) data.slug = nextSlug;
     }
   }
   if (typeof body.description === "string") data.description = body.description.trim();
