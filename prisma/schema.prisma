@@ -98,7 +98,7 @@ enum RaceWeekSlotType {
   Race
 }
 
-// ─── Persona / goal (prod catalog — editor stub only) ───────────────────────
+// ─── Persona / goal catalog (copy from prod → TM SOT; see docs/PERSONA_GOAL_CATALOG.md) ─
 
 model training_plan_persona {
   id                  String                    @id @default(cuid())

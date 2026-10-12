@@ -97,6 +97,16 @@ export default function TrainingManagerSidebar() {
 
           <button
             type="button"
+            onClick={() => router.push("/dashboard/personas")}
+            className={navButtonClass(
+              pathname === "/dashboard/personas" || pathname.startsWith("/dashboard/personas/"),
+            )}
+          >
+            <span className="font-medium">Personas (stub)</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => router.push("/dashboard/catalogue")}
             className={navButtonClass(
               pathname === "/dashboard/catalogue" || pathname.startsWith("/dashboard/catalogue/"),
