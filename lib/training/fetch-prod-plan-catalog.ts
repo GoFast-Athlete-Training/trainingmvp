@@ -1,12 +1,12 @@
 import type { PlanGoalApi, PlanPersonaApi } from "@/lib/training/plan-entity-serialize";
 
 export function productTrainingBaseUrl(): string {
-  return (
-    process.env.GOFAST_APP_API_URL ||
-    process.env.NEXT_PUBLIC_GOFAST_APP_URL ||
-    process.env.NEXT_PUBLIC_PRODUCT_APP_URL ||
-    "http://localhost:3001"
-  ).replace(/\/$/, "");
+  const base = process.env.GOFAST_APP_API_URL?.trim();
+  if (base) return base.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3001";
+  }
+  return "";
 }
 
 export async function fetchProdPlanPersonas(opts: {

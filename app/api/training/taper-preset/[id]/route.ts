@@ -6,6 +6,10 @@ import {
   taperPresetInclude,
   serializeTaperPhasePreset,
 } from "@/lib/training/phase-preset-serialize";
+import {
+  presetIdsLinkedToTaperPreset,
+  schedulePresetProdSync,
+} from "@/lib/training/trigger-preset-prod-sync";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -60,5 +64,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     data,
     include: taperPresetInclude,
   });
+
+  const authorization = request.headers.get("authorization")?.trim();
+  if (authorization) {
+    const presetIds = await presetIdsLinkedToTaperPreset(id);
+    schedulePresetProdSync({
+      presetIds,
+      authorization,
+      staffId: auth.manager.id,
+    });
+  }
+
   return NextResponse.json({ success: true, taper: serializeTaperPhasePreset(row) });
 }

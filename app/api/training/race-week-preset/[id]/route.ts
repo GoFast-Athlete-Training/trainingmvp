@@ -3,6 +3,10 @@ export const dynamic = "force-dynamic";
 import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
 import { prisma } from "@/lib/prisma";
 import { serializeRaceWeekPreset } from "@/lib/training/preset-serialize";
+import {
+  presetIdsLinkedToRaceWeekPreset,
+  schedulePresetProdSync,
+} from "@/lib/training/trigger-preset-prod-sync";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -38,6 +42,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     where: { id },
     data,
   });
+
+  const authorization = request.headers.get("authorization")?.trim();
+  if (authorization) {
+    const presetIds = await presetIdsLinkedToRaceWeekPreset(id);
+    schedulePresetProdSync({
+      presetIds,
+      authorization,
+      staffId: auth.manager.id,
+    });
+  }
 
   return NextResponse.json({ success: true, preset: serializeRaceWeekPreset(row) });
 }
