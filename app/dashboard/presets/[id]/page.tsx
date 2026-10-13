@@ -23,8 +23,35 @@ import {
   parseRaceWeekSlots,
   type RaceWeekSlot,
 } from "@/lib/training/race-week-slots";
+import {
+  prodSyncMessageFromBody,
+  type SaveSyncStatus,
+} from "@/lib/training/save-sync-feedback";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+
+function SaveSyncBanner({ status }: { status: SaveSyncStatus }) {
+  if (status.state === "idle") return null;
+  if (status.state === "saving") {
+    return (
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+        Saving and syncing to prod…
+      </div>
+    );
+  }
+  if (status.state === "synced") {
+    return (
+      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-900">
+        Saved and synced to prod
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+      {status.message}
+    </div>
+  );
+}
 
 type WizardStep = "core" | "build" | "taper" | "raceWeek";
 
@@ -75,6 +102,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [maxWeeklyMiles, setMaxWeeklyMiles] = useState("55");
   const [saving, setSaving] = useState(false);
   const [stepSaved, setStepSaved] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
   const [aiBusy, setAiBusy] = useState(false);
 
   const [buildForm, setBuildForm] = useState<BuildFormState | null>(null);
@@ -90,19 +118,57 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     void params.then((p) => setPresetId(p.id));
   }, [params]);
 
+  const markSynced = useCallback(() => {
+    setSyncStatus({ state: "synced" });
+    window.setTimeout(() => setSyncStatus({ state: "idle" }), 5000);
+  }, []);
+
+  const markSyncError = useCallback((message: string) => {
+    setSyncStatus({ state: "error", message });
+  }, []);
+
   const patchPreset = useCallback(
     async (body: Record<string, unknown>) => {
       if (!presetId) return null;
+      setSyncStatus({ state: "saving" });
       const res = await authFetch(`/api/training/plan-preset/${presetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { preset?: PresetDetail };
+      const data = (await res.json()) as {
+        preset?: PresetDetail;
+        error?: string;
+        prodSyncError?: string;
+      };
+      if (!res.ok) {
+        markSyncError(prodSyncMessageFromBody(data) ?? `Save failed (${res.status})`);
+        return null;
+      }
+      markSynced();
       if (data.preset) setPreset(data.preset);
       return data.preset ?? null;
     },
-    [presetId],
+    [presetId, markSynced, markSyncError],
+  );
+
+  const patchJsonWithProdSync = useCallback(
+    async (url: string, body: Record<string, unknown>) => {
+      setSyncStatus({ state: "saving" });
+      const res = await authFetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        markSyncError(prodSyncMessageFromBody(data) ?? `Save failed (${res.status})`);
+        return false;
+      }
+      markSynced();
+      return true;
+    },
+    [markSynced, markSyncError],
   );
 
   const loadBuild = useCallback(async (buildPresetId: string) => {
@@ -171,6 +237,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         maxWeeklyMiles: max,
       });
       if (updated?.slug) setSlug(updated.slug);
+      if (updated) {
+        setStepSaved(true);
+        setTimeout(() => setStepSaved(false), 2000);
+      }
     } finally {
       setSaving(false);
     }
@@ -218,20 +288,21 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   }
 
   const saveBuildFieldsOnly = useCallback(async () => {
-    if (!buildForm) return;
-    await authFetch(`/api/training/build-preset/${buildForm.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPatchBody(buildForm)),
-    });
-  }, [buildForm]);
+    if (!buildForm) return false;
+    return patchJsonWithProdSync(
+      `/api/training/build-preset/${buildForm.id}`,
+      buildPatchBody(buildForm),
+    );
+  }, [buildForm, patchJsonWithProdSync]);
 
   async function saveBuildStep() {
     if (!buildForm || !preset?.buildPresetId) return;
     setSaving(true);
     try {
-      await saveBuildFieldsOnly();
-      await patchPreset({ buildPresetId: preset.buildPresetId });
+      const buildOk = await saveBuildFieldsOnly();
+      if (!buildOk) return;
+      const updated = await patchPreset({ buildPresetId: preset.buildPresetId });
+      if (!updated) return;
       await load();
       setStepSaved(true);
       setTimeout(() => setStepSaved(false), 2000);
@@ -244,12 +315,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (!taperForm || !preset?.taperPresetId) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/taper-preset/${taperForm.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(taperPatchBody(taperForm)),
-      });
-      await patchPreset({ taperPresetId: preset.taperPresetId });
+      const taperOk = await patchJsonWithProdSync(
+        `/api/training/taper-preset/${taperForm.id}`,
+        taperPatchBody(taperForm),
+      );
+      if (!taperOk) return;
+      const updated = await patchPreset({ taperPresetId: preset.taperPresetId });
+      if (!updated) return;
       await load();
       setStepSaved(true);
       setTimeout(() => setStepSaved(false), 2000);
@@ -262,14 +334,14 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (!preset?.raceWeekPresetId) return;
     setSaving(true);
     try {
-      await authFetch(`/api/training/race-week-preset/${preset.raceWeekPresetId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const ok = await patchJsonWithProdSync(
+        `/api/training/race-week-preset/${preset.raceWeekPresetId}`,
+        {
           title: raceWeekTitle.trim() || "Race week",
           slots: raceWeekSlots,
-        }),
-      });
+        },
+      );
+      if (!ok) return;
       setStepSaved(true);
       setTimeout(() => setStepSaved(false), 2000);
     } finally {
@@ -303,9 +375,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         Plan presets
       </Link>
 
-      <div>
+      <div className="space-y-2">
         <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
         <p className="text-sm text-gray-500">Core → build → taper → race week</p>
+        <SaveSyncBanner status={syncStatus} />
       </div>
 
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
