@@ -265,6 +265,8 @@ model taper_preset {
   week2LongRunMiles Float?
   /// W1–W4 week caps and catalogue pins (non-easy workouts only).
   weekPins          Json   @default("[]")
+  /// Optional per-day taper stamps (offsets from goal race).
+  slots             Json   @default("[]")
 
   longRunConfigId   String?
   intervalsConfigId String?

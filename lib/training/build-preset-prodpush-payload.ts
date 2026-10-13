@@ -131,6 +131,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
         week2TotalMiles: taper.week2TotalMiles,
         week2LongRunMiles: taper.week2LongRunMiles,
         weekPins: taper.weekPins,
+        slots: taper.slots,
         longRunConfigId: taper.longRunConfigId,
         easyConfigId: taper.easyConfigId,
         tempoConfigId: taper.tempoConfigId,

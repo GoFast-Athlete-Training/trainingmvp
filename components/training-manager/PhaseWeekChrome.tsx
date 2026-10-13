@@ -134,7 +134,8 @@ export function PhaseWeekChrome({
         </div>
       ) : null}
       <p className="text-sm text-gray-600">
-        Pin catalogue workouts for non-easy days. Generate fills other preferred days with easy runs
+        Optional catalogue pins for specific days. Generate keeps the build weekly rotation (tempo /
+        intervals / long run) and lowers taper volume via week and long-run caps above.
         under each week&apos;s cap.
       </p>
       {weeks.filter((w) => w.weekIndex <= weekCount).map((week) => {

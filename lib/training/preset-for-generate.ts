@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { phaseWeekRowsFromLegacyTaper } from "@/lib/training/phase-week-pins";
+import { parseTaperWeekSlots } from "@/lib/training/taper-week-slots";
 import { parseRaceWeekSlots } from "@/lib/training/race-week-slots";
 
 const rotationInclude = {
@@ -163,6 +164,10 @@ export async function loadPresetForGenerate(
       ? {
           name: row.taperPreset.name,
           weeks: phaseWeekRowsFromLegacyTaper(row.taperPreset),
+          slots: (() => {
+            const s = parseTaperWeekSlots(row.taperPreset.slots);
+            return s.length > 0 ? s : undefined;
+          })(),
         }
       : null,
     raceWeek: row.raceWeekPreset
