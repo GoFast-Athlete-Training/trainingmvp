@@ -4,7 +4,7 @@ import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 import { serializeBuildPreset } from "@/lib/training/preset-serialize";
-import { schedulePresetProdSync } from "@/lib/training/trigger-preset-prod-sync";
+import { syncPresetsToProd } from "@/lib/training/trigger-preset-prod-sync";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -162,11 +162,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const authorization = request.headers.get("authorization")?.trim();
   if (authorization) {
-    schedulePresetProdSync({
+    const prodSync = await syncPresetsToProd({
       presetIds: [id],
       authorization,
       staffId: auth.manager.id,
     });
+    if (!prodSync.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Saved in Training Manage but prod sync failed",
+          prodSyncError: prodSync.error,
+          prodSyncStatus: prodSync.status,
+        },
+        { status: 502 },
+      );
+    }
   }
 
   return NextResponse.json({ success: true, preset: serializeBuildPreset(row) });

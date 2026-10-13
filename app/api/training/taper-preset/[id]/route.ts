@@ -8,7 +8,7 @@ import {
 } from "@/lib/training/phase-preset-serialize";
 import {
   presetIdsLinkedToTaperPreset,
-  schedulePresetProdSync,
+  syncPresetsToProd,
 } from "@/lib/training/trigger-preset-prod-sync";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -68,11 +68,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const authorization = request.headers.get("authorization")?.trim();
   if (authorization) {
     const presetIds = await presetIdsLinkedToTaperPreset(id);
-    schedulePresetProdSync({
+    const prodSync = await syncPresetsToProd({
       presetIds,
       authorization,
       staffId: auth.manager.id,
     });
+    if (!prodSync.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Saved in Training Manage but prod sync failed",
+          prodSyncError: prodSync.error,
+          prodSyncStatus: prodSync.status,
+        },
+        { status: 502 },
+      );
+    }
   }
 
   return NextResponse.json({ success: true, taper: serializeTaperPhasePreset(row) });
