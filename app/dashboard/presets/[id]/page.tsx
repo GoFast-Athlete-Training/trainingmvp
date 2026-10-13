@@ -538,7 +538,9 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   <BuildPhaseFields
                     value={buildForm}
                     onChange={setBuildForm}
-                    onBeforeManageNavigate={saveBuildFieldsOnly}
+                    onBeforeManageNavigate={async () => {
+                      await saveBuildFieldsOnly();
+                    }}
                   />
                   <div className="flex flex-wrap gap-2">
                     <button
