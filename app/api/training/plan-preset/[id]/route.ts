@@ -188,6 +188,31 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (auth.error) return auth.error;
 
   const { id } = await params;
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  if (authorization) {
+    const prodRes = await (
+      await import("@/lib/training/prod-preset-staff-proxy")
+    ).forwardProdPresetStaffRequest({
+      authorization,
+      staffId: auth.manager.id,
+      path: `/api/training/plan-preset/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    });
+    if (prodRes.ok) {
+      await prisma.training_plan_preset.deleteMany({ where: { id } }).catch(() => undefined);
+      const text = await prodRes.text();
+      return new NextResponse(text || JSON.stringify({ success: true }), {
+        status: prodRes.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const errText = await prodRes.text();
+    return NextResponse.json(
+      { success: false, error: errText.slice(0, 500) || "Prod delete failed" },
+      { status: prodRes.status >= 400 ? prodRes.status : 502 },
+    );
+  }
+
   const existing = await prisma.training_plan_preset.findUnique({ where: { id }, select: { id: true } });
   if (!existing) {
     return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });

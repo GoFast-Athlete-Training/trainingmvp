@@ -17,6 +17,25 @@ export async function GET(request: NextRequest) {
   const authError = await assertListPresetAuth(request);
   if (authError) return authError;
 
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const staffId = request.headers.get("x-gofast-staff-id")?.trim() ?? "";
+  if (authorization && staffId) {
+    const { forwardProdPresetStaffRequest } = await import(
+      "@/lib/training/prod-preset-staff-proxy"
+    );
+    const prodRes = await forwardProdPresetStaffRequest({
+      authorization,
+      staffId,
+      path: "/api/training/plan-preset",
+      method: "GET",
+    });
+    const text = await prodRes.text();
+    return new NextResponse(text, {
+      status: prodRes.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const rows = await prisma.training_plan_preset.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
