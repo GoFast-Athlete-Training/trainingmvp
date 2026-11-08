@@ -1,101 +1,27 @@
 export const dynamic = "force-dynamic";
 
-import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
-import { assertStaffForward } from "@/lib/staff-forward-auth";
-import { prisma } from "@/lib/prisma";
-import { serializeBuildPreset } from "@/lib/training/preset-serialize";
+import {
+  proxyPlanPresetResponse,
+  resolvePlanPresetProdStaff,
+} from "@/lib/training/plan-preset-prod-forward";
 import { NextRequest, NextResponse } from "next/server";
 
-async function assertListPresetAuth(request: NextRequest) {
-  const forward = await assertStaffForward(request);
-  if (forward.ok) return null;
-  const auth = await assertTrainingManagerAuth(request);
-  return auth.error;
-}
-
 export async function GET(request: NextRequest) {
-  const authError = await assertListPresetAuth(request);
-  if (authError) return authError;
+  const ctx = await resolvePlanPresetProdStaff(request);
+  if (ctx instanceof NextResponse) return ctx;
 
-  const authorization = request.headers.get("authorization")?.trim() ?? "";
-  const staffId = request.headers.get("x-gofast-staff-id")?.trim() ?? "";
-  if (authorization && staffId) {
-    const { forwardProdPresetStaffRequest } = await import(
-      "@/lib/training/prod-preset-staff-proxy"
-    );
-    const prodRes = await forwardProdPresetStaffRequest({
-      authorization,
-      staffId,
-      path: "/api/training/plan-preset",
-      method: "GET",
-    });
-    const text = await prodRes.text();
-    return new NextResponse(text, {
-      status: prodRes.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const rows = await prisma.training_plan_preset.findMany({
-    orderBy: { updatedAt: "desc" },
-    include: {
-      longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
-      easyConfig: true,
-      tempoConfig: true,
-      intervalsConfig: true,
-      buildPreset: { select: { id: true, name: true } },
-      taperPreset: { select: { id: true, name: true } },
-      raceWeekPreset: { select: { id: true, title: true } },
-    },
-  });
-
-  return NextResponse.json({
-    success: true,
-    presets: rows.map(serializeBuildPreset),
-  });
+  return proxyPlanPresetResponse(ctx, { path: "/api/training/plan-preset", method: "GET" });
 }
 
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-}
-
-/** Minimal plan preset + empty linked build, taper, and race week for the wizard. */
+/** Create minimal plan preset on prod (prod SOT). */
 export async function POST(request: NextRequest) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
+  const ctx = await resolvePlanPresetProdStaff(request);
+  if (ctx instanceof NextResponse) return ctx;
 
-  const body = (await request.json().catch(() => ({}))) as { title?: string };
-  const title = body.title?.trim() || "Untitled";
-  const baseSlug = slugify(title);
-  let slug = baseSlug || `preset-${Date.now()}`;
-  let n = 0;
-  while (await prisma.training_plan_preset.findUnique({ where: { slug } })) {
-    n += 1;
-    slug = `${baseSlug || "preset"}-${n}`;
-  }
-
-  const preset = await prisma.$transaction(async (tx) => {
-    return tx.training_plan_preset.create({
-      data: {
-        slug,
-        title,
-        description: "",
-      },
-      include: {
-        longRunConfig: { include: { positions: { orderBy: { cyclePosition: "asc" } } } },
-        easyConfig: true,
-        tempoConfig: true,
-        intervalsConfig: true,
-        buildPreset: { select: { id: true, name: true } },
-        taperPreset: { select: { id: true, name: true } },
-        raceWeekPreset: { select: { id: true, title: true } },
-      },
-    });
+  const body = await request.json().catch(() => ({}));
+  return proxyPlanPresetResponse(ctx, {
+    path: "/api/training/plan-preset",
+    method: "POST",
+    body,
   });
-
-  return NextResponse.json({ success: true, preset: serializeBuildPreset(preset) });
 }
