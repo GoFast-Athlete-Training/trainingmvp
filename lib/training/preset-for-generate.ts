@@ -75,6 +75,7 @@ export type TrainingManagePresetForGenerate = {
   taper: {
     name: string;
     weeks: ReturnType<typeof phaseWeekRowsFromLegacyTaper>;
+    slots?: ReturnType<typeof parseTaperWeekSlots>;
   } | null;
   raceWeek: {
     title: string;
