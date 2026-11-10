@@ -53,7 +53,7 @@ function SaveSyncBanner({ status }: { status: SaveSyncStatus }) {
   );
 }
 
-type WizardStep = "core" | "build" | "taper" | "raceWeek";
+type WizardStep = "core" | "baseBuild" | "build" | "taper" | "raceWeek";
 
 type PresetDetail = {
   id: string;
@@ -62,6 +62,7 @@ type PresetDetail = {
   description: string | null;
   publicDescription: string | null;
   targetDistanceLabel: string | null;
+  baseBuildPresetId: string | null;
   buildPresetId: string | null;
   taperPresetId: string | null;
   raceWeekPresetId: string | null;
@@ -77,13 +78,15 @@ function mi(n: number | null) {
 
 const STEPS: { id: WizardStep; label: string }[] = [
   { id: "core", label: "Core" },
-  { id: "build", label: "Build" },
+  { id: "baseBuild", label: "Build" },
+  { id: "build", label: "Build to peak" },
   { id: "taper", label: "Taper" },
   { id: "raceWeek", label: "Race week" },
 ];
 
 const NEXT_STEP: Record<WizardStep, WizardStep | null> = {
-  core: "build",
+  core: "baseBuild",
+  baseBuild: "build",
   build: "taper",
   taper: "raceWeek",
   raceWeek: null,
@@ -105,11 +108,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
   const [aiBusy, setAiBusy] = useState(false);
 
+  const [baseBuildForm, setBaseBuildForm] = useState<BuildFormState | null>(null);
   const [buildForm, setBuildForm] = useState<BuildFormState | null>(null);
   const [taperForm, setTaperForm] = useState<TaperFormState | null>(null);
   const [raceWeekTitle, setRaceWeekTitle] = useState("");
   const [raceWeekSlots, setRaceWeekSlots] = useState<RaceWeekSlot[]>(() => defaultRaceWeekSlots());
 
+  const [changeBaseBuild, setChangeBaseBuild] = useState(false);
   const [changeBuild, setChangeBuild] = useState(false);
   const [changeTaper, setChangeTaper] = useState(false);
   const [changeRace, setChangeRace] = useState(false);
@@ -177,6 +182,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (data.build) setBuildForm(buildFormFromApi(data.build));
   }, []);
 
+  const loadBaseBuild = useCallback(async (buildPresetId: string) => {
+    const res = await authFetch(`/api/training/build-preset/${buildPresetId}`);
+    const data = (await res.json()) as { build?: Parameters<typeof buildFormFromApi>[0] };
+    if (data.build) setBaseBuildForm(buildFormFromApi(data.build));
+  }, []);
+
   const loadTaper = useCallback(async (taperPresetId: string) => {
     const res = await authFetch(`/api/training/taper-preset/${taperPresetId}`);
     const data = (await res.json()) as { taper?: Parameters<typeof taperFormFromApi>[0] };
@@ -211,12 +222,14 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     setTargetDistanceLabel(p.targetDistanceLabel ?? "");
     setMinWeeklyMiles(String(p.minWeeklyMiles ?? 45));
     setMaxWeeklyMiles(p.maxWeeklyMiles == null ? "" : String(p.maxWeeklyMiles));
+    if (p.baseBuildPresetId) await loadBaseBuild(p.baseBuildPresetId);
+    else setBaseBuildForm(null);
     if (p.buildPresetId) await loadBuild(p.buildPresetId);
     else setBuildForm(null);
     if (p.taperPresetId) await loadTaper(p.taperPresetId);
     else setTaperForm(null);
     if (p.raceWeekPresetId) await loadRace(p.raceWeekPresetId);
-  }, [presetId, loadBuild, loadTaper, loadRace]);
+  }, [presetId, loadBaseBuild, loadBuild, loadTaper, loadRace]);
 
   useEffect(() => {
     void load();
@@ -266,15 +279,23 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
-  async function linkPhase(phase: Exclude<WizardStep, "core">, id: string) {
+  async function linkPhase(
+    phase: Exclude<WizardStep, "core">,
+    id: string,
+  ) {
     const key =
-      phase === "build"
-        ? "buildPresetId"
-        : phase === "taper"
-          ? "taperPresetId"
-          : "raceWeekPresetId";
+      phase === "baseBuild"
+        ? "baseBuildPresetId"
+        : phase === "build"
+          ? "buildPresetId"
+          : phase === "taper"
+            ? "taperPresetId"
+            : "raceWeekPresetId";
     await patchPreset({ [key]: id });
-    if (phase === "build") {
+    if (phase === "baseBuild") {
+      setChangeBaseBuild(false);
+      await loadBaseBuild(id);
+    } else if (phase === "build") {
       setChangeBuild(false);
       await loadBuild(id);
     } else if (phase === "taper") {
@@ -294,6 +315,32 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       buildPatchBody(buildForm),
     );
   }, [buildForm, patchJsonWithProdSync]);
+
+  const saveBaseBuildFieldsOnly = useCallback(async () => {
+    if (!baseBuildForm) return false;
+    return patchJsonWithProdSync(
+      `/api/training/build-preset/${baseBuildForm.id}`,
+      buildPatchBody(baseBuildForm),
+    );
+  }, [baseBuildForm, patchJsonWithProdSync]);
+
+  async function saveBaseBuildStep() {
+    if (!baseBuildForm || !preset?.baseBuildPresetId) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const ok = await saveBaseBuildFieldsOnly();
+      if (!ok) return;
+      const updated = await patchPreset({ baseBuildPresetId: preset.baseBuildPresetId });
+      if (!updated) return;
+      await load();
+      setStepSaved(true);
+      setTimeout(() => setStepSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function saveBuildStep() {
     if (!buildForm || !preset?.buildPresetId) return;
@@ -351,6 +398,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
 
   async function goNext() {
     if (step === "core") await saveMeta();
+    else if (step === "baseBuild") await saveBaseBuildStep();
     else if (step === "build") await saveBuildStep();
     else if (step === "taper") await saveTaperStep();
     else if (step === "raceWeek") await saveRaceStep();
@@ -360,6 +408,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
 
   if (!preset) return <p className="text-gray-500">Loading…</p>;
 
+  const showBaseBuildPicker = !preset.baseBuildPresetId || changeBaseBuild;
   const showBuildPicker = !preset.buildPresetId || changeBuild;
   const showTaperPicker = !preset.taperPresetId || changeTaper;
   const showRacePicker = !preset.raceWeekPresetId || changeRace;
@@ -377,7 +426,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
 
       <div className="space-y-2">
         <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
-        <p className="text-sm text-gray-500">Core → build → taper → race week</p>
+        <p className="text-sm text-gray-500">Core → build → build to peak → taper → race week</p>
         <SaveSyncBanner status={syncStatus} />
       </div>
 
@@ -504,11 +553,80 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
             </section>
           ) : null}
 
-          {step === "build" ? (
+          {step === "baseBuild" ? (
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold">Build</h2>
+                  <p className="text-xs text-gray-500">
+                    Optional steady block for weeks before the 8-week ramp. Flat long run and weekly
+                    miles; link only when the race is more than 8 build weeks out.
+                  </p>
+                </div>
+                {preset.baseBuildPresetId && !changeBaseBuild ? (
+                  <button
+                    type="button"
+                    className="text-sm text-sky-700 hover:underline"
+                    onClick={() => setChangeBaseBuild(true)}
+                  >
+                    Change build
+                  </button>
+                ) : null}
+              </div>
+              {showBaseBuildPicker ? (
+                <PhaseChooseOrBuild
+                  phase="build"
+                  linkedId={preset.baseBuildPresetId}
+                  onLinked={(id) => void linkPhase("baseBuild", id)}
+                />
+              ) : null}
+              {baseBuildForm && !showBaseBuildPicker ? (
+                <>
+                  <BuildPhaseFields
+                    value={baseBuildForm}
+                    onChange={setBaseBuildForm}
+                    onBeforeManageNavigate={async () => {
+                      await saveBaseBuildFieldsOnly();
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void saveBaseBuildStep()}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void goNext()}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : "Next — Build to peak"}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+              {!preset.baseBuildPresetId && !baseBuildForm ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void goNext()}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Skip — no base build
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+
+          {step === "build" ? (
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Build to peak</h2>
                   <p className="text-xs text-gray-500">
                     {formatPeakMileageSummary(
                       preset.snapPeakLongRunMiles,

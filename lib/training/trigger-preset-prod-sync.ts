@@ -37,7 +37,7 @@ export function schedulePresetProdSync(opts: {
 
 export async function presetIdsLinkedToBuildPreset(buildPresetId: string): Promise<string[]> {
   const rows = await prisma.training_plan_preset.findMany({
-    where: { buildPresetId },
+    where: { OR: [{ buildPresetId }, { baseBuildPresetId: buildPresetId }] },
     select: { id: true },
   });
   return rows.map((r) => r.id);

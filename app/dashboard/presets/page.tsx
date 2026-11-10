@@ -94,14 +94,22 @@ export default function PresetsListPage() {
             Full plan templates — core details plus build, taper, and race week.
           </p>
         </div>
-        <button
-          type="button"
-          disabled={creating}
-          onClick={() => void buildPreset()}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-        >
-          {creating ? "Opening…" : "Build preset"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/dashboard/presets/ingest"
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+          >
+            Import presets
+          </Link>
+          <button
+            type="button"
+            disabled={creating}
+            onClick={() => void buildPreset()}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          >
+            {creating ? "Opening…" : "Build preset"}
+          </button>
+        </div>
       </div>
       {loading ? (
         <p className="text-gray-500">Loading…</p>

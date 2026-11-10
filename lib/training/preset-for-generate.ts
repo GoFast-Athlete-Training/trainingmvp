@@ -58,6 +58,20 @@ export type TrainingManagePresetForGenerate = {
   coachPlanOverview: unknown;
   workoutStructure: unknown;
   easyRunConfig: unknown;
+  baseBuild: {
+    startLongRunMiles: number | null;
+    peakLongRunMiles: number | null;
+    peakWeeklyMiles: number | null;
+    longRunCutback: number | null;
+    longRunConfigId: string | null;
+    easyConfigId: string | null;
+    tempoConfigId: string | null;
+    intervalsConfigId: string | null;
+    longRunConfig: ReturnType<typeof mapRotation>;
+    easyConfig: ReturnType<typeof mapRotation>;
+    tempoConfig: ReturnType<typeof mapRotation>;
+    intervalsConfig: ReturnType<typeof mapRotation>;
+  } | null;
   build: {
     startLongRunMiles: number | null;
     peakLongRunMiles: number | null;
@@ -86,18 +100,21 @@ export type TrainingManagePresetForGenerate = {
 export async function loadPresetForGenerate(
   presetId: string,
 ): Promise<TrainingManagePresetForGenerate | null> {
+  const buildGraph = {
+    include: {
+      longRunConfig: rotationInclude,
+      easyConfig: rotationInclude,
+      tempoConfig: rotationInclude,
+      intervalsConfig: rotationInclude,
+    },
+  } as const;
+
   const row = await prisma.training_plan_preset.findUnique({
     where: { id: presetId },
     include: {
       ...planLegacyRotationInclude,
-      buildPreset: {
-        include: {
-          longRunConfig: rotationInclude,
-          easyConfig: rotationInclude,
-          tempoConfig: rotationInclude,
-          intervalsConfig: rotationInclude,
-        },
-      },
+      baseBuildPreset: buildGraph,
+      buildPreset: buildGraph,
       taperPreset: true,
       raceWeekPreset: true,
     },
@@ -105,16 +122,42 @@ export async function loadPresetForGenerate(
   if (!row) return null;
 
   const build = row.buildPreset;
-
-  const buildLongRun = mapRotation(build?.longRunConfig ?? null);
-  const buildEasy = mapRotation(build?.easyConfig ?? null);
-  const buildTempo = mapRotation(build?.tempoConfig ?? null);
-  const buildIntervals = mapRotation(build?.intervalsConfig ?? null);
+  const baseBuild = row.baseBuildPreset;
 
   const legacyLongRun = mapRotation(row.longRunConfig);
   const legacyEasy = mapRotation(row.easyConfig);
   const legacyTempo = mapRotation(row.tempoConfig);
   const legacyIntervals = mapRotation(row.intervalsConfig);
+
+  function phaseBuildFrom(
+    phase: typeof build | typeof baseBuild,
+    useLegacy: boolean,
+  ): TrainingManagePresetForGenerate["build"] {
+    if (!phase) return null;
+    const buildLongRun = mapRotation(phase.longRunConfig ?? null);
+    const buildEasy = mapRotation(phase.easyConfig ?? null);
+    const buildTempo = mapRotation(phase.tempoConfig ?? null);
+    const buildIntervals = mapRotation(phase.intervalsConfig ?? null);
+    return {
+      startLongRunMiles: phase.startLongRunMiles,
+      peakLongRunMiles: phase.peakLongRunMiles,
+      peakWeeklyMiles: phase.maxWeeklyMiles,
+      longRunCutback: phase.longRunCutback,
+      longRunConfigId: phase.longRunConfigId,
+      easyConfigId: phase.easyConfigId,
+      tempoConfigId: phase.tempoConfigId,
+      intervalsConfigId: phase.intervalsConfigId,
+      longRunConfig: buildLongRun ?? (useLegacy ? legacyLongRun : null),
+      easyConfig: buildEasy ?? (useLegacy ? legacyEasy : null),
+      tempoConfig: buildTempo ?? (useLegacy ? legacyTempo : null),
+      intervalsConfig: buildIntervals ?? (useLegacy ? legacyIntervals : null),
+    };
+  }
+
+  const buildLongRun = mapRotation(build?.longRunConfig ?? null);
+  const buildEasy = mapRotation(build?.easyConfig ?? null);
+  const buildTempo = mapRotation(build?.tempoConfig ?? null);
+  const buildIntervals = mapRotation(build?.intervalsConfig ?? null);
 
   return {
     id: row.id,
@@ -130,6 +173,7 @@ export async function loadPresetForGenerate(
     coachPlanOverview: row.coachPlanOverview,
     workoutStructure: row.workoutStructure,
     easyRunConfig: row.easyRunConfig,
+    baseBuild: phaseBuildFrom(baseBuild, false),
     build: build
       ? {
           startLongRunMiles: build.startLongRunMiles,

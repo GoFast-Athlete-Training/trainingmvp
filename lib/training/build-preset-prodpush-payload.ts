@@ -73,6 +73,14 @@ export async function buildPresetProdPushPayload(presetId: string) {
   const row = await prisma.training_plan_preset.findUnique({
     where: { id: presetId },
     include: {
+      baseBuildPreset: {
+        include: {
+          longRunConfig: rotationInclude,
+          easyConfig: rotationInclude,
+          tempoConfig: rotationInclude,
+          intervalsConfig: rotationInclude,
+        },
+      },
       buildPreset: {
         include: {
           longRunConfig: rotationInclude,
@@ -101,24 +109,32 @@ export async function buildPresetProdPushPayload(presetId: string) {
     throw new Error(`Preset ${presetId} has no build phase — cannot mirror to prod`);
   }
 
+  const serializeBuild = (
+    build: NonNullable<typeof row.buildPreset> | typeof row.baseBuildPreset,
+  ) =>
+    build
+      ? {
+          id: build.id,
+          name: build.name,
+          startLongRunMiles: build.startLongRunMiles,
+          peakLongRunMiles: build.peakLongRunMiles,
+          longRunCutback: build.longRunCutback,
+          maxWeeklyMiles: build.maxWeeklyMiles,
+          longRunConfigId: build.longRunConfigId,
+          easyConfigId: build.easyConfigId,
+          tempoConfigId: build.tempoConfigId,
+          intervalsConfigId: build.intervalsConfigId,
+          longRunConfig: serializeRotationConfig(build.longRunConfig),
+          easyConfig: serializeRotationConfig(build.easyConfig),
+          tempoConfig: serializeRotationConfig(build.tempoConfig),
+          intervalsConfig: serializeRotationConfig(build.intervalsConfig),
+        }
+      : null;
+
   const build = row.buildPreset;
+  const baseBuildPreset = serializeBuild(row.baseBuildPreset);
   const buildPreset = build
-    ? {
-        id: build.id,
-        name: build.name,
-        startLongRunMiles: build.startLongRunMiles,
-        peakLongRunMiles: build.peakLongRunMiles,
-        longRunCutback: build.longRunCutback,
-        maxWeeklyMiles: build.maxWeeklyMiles,
-        longRunConfigId: build.longRunConfigId,
-        easyConfigId: build.easyConfigId,
-        tempoConfigId: build.tempoConfigId,
-        intervalsConfigId: build.intervalsConfigId,
-        longRunConfig: serializeRotationConfig(build.longRunConfig),
-        easyConfig: serializeRotationConfig(build.easyConfig),
-        tempoConfig: serializeRotationConfig(build.tempoConfig),
-        intervalsConfig: serializeRotationConfig(build.intervalsConfig),
-      }
+    ? serializeBuild(build)
     : null;
 
   const taper = row.taperPreset;
@@ -152,6 +168,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
     : null;
 
   const catalogues = new Map<string, Record<string, unknown>>();
+  collectFromPhase(baseBuildPreset, catalogues);
   collectFromPhase(buildPreset, catalogues);
   collectFromPhase(taperPreset, catalogues);
 
@@ -203,6 +220,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
     baseLongRunPoolMiles: peakPool > 0 ? peakPool * 0.6 : 24,
     peakLongRunPoolMiles: peakPool > 0 ? peakPool : 32,
     taperLongRunPoolMiles: peakPool > 0 ? peakPool * 0.5 : 16,
+    baseBuildPresetId: row.baseBuildPresetId,
     buildPresetId: row.buildPresetId,
     taperPresetId: row.taperPresetId,
     raceWeekPresetId: row.raceWeekPresetId,
@@ -216,6 +234,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
 
   return {
     plan,
+    baseBuildPreset,
     buildPreset,
     taperPreset,
     raceWeekPreset,
