@@ -23,15 +23,29 @@ export default function PresetsListPage() {
   const router = useRouter();
   const [rows, setRows] = useState<PresetRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await authFetch("/api/training/plan-preset");
-      const data = (await res.json()) as { presets?: PresetRow[] };
+      const data = (await res.json().catch(() => ({}))) as {
+        presets?: PresetRow[];
+        error?: string;
+        success?: boolean;
+      };
+      if (!res.ok || data.success === false) {
+        setRows([]);
+        setLoadError(data.error || `Could not load presets (${res.status})`);
+        return;
+      }
       setRows(data.presets ?? []);
+    } catch (e) {
+      setRows([]);
+      setLoadError(e instanceof Error ? e.message : "Could not load presets");
     } finally {
       setLoading(false);
     }
@@ -91,8 +105,12 @@ export default function PresetsListPage() {
       </div>
       {loading ? (
         <p className="text-gray-500">Loading…</p>
+      ) : loadError ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {loadError}
+        </p>
       ) : rows.length === 0 ? (
-        <p className="text-gray-500">No presets yet. Use Build preset to start, or send from Company HQ.</p>
+        <p className="text-gray-500">No presets on prod yet. Build preset to add one.</p>
       ) : (
         <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
           {rows.map((row) => {
