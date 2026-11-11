@@ -30,7 +30,8 @@ import {
 import PresetPatchCsvDialog from "@/components/training-manager/PresetPatchCsvDialog";
 import PresetValidateLlmDialog from "@/components/training-manager/PresetValidateLlmDialog";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function SaveSyncBanner({ status }: { status: SaveSyncStatus }) {
   if (status.state === "idle") return null;
@@ -94,7 +95,25 @@ const NEXT_STEP: Record<WizardStep, WizardStep | null> = {
   raceWeek: null,
 };
 
+const DRAFT_PRESET_SHELL: PresetDetail = {
+  id: "",
+  slug: "",
+  title: "",
+  description: null,
+  publicDescription: null,
+  targetDistanceLabel: null,
+  baseBuildPresetId: null,
+  buildPresetId: null,
+  taperPresetId: null,
+  raceWeekPresetId: null,
+  snapPeakLongRunMiles: null,
+  snapPeakWeeklyMiles: null,
+  minWeeklyMiles: 45,
+  maxWeeklyMiles: null,
+};
+
 export default function PresetWizardPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<PresetDetail | null>(null);
   const [step, setStep] = useState<WizardStep>("core");
@@ -124,6 +143,11 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [llmPrompt, setLlmPrompt] = useState("");
   const [llmLoading, setLlmLoading] = useState(false);
   const [patchOpen, setPatchOpen] = useState(false);
+  const coreHydratedRef = useRef(false);
+  const coreAutoSaveSkipRef = useRef(true);
+
+  const isDraft = presetId === "new";
+  const isPersisted = Boolean(presetId && presetId !== "new");
 
   useEffect(() => {
     void params.then((p) => setPresetId(p.id));
@@ -140,7 +164,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
 
   const patchPreset = useCallback(
     async (body: Record<string, unknown>) => {
-      if (!presetId) return null;
+      if (!presetId || presetId === "new") return null;
       setSyncStatus({ state: "saving" });
       const res = await authFetch(`/api/training/plan-preset/${presetId}`, {
         method: "PATCH",
@@ -215,7 +239,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   }, []);
 
   const load = useCallback(async () => {
-    if (!presetId) return;
+    if (!presetId || presetId === "new") return;
     const presetRes = await authFetch(`/api/training/plan-preset/${presetId}`);
     const presetData = (await presetRes.json()) as { preset?: PresetDetail };
     const p = presetData.preset ?? null;
@@ -235,26 +259,93 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (p.taperPresetId) await loadTaper(p.taperPresetId);
     else setTaperForm(null);
     if (p.raceWeekPresetId) await loadRace(p.raceWeekPresetId);
+    coreHydratedRef.current = true;
+    coreAutoSaveSkipRef.current = true;
   }, [presetId, loadBaseBuild, loadBuild, loadTaper, loadRace]);
 
   useEffect(() => {
+    if (!presetId) return;
+    if (presetId === "new") {
+      setPreset(DRAFT_PRESET_SHELL);
+      setTitle("");
+      setSlug("");
+      setDescription("");
+      setPublicDescription("");
+      setTargetDistanceLabel("");
+      setMinWeeklyMiles("45");
+      setMaxWeeklyMiles("55");
+      setStep("core");
+      coreHydratedRef.current = false;
+      coreAutoSaveSkipRef.current = true;
+      return;
+    }
     void load();
-  }, [load]);
+  }, [presetId, load]);
+
+  function coreMetaBody() {
+    const min = Math.round(Number(minWeeklyMiles) || 40);
+    const maxRaw = maxWeeklyMiles.trim();
+    const max = maxRaw === "" ? null : Math.round(Number(maxRaw));
+    return {
+      title: title.trim(),
+      description,
+      publicDescription,
+      targetDistanceLabel: targetDistanceLabel || null,
+      minWeeklyMiles: min,
+      maxWeeklyMiles: max,
+    };
+  }
+
+  async function createPresetFromDraft(): Promise<boolean> {
+    const meta = coreMetaBody();
+    if (!meta.title) {
+      markSyncError("Name is required before saving.");
+      return false;
+    }
+
+    setSaving(true);
+    setSyncStatus({ state: "saving" });
+    try {
+      const res = await authFetch("/api/training/plan-preset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: meta.title }),
+      });
+      const data = (await res.json()) as { preset?: PresetDetail; error?: string };
+      if (!res.ok || !data.preset?.id) {
+        markSyncError(data.error || prodSyncMessageFromBody(data) || `Create failed (${res.status})`);
+        return false;
+      }
+
+      const newId = data.preset.id;
+      const patchRes = await authFetch(`/api/training/plan-preset/${newId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(meta),
+      });
+      const patchData = (await patchRes.json()) as { preset?: PresetDetail; error?: string };
+      if (!patchRes.ok) {
+        markSyncError(patchData.error || prodSyncMessageFromBody(patchData) || `Save failed (${patchRes.status})`);
+        return false;
+      }
+
+      markSynced();
+      setPresetId(newId);
+      setPreset(patchData.preset ?? data.preset);
+      if (patchData.preset?.slug) setSlug(patchData.preset.slug);
+      router.replace(`/dashboard/presets/${newId}`);
+      coreHydratedRef.current = true;
+      coreAutoSaveSkipRef.current = true;
+      return true;
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function saveMeta() {
     setSaving(true);
     try {
-      const min = Math.round(Number(minWeeklyMiles) || 40);
-      const maxRaw = maxWeeklyMiles.trim();
-      const max = maxRaw === "" ? null : Math.round(Number(maxRaw));
-      const updated = await patchPreset({
-        title,
-        description,
-        publicDescription,
-        targetDistanceLabel: targetDistanceLabel || null,
-        minWeeklyMiles: min,
-        maxWeeklyMiles: max,
-      });
+      const updated = await patchPreset(coreMetaBody());
       if (updated?.slug) setSlug(updated.slug);
       if (updated) {
         setStepSaved(true);
@@ -419,9 +510,37 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  useEffect(() => {
+    if (!isPersisted || step !== "core" || !coreHydratedRef.current) return;
+    if (coreAutoSaveSkipRef.current) {
+      coreAutoSaveSkipRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveMeta();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced snapshot of core fields
+  }, [
+    isPersisted,
+    step,
+    title,
+    description,
+    publicDescription,
+    targetDistanceLabel,
+    minWeeklyMiles,
+    maxWeeklyMiles,
+  ]);
+
   async function goNext() {
-    if (step === "core") await saveMeta();
-    else if (step === "baseBuild") await saveBaseBuildStep();
+    if (step === "core") {
+      if (isDraft) {
+        const ok = await createPresetFromDraft();
+        if (!ok) return;
+      } else {
+        await saveMeta();
+      }
+    } else if (step === "baseBuild") await saveBaseBuildStep();
     else if (step === "build") await saveBuildStep();
     else if (step === "taper") await saveTaperStep();
     else if (step === "raceWeek") await saveRaceStep();
@@ -429,7 +548,8 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (next) setStep(next);
   }
 
-  if (!preset) return <p className="text-gray-500">Loading…</p>;
+  if (!preset && !isDraft) return <p className="text-gray-500">Loading…</p>;
+  if (!preset) return null;
 
   const showBaseBuildPicker = !preset.baseBuildPresetId || changeBaseBuild;
   const showBuildPicker = !preset.buildPresetId || changeBuild;
@@ -450,24 +570,25 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       <div className="space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={llmLoading || !presetId}
-              onClick={() => void openLlmCheck()}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
-            >
-              {llmLoading ? "Loading…" : "Check with LLM"}
-            </button>
-            <button
-              type="button"
-              disabled={!presetId}
-              onClick={() => setPatchOpen(true)}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Patch from CSV
-            </button>
-          </div>
+          {isPersisted ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={llmLoading}
+                onClick={() => void openLlmCheck()}
+                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {llmLoading ? "Loading…" : "Check with LLM"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPatchOpen(true)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                Patch from CSV
+              </button>
+            </div>
+          ) : null}
         </div>
         <p className="text-sm text-gray-500">Core → build → build to peak → taper → race week</p>
         <SaveSyncBanner status={syncStatus} />
@@ -478,7 +599,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
         onClose={() => setLlmOpen(false)}
         promptText={llmPrompt}
       />
-      {presetId ? (
+      {isPersisted && presetId ? (
         <PresetPatchCsvDialog
           open={patchOpen}
           onClose={() => setPatchOpen(false)}
@@ -514,6 +635,15 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   This is the plan preset: how staff identify the template and what athletes read publicly.
                   Athletes choose how many weeks to train when they start a plan.
                 </p>
+                {isDraft ? (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    Draft only in your browser until you save. Fill name and weekly band, then{" "}
+                    <span className="font-medium">Save &amp; continue</span> — core fields auto-save after
+                    that.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">Core changes auto-save while you edit.</p>
+                )}
               </div>
               <label className="block text-sm">
                 <span className="text-gray-600">Name</span>
@@ -523,7 +653,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </label>
-              {slug ? (
+              {slug && !isDraft ? (
                 <p className="text-xs text-gray-500">
                   Slug: <span className="font-mono text-gray-700">{slug}</span>
                   <span className="text-gray-400"> — updates when you save Core</span>
@@ -588,24 +718,26 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                   onChange={(e) => setPublicDescription(e.target.value)}
                   placeholder="Write what athletes should see, then clean up with AI if you want."
                 />
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    disabled={aiBusy || !publicDescription.trim()}
-                    onClick={() => void cleanupPublicDescription()}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {aiBusy ? "Cleaning up…" : "Clean up"}
-                  </button>
-                </div>
+                {isPersisted ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      disabled={aiBusy || !publicDescription.trim()}
+                      onClick={() => void cleanupPublicDescription()}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {aiBusy ? "Cleaning up…" : "Clean up"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || (isDraft && !title.trim())}
                 onClick={() => void goNext()}
                 className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Next — Build"}
+                {saving ? "Saving…" : isDraft ? "Save & continue" : "Next — Build"}
               </button>
             </section>
           ) : null}

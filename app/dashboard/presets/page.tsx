@@ -59,23 +59,10 @@ export default function PresetsListPage() {
     void load();
   }, [load]);
 
-  async function buildPreset() {
+  function buildPreset() {
     setCreating(true);
-    try {
-      const res = await authFetch("/api/training/plan-preset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Untitled" }),
-      });
-      const data = (await res.json()) as { preset?: { id: string } };
-      if (data.preset?.id) {
-        router.push(`/dashboard/presets/${data.preset.id}`);
-      } else {
-        await load();
-      }
-    } finally {
-      setCreating(false);
-    }
+    router.push("/dashboard/presets/new");
+    setCreating(false);
   }
 
   async function loadCatalogCheck() {
@@ -141,7 +128,7 @@ export default function PresetsListPage() {
             onClick={() => void buildPreset()}
             className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
           >
-            {creating ? "Opening…" : "Build preset"}
+            {creating ? "Opening…" : "New preset"}
           </button>
         </div>
       </div>
@@ -152,7 +139,7 @@ export default function PresetsListPage() {
           {loadError}
         </p>
       ) : rows.length === 0 ? (
-        <p className="text-gray-500">No presets on prod yet. Build preset to add one.</p>
+        <p className="text-gray-500">No presets on prod yet. Use New preset or Import presets.</p>
       ) : (
         <ul className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white">
           {rows.map((row) => {
