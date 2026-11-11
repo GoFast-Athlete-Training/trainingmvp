@@ -472,6 +472,14 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     if (updated) setPreset(updated);
   }, [taperForm, preset?.taperPresetId, patchJsonWithProdSync, patchPreset]);
 
+  const saveRaceQuiet = useCallback(async () => {
+    if (!preset?.raceWeekPresetId) return;
+    await patchJsonWithProdSync(`/api/training/race-week-preset/${preset.raceWeekPresetId}`, {
+      title: raceWeekTitle.trim() || "Race week",
+      slots: raceWeekSlots,
+    });
+  }, [preset?.raceWeekPresetId, raceWeekTitle, raceWeekSlots, patchJsonWithProdSync]);
+
   async function saveBaseBuildStep() {
     if (!baseBuildForm || !preset?.baseBuildPresetId) {
       return;
@@ -547,6 +555,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const baseBuildFormKey = baseBuildForm ? JSON.stringify(baseBuildForm) : "";
   const buildFormKey = buildForm ? JSON.stringify(buildForm) : "";
   const taperFormKey = taperForm ? JSON.stringify(taperForm) : "";
+  const raceWeekFormKey = JSON.stringify({
+    title: raceWeekTitle,
+    slots: raceWeekSlots,
+  });
 
   useEffect(() => {
     phaseAutoSaveSkipRef.current = true;
@@ -619,6 +631,26 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }, 1200);
     return () => window.clearTimeout(timer);
   }, [isPersisted, step, changeTaper, preset?.taperPresetId, taperFormKey, saveTaperQuiet]);
+
+  useEffect(() => {
+    if (!isPersisted || step !== "raceWeek") return;
+    if (changeRace || !preset?.raceWeekPresetId) return;
+    if (phaseAutoSaveSkipRef.current) {
+      phaseAutoSaveSkipRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveRaceQuiet();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [
+    isPersisted,
+    step,
+    changeRace,
+    preset?.raceWeekPresetId,
+    raceWeekFormKey,
+    saveRaceQuiet,
+  ]);
 
   async function goNext() {
     if (step === "core") {
@@ -1021,7 +1053,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
           {step === "raceWeek" ? (
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Race week</h2>
+                <div>
+                  <h2 className="text-lg font-semibold">Race week</h2>
+                  {preset.raceWeekPresetId && !showRacePicker ? (
+                    <p className="mt-1 text-xs text-gray-500">Race week fields auto-save while you edit.</p>
+                  ) : null}
+                </div>
                 {preset.raceWeekPresetId && !changeRace ? (
                   <button
                     type="button"
@@ -1054,14 +1091,24 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                     uses an easy workout with optional shakeout pace config.
                   </p>
                   <RaceWeekSlotsEditor slots={raceWeekSlots} onChange={setRaceWeekSlots} />
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void goNext()}
-                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    {saving ? "Saving…" : stepSaved ? "Saved" : "Save race week"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void saveRaceStep()}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save race week"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void goNext()}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {saving ? "Saving…" : "Done"}
+                    </button>
+                  </div>
                 </>
               ) : null}
             </section>
