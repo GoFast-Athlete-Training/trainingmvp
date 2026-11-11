@@ -145,6 +145,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [patchOpen, setPatchOpen] = useState(false);
   const coreHydratedRef = useRef(false);
   const coreAutoSaveSkipRef = useRef(true);
+  const phaseAutoSaveSkipRef = useRef(true);
 
   const isDraft = presetId === "new";
   const isPersisted = Boolean(presetId && presetId !== "new");
@@ -342,11 +343,16 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const saveMetaQuiet = useCallback(async () => {
+    const updated = await patchPreset(coreMetaBody());
+    if (updated?.slug) setSlug(updated.slug);
+    return updated;
+  }, [patchPreset, title, description, publicDescription, targetDistanceLabel, minWeeklyMiles, maxWeeklyMiles]);
+
   async function saveMeta() {
     setSaving(true);
     try {
-      const updated = await patchPreset(coreMetaBody());
-      if (updated?.slug) setSlug(updated.slug);
+      const updated = await saveMetaQuiet();
       if (updated) {
         setStepSaved(true);
         setTimeout(() => setStepSaved(false), 2000);
@@ -419,6 +425,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       setChangeRace(false);
       await loadRace(id);
     }
+    phaseAutoSaveSkipRef.current = true;
     await load();
   }
 
@@ -437,6 +444,33 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       buildPatchBody(baseBuildForm),
     );
   }, [baseBuildForm, patchJsonWithProdSync]);
+
+  const saveBaseBuildQuiet = useCallback(async () => {
+    if (!baseBuildForm || !preset?.baseBuildPresetId) return;
+    const ok = await saveBaseBuildFieldsOnly();
+    if (!ok) return;
+    const updated = await patchPreset({ baseBuildPresetId: preset.baseBuildPresetId });
+    if (updated) setPreset(updated);
+  }, [baseBuildForm, preset?.baseBuildPresetId, saveBaseBuildFieldsOnly, patchPreset]);
+
+  const saveBuildQuiet = useCallback(async () => {
+    if (!buildForm || !preset?.buildPresetId) return;
+    const buildOk = await saveBuildFieldsOnly();
+    if (!buildOk) return;
+    const updated = await patchPreset({ buildPresetId: preset.buildPresetId });
+    if (updated) setPreset(updated);
+  }, [buildForm, preset?.buildPresetId, saveBuildFieldsOnly, patchPreset]);
+
+  const saveTaperQuiet = useCallback(async () => {
+    if (!taperForm || !preset?.taperPresetId) return;
+    const taperOk = await patchJsonWithProdSync(
+      `/api/training/taper-preset/${taperForm.id}`,
+      taperPatchBody(taperForm),
+    );
+    if (!taperOk) return;
+    const updated = await patchPreset({ taperPresetId: preset.taperPresetId });
+    if (updated) setPreset(updated);
+  }, [taperForm, preset?.taperPresetId, patchJsonWithProdSync, patchPreset]);
 
   async function saveBaseBuildStep() {
     if (!baseBuildForm || !preset?.baseBuildPresetId) {
@@ -510,6 +544,14 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const baseBuildFormKey = baseBuildForm ? JSON.stringify(baseBuildForm) : "";
+  const buildFormKey = buildForm ? JSON.stringify(buildForm) : "";
+  const taperFormKey = taperForm ? JSON.stringify(taperForm) : "";
+
+  useEffect(() => {
+    phaseAutoSaveSkipRef.current = true;
+  }, [step]);
+
   useEffect(() => {
     if (!isPersisted || step !== "core" || !coreHydratedRef.current) return;
     if (coreAutoSaveSkipRef.current) {
@@ -517,10 +559,9 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       return;
     }
     const timer = window.setTimeout(() => {
-      void saveMeta();
+      void saveMetaQuiet();
     }, 1200);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced snapshot of core fields
   }, [
     isPersisted,
     step,
@@ -530,7 +571,54 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     targetDistanceLabel,
     minWeeklyMiles,
     maxWeeklyMiles,
+    saveMetaQuiet,
   ]);
+
+  useEffect(() => {
+    if (!isPersisted || step !== "baseBuild") return;
+    if (changeBaseBuild || !baseBuildForm || !preset?.baseBuildPresetId) return;
+    if (phaseAutoSaveSkipRef.current) {
+      phaseAutoSaveSkipRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveBaseBuildQuiet();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [
+    isPersisted,
+    step,
+    changeBaseBuild,
+    preset?.baseBuildPresetId,
+    baseBuildFormKey,
+    saveBaseBuildQuiet,
+  ]);
+
+  useEffect(() => {
+    if (!isPersisted || step !== "build") return;
+    if (changeBuild || !buildForm || !preset?.buildPresetId) return;
+    if (phaseAutoSaveSkipRef.current) {
+      phaseAutoSaveSkipRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveBuildQuiet();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [isPersisted, step, changeBuild, preset?.buildPresetId, buildFormKey, saveBuildQuiet]);
+
+  useEffect(() => {
+    if (!isPersisted || step !== "taper") return;
+    if (changeTaper || !taperForm || !preset?.taperPresetId) return;
+    if (phaseAutoSaveSkipRef.current) {
+      phaseAutoSaveSkipRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveTaperQuiet();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [isPersisted, step, changeTaper, preset?.taperPresetId, taperFormKey, saveTaperQuiet]);
 
   async function goNext() {
     if (step === "core") {
@@ -751,6 +839,9 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                     Optional steady block for weeks before the 8-week ramp. Flat long run and weekly
                     miles; link only when the race is more than 8 build weeks out.
                   </p>
+                  {baseBuildForm && !showBaseBuildPicker ? (
+                    <p className="mt-1 text-xs text-gray-500">Build fields auto-save while you edit.</p>
+                  ) : null}
                 </div>
                 {preset.baseBuildPresetId && !changeBaseBuild ? (
                   <button
@@ -822,6 +913,9 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                       preset.snapPeakWeeklyMiles,
                     ) ?? "Peak mileage appears after you save the build step"}
                   </p>
+                  {buildForm && !showBuildPicker ? (
+                    <p className="mt-1 text-xs text-gray-500">Build fields auto-save while you edit.</p>
+                  ) : null}
                 </div>
                 {preset.buildPresetId && !changeBuild ? (
                   <button
@@ -875,7 +969,12 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
           {step === "taper" ? (
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Taper</h2>
+                <div>
+                  <h2 className="text-lg font-semibold">Taper</h2>
+                  {taperForm && !showTaperPicker ? (
+                    <p className="mt-1 text-xs text-gray-500">Taper fields auto-save while you edit.</p>
+                  ) : null}
+                </div>
                 {preset.taperPresetId && !changeTaper ? (
                   <button
                     type="button"
