@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/components/AppProviders";
 import { presetListMetaParts } from "@/lib/training/preset-list-copy";
+import PresetValidateLlmDialog from "@/components/training-manager/PresetValidateLlmDialog";
 import { useCallback, useEffect, useState } from "react";
 
 type PresetRow = {
@@ -26,6 +27,9 @@ export default function PresetsListPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogPrompt, setCatalogPrompt] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +78,22 @@ export default function PresetsListPage() {
     }
   }
 
+  async function loadCatalogCheck() {
+    setCatalogLoading(true);
+    try {
+      const res = await authFetch("/api/training/plan-preset/validate-catalog");
+      const data = (await res.json()) as { promptText?: string; error?: string };
+      if (!res.ok || !data.promptText) {
+        setLoadError(data.error || `Catalog check failed (${res.status})`);
+        return;
+      }
+      setCatalogPrompt(data.promptText);
+      setCatalogOpen(true);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
   async function deletePreset(id: string, title: string) {
     if (!window.confirm(`Delete preset “${title}”? Build, taper, race week, and catalogue stay.`)) return;
     setDeletingId(id);
@@ -87,6 +107,12 @@ export default function PresetsListPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
+      <PresetValidateLlmDialog
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        promptText={catalogPrompt}
+        title="LLM catalog check"
+      />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Plan presets</h1>
@@ -95,6 +121,14 @@ export default function PresetsListPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={catalogLoading}
+            onClick={() => void loadCatalogCheck()}
+            className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+          >
+            {catalogLoading ? "Loading…" : "Check catalog"}
+          </button>
           <Link
             href="/dashboard/presets/ingest"
             className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"

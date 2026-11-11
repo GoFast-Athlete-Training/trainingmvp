@@ -342,6 +342,10 @@ export default function PresetIngestPage() {
             Manual entry, AI paste, or CSV. Stored fields write to prod with a linked build preset
             for long-run start and peak miles.
           </p>
+          <p className="mt-1 text-sm text-gray-600">
+            Import creates new presets. To evolve an existing template without the wizard, open it from
+            the list → <span className="font-medium">Patch from CSV</span> (after Check with LLM).
+          </p>
           <p className="mt-1 text-xs text-gray-500">
             Columns: {PRESET_INGEST_CSV_COLUMNS.join(", ")}
           </p>

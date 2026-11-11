@@ -27,6 +27,8 @@ import {
   prodSyncMessageFromBody,
   type SaveSyncStatus,
 } from "@/lib/training/save-sync-feedback";
+import PresetPatchCsvDialog from "@/components/training-manager/PresetPatchCsvDialog";
+import PresetValidateLlmDialog from "@/components/training-manager/PresetValidateLlmDialog";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -118,6 +120,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [changeBuild, setChangeBuild] = useState(false);
   const [changeTaper, setChangeTaper] = useState(false);
   const [changeRace, setChangeRace] = useState(false);
+  const [llmOpen, setLlmOpen] = useState(false);
+  const [llmPrompt, setLlmPrompt] = useState("");
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [patchOpen, setPatchOpen] = useState(false);
 
   useEffect(() => {
     void params.then((p) => setPresetId(p.id));
@@ -256,6 +262,23 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function openLlmCheck() {
+    if (!presetId) return;
+    setLlmLoading(true);
+    try {
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/validate-packet`);
+      const data = (await res.json()) as { promptText?: string; error?: string };
+      if (!res.ok || !data.promptText) {
+        window.alert(data.error || `Could not build check packet (${res.status})`);
+        return;
+      }
+      setLlmPrompt(data.promptText);
+      setLlmOpen(true);
+    } finally {
+      setLlmLoading(false);
     }
   }
 
@@ -425,10 +448,44 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       </Link>
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={llmLoading || !presetId}
+              onClick={() => void openLlmCheck()}
+              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {llmLoading ? "Loading…" : "Check with LLM"}
+            </button>
+            <button
+              type="button"
+              disabled={!presetId}
+              onClick={() => setPatchOpen(true)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Patch from CSV
+            </button>
+          </div>
+        </div>
         <p className="text-sm text-gray-500">Core → build → build to peak → taper → race week</p>
         <SaveSyncBanner status={syncStatus} />
       </div>
+
+      <PresetValidateLlmDialog
+        open={llmOpen}
+        onClose={() => setLlmOpen(false)}
+        promptText={llmPrompt}
+      />
+      {presetId ? (
+        <PresetPatchCsvDialog
+          open={patchOpen}
+          onClose={() => setPatchOpen(false)}
+          presetId={presetId}
+          onApplied={() => void load()}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
         <nav className="flex shrink-0 flex-row gap-1 md:w-40 md:flex-col md:space-y-1">
