@@ -391,9 +391,8 @@ export function parsePresetIngestCsv(csvText: string): ParsedPresetCsv {
     headers.push(key ?? h);
   }
 
-  const required = new Set<string>(PRESET_INGEST_REQUIRED_COLUMNS);
   const present = new Set(columnKeys.filter(Boolean) as PresetIngestCsvColumn[]);
-  for (const col of required) {
+  for (const col of PRESET_INGEST_REQUIRED_COLUMNS) {
     if (!present.has(col)) {
       fileErrors.push(`Missing column: ${col}`);
     }
