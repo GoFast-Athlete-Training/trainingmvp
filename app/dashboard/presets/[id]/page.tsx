@@ -53,7 +53,6 @@ type PresetDetail = {
   paceNudgeSecPerMile: number;
   entryLongRunMiles: number | null;
   peakLongRunMiles: number | null;
-  baseEndLongRunMiles: number | null;
   baseEndWeeklyMiles: number | null;
   longRunCutback: number | null;
   taperWeek1TotalMiles: number | null;
@@ -144,7 +143,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [paceNudgeSecPerMile, setPaceNudgeSecPerMile] = useState("0");
   const [entryLongRunMiles, setEntryLongRunMiles] = useState("");
   const [peakLongRunMiles, setPeakLongRunMiles] = useState("");
-  const [baseEndLongRunMiles, setBaseEndLongRunMiles] = useState("");
   const [baseEndWeeklyMiles, setBaseEndWeeklyMiles] = useState("");
   const [longRunCutback, setLongRunCutback] = useState("");
   const [taperWeek1TotalMiles, setTaperWeek1TotalMiles] = useState("");
@@ -186,7 +184,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     setPaceNudgeSecPerMile(String(preset.paceNudgeSecPerMile ?? 0));
     setEntryLongRunMiles(numStr(preset.entryLongRunMiles));
     setPeakLongRunMiles(numStr(preset.peakLongRunMiles));
-    setBaseEndLongRunMiles(numStr(preset.baseEndLongRunMiles));
     setBaseEndWeeklyMiles(numStr(preset.baseEndWeeklyMiles));
     setLongRunCutback(numStr(preset.longRunCutback));
     setTaperWeek1TotalMiles(numStr(preset.taperWeek1TotalMiles));
@@ -241,7 +238,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       paceNudgeSecPerMile: Number.isFinite(nudge) ? Math.max(-180, Math.min(180, nudge)) : 0,
       entryLongRunMiles: parseOptional(entryLongRunMiles),
       peakLongRunMiles: parseOptional(peakLongRunMiles),
-      baseEndLongRunMiles: parseOptional(baseEndLongRunMiles),
       baseEndWeeklyMiles: parseOptional(baseEndWeeklyMiles) == null ? null : Math.round(parseOptional(baseEndWeeklyMiles)!),
       longRunCutback: parseOptional(longRunCutback),
       taperWeek1TotalMiles: parseOptional(taperWeek1TotalMiles),
@@ -419,9 +415,12 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           </p>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
-          <MilesField label="Typical weekly miles (low)" value={minWeeklyMiles} onChange={setMinWeeklyMiles} step="1" />
+          <MilesField label="Weekly band floor" value={minWeeklyMiles} onChange={setMinWeeklyMiles} step="1" />
           <MilesField label="Peak weekly miles" value={maxWeeklyMiles} onChange={setMaxWeeklyMiles} step="1" />
         </div>
+        <p className="text-sm text-gray-600">
+          The floor is the bottom of the band. The athlete’s current weekly miles are the start of the climb, and peak weekly miles is the top.
+        </p>
         <label className="block text-sm">
           <span className="text-gray-600">Pace nudge (sec/mile)</span>
           <input
@@ -484,13 +483,12 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            The generator reads these numbers. Leave the base-build handoff empty when this preset has no base phase.
+            Long-run entry is the handoff into the peak block. Leave end-of-base weekly empty when this preset has no base phase.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MilesField label="Long-run entry (mi)" value={entryLongRunMiles} onChange={setEntryLongRunMiles} />
           <MilesField label="Long-run peak (mi)" value={peakLongRunMiles} onChange={setPeakLongRunMiles} />
-          <MilesField label="End-of-base long run (mi)" value={baseEndLongRunMiles} onChange={setBaseEndLongRunMiles} />
           <MilesField label="End-of-base weekly" value={baseEndWeeklyMiles} onChange={setBaseEndWeeklyMiles} step="1" />
           <MilesField label="Cutback (weeks 4 and 7)" value={longRunCutback} onChange={setLongRunCutback} step="0.01" />
         </div>
