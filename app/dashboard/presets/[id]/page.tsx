@@ -6,7 +6,6 @@ import { PhaseRotationBolts } from "@/components/training-manager/PhaseRotationB
 import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
-import { RACE_WEEK_OFFSETS } from "@/lib/training/race-week-slots";
 import {
   prodSyncMessageFromBody,
   type SaveSyncStatus,
@@ -54,13 +53,13 @@ type PresetDetail = {
   paceNudgeSecPerMile: number;
   entryLongRunMiles: number | null;
   peakLongRunMiles: number | null;
-  baseEndWeeklyMiles: number | null;
-  longRunCutback: number | null;
+  baseWeeklyMinMiles: number | null;
+  baseWeeklyMaxMiles: number | null;
   taperWeek1TotalMiles: number | null;
   taperWeek1LongRunMiles: number | null;
   taperWeek2TotalMiles: number | null;
   taperWeek2LongRunMiles: number | null;
-  raceWeekDayMiles: unknown;
+  raceWeekMiles: number | null;
   baseBuildPhasePresetId: string | null;
   buildToPeakPhasePresetId: string | null;
   taperPhasePresetId: string | null;
@@ -98,20 +97,6 @@ function parseOptional(raw: string): number | null {
   if (!trimmed) return null;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
-}
-
-function dayMilesFromPreset(raw: unknown): Record<number, string> {
-  const next: Record<number, string> = {};
-  for (const offset of RACE_WEEK_OFFSETS) next[offset] = "";
-  if (!Array.isArray(raw)) return next;
-  for (const item of raw) {
-    if (item == null || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const offset = Number(row.offsetFromRace);
-    if (!Number.isFinite(offset)) continue;
-    next[offset] = row.prescribedMiles == null ? "" : String(row.prescribedMiles);
-  }
-  return next;
 }
 
 function MilesField({
@@ -153,13 +138,13 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [paceNudgeSecPerMile, setPaceNudgeSecPerMile] = useState("0");
   const [entryLongRunMiles, setEntryLongRunMiles] = useState("");
   const [peakLongRunMiles, setPeakLongRunMiles] = useState("");
-  const [baseEndWeeklyMiles, setBaseEndWeeklyMiles] = useState("");
-  const [longRunCutback, setLongRunCutback] = useState("");
+  const [baseWeeklyMinMiles, setBaseWeeklyMinMiles] = useState("");
+  const [baseWeeklyMaxMiles, setBaseWeeklyMaxMiles] = useState("");
   const [taperWeek1TotalMiles, setTaperWeek1TotalMiles] = useState("");
   const [taperWeek1LongRunMiles, setTaperWeek1LongRunMiles] = useState("");
   const [taperWeek2TotalMiles, setTaperWeek2TotalMiles] = useState("");
   const [taperWeek2LongRunMiles, setTaperWeek2LongRunMiles] = useState("");
-  const [dayMiles, setDayMiles] = useState<Record<number, string>>(() => dayMilesFromPreset(null));
+  const [raceWeekMiles, setRaceWeekMiles] = useState("");
   const [pointers, setPointers] = useState<Record<(typeof PHASE_FIELDS)[number]["key"], string>>({
     baseBuildPhasePresetId: "",
     buildToPeakPhasePresetId: "",
@@ -197,13 +182,13 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     setPaceNudgeSecPerMile(String(preset.paceNudgeSecPerMile ?? 0));
     setEntryLongRunMiles(numStr(preset.entryLongRunMiles));
     setPeakLongRunMiles(numStr(preset.peakLongRunMiles));
-    setBaseEndWeeklyMiles(numStr(preset.baseEndWeeklyMiles));
-    setLongRunCutback(numStr(preset.longRunCutback));
+    setBaseWeeklyMinMiles(numStr(preset.baseWeeklyMinMiles));
+    setBaseWeeklyMaxMiles(numStr(preset.baseWeeklyMaxMiles));
     setTaperWeek1TotalMiles(numStr(preset.taperWeek1TotalMiles));
     setTaperWeek1LongRunMiles(numStr(preset.taperWeek1LongRunMiles));
     setTaperWeek2TotalMiles(numStr(preset.taperWeek2TotalMiles));
     setTaperWeek2LongRunMiles(numStr(preset.taperWeek2LongRunMiles));
-    setDayMiles(dayMilesFromPreset(preset.raceWeekDayMiles));
+    setRaceWeekMiles(numStr(preset.raceWeekMiles));
     setPointers({
       baseBuildPhasePresetId: preset.baseBuildPhasePresetId ?? "",
       buildToPeakPhasePresetId: preset.buildToPeakPhasePresetId ?? "",
@@ -251,16 +236,15 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       paceNudgeSecPerMile: Number.isFinite(nudge) ? Math.max(-180, Math.min(180, nudge)) : 0,
       entryLongRunMiles: parseOptional(entryLongRunMiles),
       peakLongRunMiles: parseOptional(peakLongRunMiles),
-      baseEndWeeklyMiles: parseOptional(baseEndWeeklyMiles) == null ? null : Math.round(parseOptional(baseEndWeeklyMiles)!),
-      longRunCutback: parseOptional(longRunCutback),
+      baseWeeklyMinMiles:
+        parseOptional(baseWeeklyMinMiles) == null ? null : Math.round(parseOptional(baseWeeklyMinMiles)!),
+      baseWeeklyMaxMiles:
+        parseOptional(baseWeeklyMaxMiles) == null ? null : Math.round(parseOptional(baseWeeklyMaxMiles)!),
       taperWeek1TotalMiles: parseOptional(taperWeek1TotalMiles),
       taperWeek1LongRunMiles: parseOptional(taperWeek1LongRunMiles),
       taperWeek2TotalMiles: parseOptional(taperWeek2TotalMiles),
       taperWeek2LongRunMiles: parseOptional(taperWeek2LongRunMiles),
-      raceWeekDayMiles: RACE_WEEK_OFFSETS.map((offset) => ({
-        offsetFromRace: offset,
-        prescribedMiles: parseOptional(dayMiles[offset] ?? ""),
-      })),
+      raceWeekMiles: parseOptional(raceWeekMiles),
       baseBuildPhasePresetId: pointers.baseBuildPhasePresetId || null,
       buildToPeakPhasePresetId: pointers.buildToPeakPhasePresetId || null,
       taperPhasePresetId: pointers.taperPhasePresetId || null,
@@ -519,13 +503,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
             Slug: <span className="font-mono text-gray-700">{slug}</span>
           </p>
         ) : null}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <MilesField label="Weekly band floor" value={minWeeklyMiles} onChange={setMinWeeklyMiles} step="1" />
-          <MilesField label="Peak weekly miles" value={maxWeeklyMiles} onChange={setMaxWeeklyMiles} step="1" />
-        </div>
-        <p className="text-sm text-gray-600">
-          The floor is the bottom of the band. The athlete’s current weekly miles are the start of the climb, and peak weekly miles is the top.
-        </p>
         <label className="block text-sm">
           <span className="text-gray-600">Pace nudge (sec/mile)</span>
           <input
@@ -584,36 +561,52 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         </div>
       </section>
 
-      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+      <section className="space-y-5 rounded-xl border border-gray-200 bg-white p-4">
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Long-run entry is the handoff into the peak block. Leave end-of-base weekly empty when this preset has no base phase.
+            Overall and base are a rough guide. Base to peak, taper, and race week are fixed totals.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MilesField label="Long-run entry (mi)" value={entryLongRunMiles} onChange={setEntryLongRunMiles} />
-          <MilesField label="Long-run peak (mi)" value={peakLongRunMiles} onChange={setPeakLongRunMiles} />
-          <MilesField label="End-of-base weekly" value={baseEndWeeklyMiles} onChange={setBaseEndWeeklyMiles} step="1" />
-          <MilesField label="Cutback (weeks 4 and 7)" value={longRunCutback} onChange={setLongRunCutback} step="0.01" />
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-gray-800">Overall</h3>
+          <p className="text-sm text-gray-600">A rough guide. A low athlete is not lifted up to the floor.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MilesField label="Weekly min" value={minWeeklyMiles} onChange={setMinWeeklyMiles} step="1" />
+            <MilesField label="Weekly max" value={maxWeeklyMiles} onChange={setMaxWeeklyMiles} step="1" />
+          </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MilesField label="Taper week 1 total" value={taperWeek1TotalMiles} onChange={setTaperWeek1TotalMiles} />
-          <MilesField label="Taper week 1 long run" value={taperWeek1LongRunMiles} onChange={setTaperWeek1LongRunMiles} />
-          <MilesField label="Taper week 2 total" value={taperWeek2TotalMiles} onChange={setTaperWeek2TotalMiles} />
-          <MilesField label="Taper week 2 long run" value={taperWeek2LongRunMiles} onChange={setTaperWeek2LongRunMiles} />
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-gray-800">Base</h3>
+          <p className="text-sm text-gray-600">A rough guide for the weeks before the peak block.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MilesField label="Weekly min" value={baseWeeklyMinMiles} onChange={setBaseWeeklyMinMiles} step="1" />
+            <MilesField label="Weekly max" value={baseWeeklyMaxMiles} onChange={setBaseWeeklyMaxMiles} step="1" />
+            <MilesField label="Starting long run" value={entryLongRunMiles} onChange={setEntryLongRunMiles} />
+          </div>
         </div>
-        <div>
-          <h3 className="text-sm font-medium text-gray-800">Race-week miles</h3>
-          <div className="mt-2 grid gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            {RACE_WEEK_OFFSETS.map((offset) => (
-              <MilesField
-                key={offset}
-                label={offset === 0 ? "Race day" : `${offset}d`}
-                value={dayMiles[offset] ?? ""}
-                onChange={(value) => setDayMiles((current) => ({ ...current, [offset]: value }))}
-              />
-            ))}
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-gray-800">Base to peak</h3>
+          <p className="text-sm text-gray-600">Fixed. Climbs from the starting long run to the peak long run.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MilesField label="Peak long run" value={peakLongRunMiles} onChange={setPeakLongRunMiles} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-gray-800">Taper</h3>
+          <p className="text-sm text-gray-600">Fixed. Two weeks, each with a total and a long run.</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <MilesField label="Week 1 total" value={taperWeek1TotalMiles} onChange={setTaperWeek1TotalMiles} />
+            <MilesField label="Week 1 long run" value={taperWeek1LongRunMiles} onChange={setTaperWeek1LongRunMiles} />
+            <MilesField label="Week 2 total" value={taperWeek2TotalMiles} onChange={setTaperWeek2TotalMiles} />
+            <MilesField label="Week 2 long run" value={taperWeek2LongRunMiles} onChange={setTaperWeek2LongRunMiles} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-gray-800">Race week</h3>
+          <p className="text-sm text-gray-600">One mileage. No long run. The shakeout is a workout, not a mile box.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MilesField label="Race week mileage" value={raceWeekMiles} onChange={setRaceWeekMiles} />
           </div>
         </div>
       </section>

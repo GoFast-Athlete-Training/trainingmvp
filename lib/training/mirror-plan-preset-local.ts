@@ -6,6 +6,9 @@ const MILE_KEYS = [
   "peakLongRunMiles",
   "baseEndLongRunMiles",
   "baseEndWeeklyMiles",
+  "baseWeeklyMinMiles",
+  "baseWeeklyMaxMiles",
+  "raceWeekMiles",
   "longRunCutback",
   "taperWeek1TotalMiles",
   "taperWeek1LongRunMiles",
@@ -32,7 +35,10 @@ export async function mirrorPlanPresetLocal(id: string, body: Record<string, unk
       continue;
     }
     if (typeof raw === "number" && Number.isFinite(raw)) {
-      data[key] = key === "baseEndWeeklyMiles" ? Math.round(raw) : raw;
+      data[key] =
+        key === "baseEndWeeklyMiles" || key === "baseWeeklyMinMiles" || key === "baseWeeklyMaxMiles"
+          ? Math.round(raw)
+          : raw;
     }
   }
 

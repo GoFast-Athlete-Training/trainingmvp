@@ -220,6 +220,9 @@ export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
     block("Preset miles", [
       line("entryLongRunMiles", row.entryLongRunMiles),
       line("peakLongRunMiles", row.peakLongRunMiles),
+      line("baseWeeklyMinMiles", row.baseWeeklyMinMiles),
+      line("baseWeeklyMaxMiles", row.baseWeeklyMaxMiles),
+      line("raceWeekMiles", row.raceWeekMiles),
       line("baseEndWeeklyMiles", row.baseEndWeeklyMiles),
       line("longRunCutback", row.longRunCutback),
       line("taperWeek1TotalMiles", row.taperWeek1TotalMiles),
