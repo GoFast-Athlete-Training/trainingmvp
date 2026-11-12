@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 type PhaseRow = {
   id: string;
   name: string;
+  description: string | null;
   longRunConfigId: string | null;
   easyConfigId: string | null;
   tempoConfigId: string | null;
@@ -28,6 +29,7 @@ export default function PhasePresetsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<PhaseRow[]>([]);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await authFetch("/api/training/phase-preset");
@@ -38,6 +40,22 @@ export default function PhasePresetsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function remove(row: PhaseRow) {
+    if (!window.confirm(`Delete “${row.name}”? Training presets that point at it will unlink.`)) return;
+    setDeletingId(row.id);
+    try {
+      const res = await authFetch(`/api/training/phase-preset/${row.id}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        window.alert(data.error || "Could not delete that phase preset");
+        return;
+      }
+      setRows((current) => current.filter((item) => item.id !== row.id));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function create() {
     setCreating(true);
@@ -60,8 +78,9 @@ export default function PhasePresetsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Phase presets</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Four run-type slots. This page does not ask which phase the row is for.
+          <p className="mt-1 max-w-xl text-sm text-gray-600">
+            A phase preset is a name, a description, and up to four rotations: long run, easy, tempo, and intervals.
+            A training preset picks one of these for each phase. The same preset can be picked more than once.
           </p>
         </div>
         <button
@@ -76,13 +95,29 @@ export default function PhasePresetsPage() {
       <ul className="divide-y rounded-xl border border-gray-200 bg-white">
         {rows.map((row) => (
           <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
+            <div className="min-w-0">
               <p className="font-medium text-gray-900">{row.name}</p>
-              <p className="text-xs text-gray-500">{slotLine(row)}</p>
+              {row.description ? (
+                <p className="mt-0.5 text-sm text-gray-600">{row.description}</p>
+              ) : null}
+              <p className="mt-0.5 text-xs text-gray-500">{slotLine(row)}</p>
             </div>
-            <Link href={`/dashboard/phase-presets/${row.id}`} className="text-sm font-medium text-sky-700 hover:underline">
-              Edit
-            </Link>
+            <div className="flex shrink-0 items-center gap-3">
+              <Link
+                href={`/dashboard/phase-presets/${row.id}`}
+                className="text-sm font-medium text-sky-700 hover:underline"
+              >
+                Edit
+              </Link>
+              <button
+                type="button"
+                disabled={deletingId === row.id}
+                onClick={() => void remove(row)}
+                className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50"
+              >
+                {deletingId === row.id ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           </li>
         ))}
         {rows.length === 0 ? <li className="px-4 py-6 text-sm text-gray-500">No phase presets yet.</li> : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Layers, ListTree, Repeat } from "lucide-react";
+import { Boxes, Layers, ListTree, Repeat, UserRound } from "lucide-react";
 
 const PHASE_HREF = "/dashboard/phase-presets";
 
@@ -50,6 +50,7 @@ export default function TrainingManagerSidebar() {
             onClick={() => router.push(PHASE_HREF)}
             className={navButtonClass(phaseActive)}
           >
+            <Boxes className="h-4 w-4 shrink-0" />
             <span className="font-medium">Phase presets</span>
           </button>
 
@@ -69,6 +70,7 @@ export default function TrainingManagerSidebar() {
               pathname === "/dashboard/personas" || pathname.startsWith("/dashboard/personas/"),
             )}
           >
+            <UserRound className="h-4 w-4 shrink-0" />
             <span className="font-medium">Personas (stub)</span>
           </button>
 
