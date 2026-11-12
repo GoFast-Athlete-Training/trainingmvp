@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 type PhasePreset = {
   id: string;
   name: string;
+  description: string | null;
   longRunConfigId: string | null;
   easyConfigId: string | null;
   tempoConfigId: string | null;
@@ -20,6 +21,7 @@ type PhasePreset = {
 export default function PhasePresetEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const [id, setId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [rotations, setRotations] = useState<PhaseRotationIds>({
     longRunConfigId: "",
     easyConfigId: "",
@@ -40,6 +42,7 @@ export default function PhasePresetEditorPage({ params }: { params: Promise<{ id
     const row = data.phasePreset;
     if (!row) return;
     setName(row.name);
+    setDescription(row.description ?? "");
     setRotations({
       longRunConfigId: row.longRunConfigId ?? "",
       easyConfigId: row.easyConfigId ?? "",
@@ -62,6 +65,7 @@ export default function PhasePresetEditorPage({ params }: { params: Promise<{ id
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim() || "Phase",
+          description: description.trim() || null,
           longRunConfigId: rotations.longRunConfigId || null,
           easyConfigId: rotations.easyConfigId || null,
           tempoConfigId: rotations.tempoConfigId || null,
@@ -81,9 +85,9 @@ export default function PhasePresetEditorPage({ params }: { params: Promise<{ id
         ← Phase presets
       </Link>
       <div>
-        <h1 className="text-2xl font-bold">Phase preset</h1>
+        <h1 className="text-2xl font-bold">{name.trim() || "Phase preset"}</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Save the four slots. Point this row at a phase from the training preset.
+          Name, description, and one rotation for each slot. A slot can stay empty.
         </p>
       </div>
       <label className="block text-sm">
@@ -92,6 +96,15 @@ export default function PhasePresetEditorPage({ params }: { params: Promise<{ id
           className="mt-1 w-full max-w-md rounded border px-3 py-2"
           value={name}
           onChange={(e) => setName(e.target.value)}
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-gray-600">Description</span>
+        <textarea
+          className="mt-1 w-full max-w-md rounded border px-3 py-2"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
         />
       </label>
       <PhaseRotationBolts value={rotations} onChange={setRotations} />

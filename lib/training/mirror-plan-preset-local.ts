@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 const MILE_KEYS = [
   "entryLongRunMiles",
   "peakLongRunMiles",
+  "baseStartLongRunMiles",
   "baseEndLongRunMiles",
   "baseEndWeeklyMiles",
   "baseWeeklyMinMiles",

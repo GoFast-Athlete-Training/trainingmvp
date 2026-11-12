@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { authFetch } from "@/components/AppProviders";
-import { PhaseRotationBolts } from "@/components/training-manager/PhaseRotationBolts";
 import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
@@ -53,6 +52,8 @@ type PresetDetail = {
   paceNudgeSecPerMile: number;
   entryLongRunMiles: number | null;
   peakLongRunMiles: number | null;
+  baseStartLongRunMiles: number | null;
+  baseEndLongRunMiles: number | null;
   baseWeeklyMinMiles: number | null;
   baseWeeklyMaxMiles: number | null;
   taperWeek1TotalMiles: number | null;
@@ -71,15 +72,6 @@ type PresetDetail = {
 };
 
 type PhaseOption = { id: string; name: string };
-
-type PhaseEditorState = {
-  id: string;
-  name: string;
-  longRunConfigId: string | null;
-  intervalsConfigId: string | null;
-  tempoConfigId: string | null;
-  easyConfigId: string | null;
-};
 
 const PHASE_FIELDS = [
   { key: "baseBuildPhasePresetId", label: "Base build" },
@@ -125,6 +117,40 @@ function MilesField({
   );
 }
 
+function PhaseMileageFields({
+  help,
+  weeklyMin,
+  weeklyMax,
+  startLongRun,
+  peakLongRun,
+  onWeeklyMin,
+  onWeeklyMax,
+  onStartLongRun,
+  onPeakLongRun,
+}: {
+  help: string;
+  weeklyMin: string;
+  weeklyMax: string;
+  startLongRun: string;
+  peakLongRun: string;
+  onWeeklyMin: (value: string) => void;
+  onWeeklyMax: (value: string) => void;
+  onStartLongRun: (value: string) => void;
+  onPeakLongRun: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-gray-600">{help}</p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MilesField label="Weekly min" value={weeklyMin} onChange={onWeeklyMin} step="1" />
+        <MilesField label="Weekly max" value={weeklyMax} onChange={onWeeklyMax} step="1" />
+        <MilesField label="Starting long run" value={startLongRun} onChange={onStartLongRun} />
+        <MilesField label="Peak long run" value={peakLongRun} onChange={onPeakLongRun} />
+      </div>
+    </div>
+  );
+}
+
 export default function PresetPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const [presetId, setPresetId] = useState<string | null>(null);
@@ -138,6 +164,8 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [paceNudgeSecPerMile, setPaceNudgeSecPerMile] = useState("0");
   const [entryLongRunMiles, setEntryLongRunMiles] = useState("");
   const [peakLongRunMiles, setPeakLongRunMiles] = useState("");
+  const [baseStartLongRunMiles, setBaseStartLongRunMiles] = useState("");
+  const [baseEndLongRunMiles, setBaseEndLongRunMiles] = useState("");
   const [baseWeeklyMinMiles, setBaseWeeklyMinMiles] = useState("");
   const [baseWeeklyMaxMiles, setBaseWeeklyMaxMiles] = useState("");
   const [taperWeek1TotalMiles, setTaperWeek1TotalMiles] = useState("");
@@ -160,9 +188,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [llmLoading, setLlmLoading] = useState(false);
   const [patchOpen, setPatchOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [editor, setEditor] = useState<PhaseEditorState | null>(null);
-  const [editorSaving, setEditorSaving] = useState(false);
-  const [editorMessage, setEditorMessage] = useState<string | null>(null);
 
   const isDraft = presetId === "new";
   const isPersisted = Boolean(presetId && presetId !== "new");
@@ -182,6 +207,10 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     setPaceNudgeSecPerMile(String(preset.paceNudgeSecPerMile ?? 0));
     setEntryLongRunMiles(numStr(preset.entryLongRunMiles));
     setPeakLongRunMiles(numStr(preset.peakLongRunMiles));
+    setBaseStartLongRunMiles(numStr(preset.baseStartLongRunMiles));
+    setBaseEndLongRunMiles(
+      numStr(preset.baseEndLongRunMiles ?? preset.entryLongRunMiles),
+    );
     setBaseWeeklyMinMiles(numStr(preset.baseWeeklyMinMiles));
     setBaseWeeklyMaxMiles(numStr(preset.baseWeeklyMaxMiles));
     setTaperWeek1TotalMiles(numStr(preset.taperWeek1TotalMiles));
@@ -236,6 +265,8 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       paceNudgeSecPerMile: Number.isFinite(nudge) ? Math.max(-180, Math.min(180, nudge)) : 0,
       entryLongRunMiles: parseOptional(entryLongRunMiles),
       peakLongRunMiles: parseOptional(peakLongRunMiles),
+      baseStartLongRunMiles: parseOptional(baseStartLongRunMiles),
+      baseEndLongRunMiles: parseOptional(baseEndLongRunMiles),
       baseWeeklyMinMiles:
         parseOptional(baseWeeklyMinMiles) == null ? null : Math.round(parseOptional(baseWeeklyMinMiles)!),
       baseWeeklyMaxMiles:
@@ -319,92 +350,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const refreshPhaseOptions = useCallback(async () => {
-    const res = await authFetch("/api/training/phase-preset");
-    const data = (await res.json()) as { phasePresets?: PhaseOption[] };
-    setPhaseOptions(data.phasePresets ?? []);
-  }, []);
-
-  const openPhase = useCallback(async (id: string) => {
-    setEditorMessage(null);
-    const res = await authFetch(`/api/training/phase-preset/${id}`);
-    const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
-    if (!res.ok || !data.phasePreset) {
-      setEditorMessage(data.error || "Could not open that phase preset");
-      return;
-    }
-    setEditor({
-      id: data.phasePreset.id,
-      name: data.phasePreset.name,
-      longRunConfigId: data.phasePreset.longRunConfigId,
-      intervalsConfigId: data.phasePreset.intervalsConfigId,
-      tempoConfigId: data.phasePreset.tempoConfigId,
-      easyConfigId: data.phasePreset.easyConfigId,
-    });
-  }, []);
-
-  async function buildPhase() {
-    setEditorMessage(null);
-    const res = await authFetch("/api/training/phase-preset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "New phase preset" }),
-    });
-    const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
-    if (!data.phasePreset) {
-      setEditorMessage(data.error || "Could not create the phase preset");
-      return;
-    }
-    setEditor({
-      id: data.phasePreset.id,
-      name: data.phasePreset.name,
-      longRunConfigId: data.phasePreset.longRunConfigId,
-      intervalsConfigId: data.phasePreset.intervalsConfigId,
-      tempoConfigId: data.phasePreset.tempoConfigId,
-      easyConfigId: data.phasePreset.easyConfigId,
-    });
-    if (!res.ok) setEditorMessage(data.error || "Saved in Training Manage but prod sync failed");
-    await refreshPhaseOptions();
-  }
-
-  async function savePhase() {
-    if (!editor) return;
-    setEditorSaving(true);
-    setEditorMessage(null);
-    try {
-      const res = await authFetch(`/api/training/phase-preset/${editor.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editor.name.trim() || "Phase",
-          longRunConfigId: editor.longRunConfigId,
-          intervalsConfigId: editor.intervalsConfigId,
-          tempoConfigId: editor.tempoConfigId,
-          easyConfigId: editor.easyConfigId,
-        }),
-      });
-      const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
-      if (data.phasePreset) {
-        setEditor({
-          id: data.phasePreset.id,
-          name: data.phasePreset.name,
-          longRunConfigId: data.phasePreset.longRunConfigId,
-          intervalsConfigId: data.phasePreset.intervalsConfigId,
-          tempoConfigId: data.phasePreset.tempoConfigId,
-          easyConfigId: data.phasePreset.easyConfigId,
-        });
-      }
-      if (!res.ok) {
-        setEditorMessage(data.error || "Phase preset save failed");
-        return;
-      }
-      setEditorMessage("Phase preset saved");
-      await refreshPhaseOptions();
-    } finally {
-      setEditorSaving(false);
-    }
-  }
-
   async function cleanupPublicDescription() {
     const draft = publicDescription.trim();
     if (!draft || !presetId || presetId === "new") return;
@@ -430,12 +375,8 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     parseOptional(maxWeeklyMiles) == null ? null : Math.round(parseOptional(maxWeeklyMiles)!),
   );
 
-  const usedBy = editor
-    ? PHASE_FIELDS.filter((field) => pointers[field.key] === editor.id).map((field) => field.label)
-    : [];
-
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link
         href="/dashboard/presets"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
@@ -471,7 +412,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           ) : null}
         </div>
         <p className="text-sm text-gray-600">
-          Miles and phase pointers live here. The phase preset open on the right holds the four rotation slots.
+          Miles live here. Each phase selects a phase preset. Open that preset to set its rotations.
         </p>
         <SaveSyncBanner status={syncStatus} />
       </div>
@@ -486,8 +427,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         />
       ) : null}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,34rem)]">
-      <div className="space-y-4">
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold">Preset</h2>
         <label className="block text-sm">
@@ -565,32 +504,37 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Overall and base are a rough guide. Base to peak, taper, and race week are fixed totals.
+            Base is a rough guide. Base to peak is fixed. Taper and race week are fixed totals. A low athlete is not lifted
+            to the floor.
           </p>
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-800">Overall</h3>
-          <p className="text-sm text-gray-600">A rough guide. A low athlete is not lifted up to the floor.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MilesField label="Weekly min" value={minWeeklyMiles} onChange={setMinWeeklyMiles} step="1" />
-            <MilesField label="Weekly max" value={maxWeeklyMiles} onChange={setMaxWeeklyMiles} step="1" />
-          </div>
-        </div>
-        <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Base</h3>
-          <p className="text-sm text-gray-600">A rough guide for the weeks before the peak block.</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MilesField label="Weekly min" value={baseWeeklyMinMiles} onChange={setBaseWeeklyMinMiles} step="1" />
-            <MilesField label="Weekly max" value={baseWeeklyMaxMiles} onChange={setBaseWeeklyMaxMiles} step="1" />
-            <MilesField label="Starting long run" value={entryLongRunMiles} onChange={setEntryLongRunMiles} />
-          </div>
+          <PhaseMileageFields
+            help="A rough guide for the weeks before the peak block."
+            weeklyMin={baseWeeklyMinMiles}
+            weeklyMax={baseWeeklyMaxMiles}
+            startLongRun={baseStartLongRunMiles}
+            peakLongRun={baseEndLongRunMiles}
+            onWeeklyMin={setBaseWeeklyMinMiles}
+            onWeeklyMax={setBaseWeeklyMaxMiles}
+            onStartLongRun={setBaseStartLongRunMiles}
+            onPeakLongRun={setBaseEndLongRunMiles}
+          />
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Base to peak</h3>
-          <p className="text-sm text-gray-600">Fixed. Climbs from the starting long run to the peak long run.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MilesField label="Peak long run" value={peakLongRunMiles} onChange={setPeakLongRunMiles} />
-          </div>
+          <PhaseMileageFields
+            help="Fixed. Climbs from the starting long run to the peak long run within the weekly band."
+            weeklyMin={minWeeklyMiles}
+            weeklyMax={maxWeeklyMiles}
+            startLongRun={entryLongRunMiles}
+            peakLongRun={peakLongRunMiles}
+            onWeeklyMin={setMinWeeklyMiles}
+            onWeeklyMax={setMaxWeeklyMiles}
+            onStartLongRun={setEntryLongRunMiles}
+            onPeakLongRun={setPeakLongRunMiles}
+          />
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Taper</h3>
@@ -616,16 +560,12 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           <div>
             <h2 className="text-lg font-semibold">Phases</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Pick a saved phase preset for each phase. The same one can fill every phase. Edit slots opens it on the right.
+              Select a phase preset for each phase. The same one can fill every phase.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void buildPhase()}
-            className="text-sm font-medium text-sky-700 hover:underline"
-          >
+          <Link href="/dashboard/phase-presets" className="text-sm font-medium text-sky-700 hover:underline">
             Build a phase preset
-          </button>
+          </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           {PHASE_FIELDS.map((field) => (
@@ -634,23 +574,19 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
                 label={field.label}
                 options={options}
                 value={pointers[field.key]}
-                onChange={(id) => {
-                  setPointers((current) => ({ ...current, [field.key]: id }));
-                  if (id) void openPhase(id);
-                }}
+                onChange={(id) => setPointers((current) => ({ ...current, [field.key]: id }))}
                 placeholder="Search phase presets…"
                 emptyLabel="Not linked"
               />
               <div className="flex gap-3 text-xs">
                 {pointers[field.key] ? (
                   <>
-                    <button
-                      type="button"
+                    <Link
+                      href={`/dashboard/phase-presets/${pointers[field.key]}`}
                       className="font-medium text-sky-700 hover:underline"
-                      onClick={() => void openPhase(pointers[field.key])}
                     >
-                      {editor?.id === pointers[field.key] ? "Editing slots" : "Edit slots"}
-                    </button>
+                      Open phase preset
+                    </Link>
                     <button
                       type="button"
                       className="text-gray-500 hover:underline"
@@ -674,68 +610,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       >
         {saving ? "Saving…" : "Save preset"}
       </button>
-      </div>
-
-      <aside className="space-y-3 xl:sticky xl:top-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">Phase preset</h2>
-          {editor ? (
-            <div className="mt-3 space-y-3">
-              <label className="block text-sm">
-                <span className="text-gray-600">Name</span>
-                <input
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={editor.name}
-                  onChange={(e) => setEditor((current) => (current ? { ...current, name: e.target.value } : current))}
-                />
-              </label>
-              <p className="text-sm text-gray-600">
-                {usedBy.length > 0
-                  ? `Selected for ${usedBy.join(", ")}. Saving slots updates every phase that points here.`
-                  : "Not selected on the left yet. Saving here updates this phase preset only."}
-              </p>
-              {editorMessage ? <p className="text-sm text-gray-700">{editorMessage}</p> : null}
-              <button
-                type="button"
-                disabled={editorSaving || !editor.name.trim()}
-                onClick={() => void savePhase()}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {editorSaving ? "Saving…" : "Save phase preset"}
-              </button>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-gray-600">
-              Choose Edit slots on a phase, or build a phase preset. Each slot picks one rotation from Run Type Config.
-            </p>
-          )}
-        </div>
-        {editor ? (
-          <PhaseRotationBolts
-            value={{
-              longRunConfigId: editor.longRunConfigId ?? "",
-              easyConfigId: editor.easyConfigId ?? "",
-              tempoConfigId: editor.tempoConfigId ?? "",
-              intervalsConfigId: editor.intervalsConfigId ?? "",
-            }}
-            onBeforeManageNavigate={() => savePhase()}
-            onChange={(next) =>
-              setEditor((current) =>
-                current
-                  ? {
-                      ...current,
-                      longRunConfigId: next.longRunConfigId || null,
-                      easyConfigId: next.easyConfigId || null,
-                      tempoConfigId: next.tempoConfigId || null,
-                      intervalsConfigId: next.intervalsConfigId || null,
-                    }
-                  : current,
-              )
-            }
-          />
-        ) : null}
-      </aside>
-      </div>
     </div>
   );
 }
