@@ -1,20 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
-import { createRotationConfig, listRotationConfigs } from "@/lib/training/rotation-config-api";
-import { NextRequest, NextResponse } from "next/server";
+import { proxyProdTrainingRoute } from "@/lib/training/proxy-prod-training-route";
+import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
-  const configs = await listRotationConfigs("easy");
-  return NextResponse.json({ success: true, configs });
+  return proxyProdTrainingRoute(request, "/api/training/easy-config");
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
-  const body = (await request.json().catch(() => ({}))) as { name?: string; positionCount?: number };
-  const row = await createRotationConfig("easy", body.name?.trim() || "Easy rotation", body.positionCount ?? 4);
-  return NextResponse.json({ success: true, config: row });
+  return proxyProdTrainingRoute(request, "/api/training/easy-config");
 }

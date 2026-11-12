@@ -1,6 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { fetchProdPlanGoals } from "@/lib/training/fetch-prod-plan-catalog";
 import { buildGoalSlug, normalizeSlug } from "@/lib/training/plan-entity-slugs";
-import { findGoalBySlug } from "@/lib/training/plan-catalog-lookup";
 import { serializePlanGoal, type PlanGoalApi } from "@/lib/training/plan-entity-serialize";
 import type { TrainingPlanGoalType } from "@/lib/training/goal-type-map";
 
@@ -34,6 +33,8 @@ export async function suggestGoals(opts: {
   planDurationWeeks?: number | null;
   goalType?: TrainingPlanGoalType | null;
   suggestedSlug?: string | null;
+  authorization: string;
+  staffId: string;
 }): Promise<GoalSuggestResult> {
   const weeks = Math.max(1, Math.round(opts.planDurationWeeks ?? 12));
   const personaSlug = normalizeSlug(opts.personaSlug ?? "");
@@ -47,21 +48,18 @@ export async function suggestGoals(opts: {
     goalType: opts.goalType,
   });
 
-  const exactRow = suggestedSlug ? await findGoalBySlug(suggestedSlug) : null;
+  const goals = await fetchProdPlanGoals({
+    authorization: opts.authorization,
+    staffId: opts.staffId,
+  });
+
+  const exactRow = suggestedSlug ? goals.find((g) => g.slug === suggestedSlug) ?? null : null;
   const exactMatch = exactRow ? serializePlanGoal(exactRow) : null;
 
-  const similarRows = await prisma.training_plan_goal.findMany({
-    where: {
-      ...(exactRow ? { id: { not: exactRow.id } } : {}),
-      ...(opts.personaId ? { personaId: opts.personaId } : {}),
-      ...(opts.targetDistanceLabel
-        ? { targetDistanceLabel: opts.targetDistanceLabel }
-        : {}),
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 5,
-    include: { persona: true },
-  });
+  const similarRows = goals
+    .filter((g) => (exactRow ? g.id !== exactRow.id : true))
+    .filter((g) => (opts.personaId ? g.personaId === opts.personaId : true))
+    .slice(0, 5);
 
   return {
     suggestedSlug,

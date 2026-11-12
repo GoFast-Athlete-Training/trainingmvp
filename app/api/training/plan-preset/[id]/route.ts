@@ -1,7 +1,5 @@
 export const dynamic = "force-dynamic";
 
-import { prisma } from "@/lib/prisma";
-import { mirrorPlanPresetLocal } from "@/lib/training/mirror-plan-preset-local";
 import {
   proxyPlanPresetResponse,
   resolvePlanPresetProdStaff,
@@ -32,9 +30,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     method: "PATCH",
     body,
   });
-  if (res.status >= 200 && res.status < 300) {
-    await mirrorPlanPresetLocal(id, body).catch(() => undefined);
-  }
   return res;
 }
 
@@ -51,10 +46,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     path: `/api/training/plan-preset/${encodeURIComponent(id)}`,
     method: "DELETE",
   });
-
-  if (prodRes.ok) {
-    await prisma.training_plan_preset.deleteMany({ where: { id } }).catch(() => undefined);
-  }
 
   const text = await prodRes.text();
   return new NextResponse(text || JSON.stringify({ success: prodRes.ok }), {

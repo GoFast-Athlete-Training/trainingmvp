@@ -1,5 +1,4 @@
-import type { TrainingPlanGoalKind } from "@prisma/client";
-
+export type TrainingPlanGoalKind = "RACE" | "TRAINING_BLOCK";
 export type TrainingPlanGoalType = "RACE" | "GENERAL_FITNESS" | "MORE_ENDURANCE";
 
 export function goalTypeToPrismaKind(

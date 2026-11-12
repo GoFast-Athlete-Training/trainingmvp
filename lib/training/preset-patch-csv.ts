@@ -1,9 +1,8 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { applyPhaseShapeFields } from "@/lib/training/apply-phase-shape";
+import { applyPhaseShapeFields, type ProdStaffCredentials } from "@/lib/training/apply-phase-shape";
+import { findGoalBySlug, findPersonaBySlug } from "@/lib/training/plan-catalog-lookup";
 import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 import { loadPresetValidateRow, type PresetValidateRow } from "@/lib/training/preset-validate-load";
-import { pushPresetToProd } from "@/lib/training/push-preset-to-prod";
+import { forwardProdPresetStaffRequest } from "@/lib/training/prod-preset-staff-proxy";
 import { runOpenAiJsonAgent } from "@/lib/training/openai-json";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
 import {
@@ -123,9 +122,9 @@ function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): str
     case "paceNudgeSecPerMile":
       return numField(row.paceNudgeSecPerMile ?? 0);
     case "personaSlug":
-      return row.persona?.slug ?? "";
+      return typeof row.persona?.slug === "string" ? row.persona.slug : "";
     case "goalSlug":
-      return row.goal?.slug ?? "";
+      return typeof row.goal?.slug === "string" ? row.goal.slug : "";
     case "coachIntent":
       return str(row.coachIntent);
     case "objectiveOfPlan":
@@ -260,6 +259,7 @@ Never output slug or matchKey as a field.`;
 export async function previewPresetPatch(
   row: PresetValidateRow,
   csvText: string,
+  prodStaff: ProdStaffCredentials,
 ): Promise<PresetPatchPreview> {
   const { matchSlug, rows, parseErrors } = parsePresetPatchFieldRows(csvText);
   const errors = [...parseErrors];
@@ -297,19 +297,13 @@ export async function previewPresetPatch(
 
   if (pending.has("personaSlug")) {
     const slug = pending.get("personaSlug")!;
-    const persona = await prisma.training_plan_persona.findFirst({
-      where: { slug },
-      select: { id: true },
-    });
+    const persona = await findPersonaBySlug(slug, prodStaff);
     if (!persona) errors.push(`No persona for slug “${slug}”`);
   }
 
   if (pending.has("goalSlug")) {
     const slug = pending.get("goalSlug")!;
-    const goal = await prisma.training_plan_goal.findFirst({
-      where: { slug },
-      select: { id: true },
-    });
+    const goal = await findGoalBySlug(slug, prodStaff);
     if (!goal) errors.push(`No goal for slug “${slug}”`);
   }
 
@@ -334,12 +328,13 @@ export async function previewPresetPatch(
     const phaseCheck = await applyPhaseShapeFields({
       fields: phaseFields,
       currentPointers: {
-        baseBuildPhasePresetId: row.baseBuildPhasePresetId,
-        buildToPeakPhasePresetId: row.buildToPeakPhasePresetId,
-        taperPhasePresetId: row.taperPhasePresetId,
-        raceWeekPhasePresetId: row.raceWeekPhasePresetId,
+        baseBuildPhasePresetId: (row.baseBuildPhasePresetId as string | null) ?? null,
+        buildToPeakPhasePresetId: (row.buildToPeakPhasePresetId as string | null) ?? null,
+        taperPhasePresetId: (row.taperPhasePresetId as string | null) ?? null,
+        raceWeekPhasePresetId: (row.raceWeekPhasePresetId as string | null) ?? null,
       },
       dryRun: true,
+      prodStaff,
     });
     errors.push(...phaseCheck.errors);
   }
@@ -352,25 +347,25 @@ export async function previewPresetPatch(
   };
 }
 
-async function resolvePersonaId(slug: string | undefined): Promise<string | null | undefined> {
+async function resolvePersonaId(
+  slug: string | undefined,
+  prodStaff: ProdStaffCredentials,
+): Promise<string | null | undefined> {
   if (slug === undefined) return undefined;
   if (!slug.trim()) return null;
-  const row = await prisma.training_plan_persona.findFirst({
-    where: { slug: slug.trim() },
-    select: { id: true },
-  });
-  if (!row) throw new Error(`No persona for slug “${slug}”`);
+  const row = await findPersonaBySlug(slug.trim(), prodStaff);
+  if (!row?.id) throw new Error(`No persona for slug “${slug}”`);
   return row.id;
 }
 
-async function resolveGoalId(slug: string | undefined): Promise<string | null | undefined> {
+async function resolveGoalId(
+  slug: string | undefined,
+  prodStaff: ProdStaffCredentials,
+): Promise<string | null | undefined> {
   if (slug === undefined) return undefined;
   if (!slug.trim()) return null;
-  const row = await prisma.training_plan_goal.findFirst({
-    where: { slug: slug.trim() },
-    select: { id: true },
-  });
-  if (!row) throw new Error(`No goal for slug “${slug}”`);
+  const row = await findGoalBySlug(slug.trim(), prodStaff);
+  if (!row?.id) throw new Error(`No goal for slug “${slug}”`);
   return row.id;
 }
 
@@ -383,12 +378,13 @@ export async function applyPresetPatch(opts: {
   | { ok: true; preview: PresetPatchPreview }
   | { ok: false; error: string; preview?: PresetPatchPreview }
 > {
-  const row = await loadPresetValidateRow(opts.presetId);
+  const prodStaff = { authorization: opts.authorization, staffId: opts.staffId };
+  const row = await loadPresetValidateRow(opts.presetId, prodStaff);
   if (!row) {
-    return { ok: false, error: "Preset not found in Training Manage" };
+    return { ok: false, error: "Preset not found on prod" };
   }
 
-  const preview = await previewPresetPatch(row, opts.csvText);
+  const preview = await previewPresetPatch(row, opts.csvText, prodStaff);
   if (preview.errors.length > 0) {
     return { ok: false, error: preview.errors.join("; "), preview };
   }
@@ -398,8 +394,8 @@ export async function applyPresetPatch(opts: {
 
   const valueByField = new Map(preview.changes.map((c) => [c.field, c.after]));
 
-  const personaId = await resolvePersonaId(valueByField.get("personaSlug"));
-  const goalId = await resolveGoalId(valueByField.get("goalSlug"));
+  const personaId = await resolvePersonaId(valueByField.get("personaSlug"), prodStaff);
+  const goalId = await resolveGoalId(valueByField.get("goalSlug"), prodStaff);
 
   const planData: Record<string, unknown> = {};
   if (valueByField.has("title")) {
@@ -450,7 +446,7 @@ export async function applyPresetPatch(opts: {
     if ("error" in parsed) {
       return { ok: false, error: parsed.error, preview };
     }
-    planData.raceWeekDayMiles = parsed.length > 0 ? parsed : Prisma.DbNull;
+    planData.raceWeekDayMiles = parsed.length > 0 ? parsed : null;
   }
   if (valueByField.has("coachIntent")) planData.coachIntent = valueByField.get("coachIntent") || null;
   if (valueByField.has("objectiveOfPlan"))
@@ -466,11 +462,12 @@ export async function applyPresetPatch(opts: {
     const applied = await applyPhaseShapeFields({
       fields: phaseFields,
       currentPointers: {
-        baseBuildPhasePresetId: row.baseBuildPhasePresetId,
-        buildToPeakPhasePresetId: row.buildToPeakPhasePresetId,
-        taperPhasePresetId: row.taperPhasePresetId,
-        raceWeekPhasePresetId: row.raceWeekPhasePresetId,
+        baseBuildPhasePresetId: (row.baseBuildPhasePresetId as string | null) ?? null,
+        buildToPeakPhasePresetId: (row.buildToPeakPhasePresetId as string | null) ?? null,
+        taperPhasePresetId: (row.taperPhasePresetId as string | null) ?? null,
+        raceWeekPhasePresetId: (row.raceWeekPhasePresetId as string | null) ?? null,
       },
+      prodStaff,
     });
     if (applied.errors.length > 0) {
       return { ok: false, error: applied.errors.join("; "), preview };
@@ -478,18 +475,20 @@ export async function applyPresetPatch(opts: {
     Object.assign(planData, applied.pointers);
   }
 
-  await prisma.training_plan_preset.update({
-    where: { id: opts.presetId },
-    data: planData as Prisma.training_plan_presetUncheckedUpdateInput,
-  });
-
-  const push = await pushPresetToProd({
-    presetId: opts.presetId,
+  const patchRes = await forwardProdPresetStaffRequest({
     authorization: opts.authorization,
     staffId: opts.staffId,
+    path: `/api/training/plan-preset/${encodeURIComponent(opts.presetId)}`,
+    method: "PATCH",
+    body: planData,
   });
-  if (!push.ok) {
-    return { ok: false, error: `Local saved but prod sync failed: ${push.error}`, preview };
+  if (!patchRes.ok) {
+    const errJson = (await patchRes.json().catch(() => ({}))) as { error?: string };
+    return {
+      ok: false,
+      error: errJson.error || `Prod PATCH failed (${patchRes.status})`,
+      preview,
+    };
   }
 
   return { ok: true, preview };

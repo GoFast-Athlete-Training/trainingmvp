@@ -1,22 +1,9 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import { applyPhaseShapeFields } from "@/lib/training/apply-phase-shape";
+import { findPersonaBySlug } from "@/lib/training/plan-catalog-lookup";
 import { forwardProdPresetStaffRequest } from "@/lib/training/prod-preset-staff-proxy";
 import type { PresetIngestRowInput } from "@/lib/training/preset-ingest-canon";
 import { normalizeTargetDistance } from "@/lib/training/preset-ingest-canon";
-import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 import { parseRaceWeekDayMilesCell, PHASE_NAME_FIELDS, PHASE_SLOT_FIELDS } from "@/lib/training/preset-shape-columns";
-import { pushPresetToProd } from "@/lib/training/push-preset-to-prod";
-
-async function resolvePersonaIdBySlug(slug: string): Promise<string | null> {
-  const t = slug.trim();
-  if (!t) return null;
-  const row = await prisma.training_plan_persona.findFirst({
-    where: { slug: t },
-    select: { id: true },
-  });
-  return row?.id ?? null;
-}
 
 function phaseFieldMap(row: PresetIngestRowInput): Map<string, string> {
   const fields = new Map<string, string>();
@@ -34,6 +21,7 @@ export async function importPresetIngestRowToProd(opts: {
   authorization: string;
   staffId: string;
 }): Promise<{ ok: true; presetId: string } | { ok: false; error: string; status?: number }> {
+  const prodStaff = { authorization: opts.authorization, staffId: opts.staffId };
   const dist = normalizeTargetDistance(opts.row.targetDistance);
   if (dist.error) {
     return { ok: false, error: dist.error };
@@ -41,7 +29,8 @@ export async function importPresetIngestRowToProd(opts: {
 
   let personaId: string | null = null;
   if (opts.row.personaSlug.trim()) {
-    personaId = await resolvePersonaIdBySlug(opts.row.personaSlug);
+    const persona = await findPersonaBySlug(opts.row.personaSlug, prodStaff);
+    personaId = persona?.id ?? null;
     if (!personaId) {
       return {
         ok: false,
@@ -56,7 +45,7 @@ export async function importPresetIngestRowToProd(opts: {
   }
 
   const phaseFields = phaseFieldMap(opts.row);
-  const phaseCheck = await applyPhaseShapeFields({ fields: phaseFields, dryRun: true });
+  const phaseCheck = await applyPhaseShapeFields({ fields: phaseFields, dryRun: true, prodStaff });
   if (phaseCheck.errors.length > 0) {
     return { ok: false, error: phaseCheck.errors.join("; ") };
   }
@@ -71,7 +60,7 @@ export async function importPresetIngestRowToProd(opts: {
   });
 
   const createJson = (await createRes.json().catch(() => ({}))) as {
-    preset?: { id: string; title: string; slug: string };
+    preset?: { id: string };
     error?: string;
   };
 
@@ -84,12 +73,8 @@ export async function importPresetIngestRowToProd(opts: {
   }
 
   const presetId = createJson.preset.id;
-  const slug =
-    createJson.preset.slug?.trim() ||
-    normalizeSlug(title).slice(0, 80) ||
-    `preset-${presetId.slice(-6)}`;
 
-  const applied = await applyPhaseShapeFields({ fields: phaseFields });
+  const applied = await applyPhaseShapeFields({ fields: phaseFields, prodStaff });
   if (applied.errors.length > 0) {
     return { ok: false, error: applied.errors.join("; ") };
   }
@@ -98,9 +83,7 @@ export async function importPresetIngestRowToProd(opts: {
   const maxWeeklyMiles = Math.round(opts.row.maxWeeklyMiles!);
   const nudge = Math.round(opts.row.paceNudgeSecPerMile ?? 0);
 
-  const planWrite: Prisma.training_plan_presetUncheckedCreateInput = {
-    id: presetId,
-    slug,
+  const patchBody: Record<string, unknown> = {
     title,
     description: "",
     targetDistanceLabel: dist.value || null,
@@ -117,28 +100,28 @@ export async function importPresetIngestRowToProd(opts: {
     taperWeek1LongRunMiles: opts.row.taperWeek1LongRunMiles,
     taperWeek2TotalMiles: opts.row.taperWeek2TotalMiles,
     taperWeek2LongRunMiles: opts.row.taperWeek2LongRunMiles,
-    raceWeekDayMiles: dayMiles.length > 0 ? dayMiles : Prisma.DbNull,
+    raceWeekDayMiles: dayMiles.length > 0 ? dayMiles : null,
     baseBuildPhasePresetId: applied.pointers.baseBuildPhasePresetId ?? null,
     buildToPeakPhasePresetId: applied.pointers.buildToPeakPhasePresetId ?? null,
     taperPhasePresetId: applied.pointers.taperPhasePresetId ?? null,
     raceWeekPhasePresetId: applied.pointers.raceWeekPhasePresetId ?? null,
   };
 
-  const { id, ...planUpdate } = planWrite;
-  void id;
-  await prisma.training_plan_preset.upsert({
-    where: { id: presetId },
-    create: planWrite,
-    update: planUpdate as Prisma.training_plan_presetUncheckedUpdateInput,
-  });
-
-  const push = await pushPresetToProd({
-    presetId,
+  const patchRes = await forwardProdPresetStaffRequest({
     authorization: opts.authorization,
     staffId: opts.staffId,
+    path: `/api/training/plan-preset/${encodeURIComponent(presetId)}`,
+    method: "PATCH",
+    body: patchBody,
   });
-  if (!push.ok) {
-    return { ok: false, status: push.status, error: push.error };
+
+  if (!patchRes.ok) {
+    const errJson = (await patchRes.json().catch(() => ({}))) as { error?: string };
+    return {
+      ok: false,
+      status: patchRes.status,
+      error: errJson.error || `PATCH preset failed (${patchRes.status})`,
+    };
   }
 
   return { ok: true, presetId };

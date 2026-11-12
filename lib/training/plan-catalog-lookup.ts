@@ -1,17 +1,22 @@
-import { prisma } from "@/lib/prisma";
+import { fetchProdPlanGoals, fetchProdPlanPersonas } from "@/lib/training/fetch-prod-plan-catalog";
 import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 
-export async function findPersonaBySlug(slug: string) {
+export async function findPersonaBySlug(
+  slug: string,
+  auth: { authorization: string; staffId: string },
+) {
   const normalized = normalizeSlug(slug);
   if (!normalized) return null;
-  return prisma.training_plan_persona.findUnique({ where: { slug: normalized } });
+  const personas = await fetchProdPlanPersonas(auth);
+  return personas.find((p) => p.slug === normalized) ?? null;
 }
 
-export async function findGoalBySlug(slug: string) {
+export async function findGoalBySlug(
+  slug: string,
+  auth: { authorization: string; staffId: string },
+) {
   const normalized = normalizeSlug(slug);
   if (!normalized) return null;
-  return prisma.training_plan_goal.findUnique({
-    where: { slug: normalized },
-    include: { persona: true },
-  });
+  const goals = await fetchProdPlanGoals(auth);
+  return goals.find((g) => g.slug === normalized) ?? null;
 }

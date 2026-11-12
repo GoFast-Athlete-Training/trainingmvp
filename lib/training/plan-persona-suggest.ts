@@ -1,12 +1,10 @@
-import type { AthletePersonaCapability, TrainingPlanGoalKind } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import {
   buildPersonaSlug,
   capabilityToSlugPrefix,
   normalizeSlug,
 } from "@/lib/training/plan-entity-slugs";
-import { findPersonaBySlug } from "@/lib/training/plan-catalog-lookup";
 import { serializePlanPersona, type PlanPersonaApi } from "@/lib/training/plan-entity-serialize";
+import { fetchProdPlanPersonas } from "@/lib/training/fetch-prod-plan-catalog";
 
 const CAPABILITY_LABEL: Record<string, string> = {
   NON_RUNNER: "Non-runner",
@@ -24,7 +22,7 @@ export type PersonaSuggestResult = {
 };
 
 export function buildSuggestedPersonaLabel(opts: {
-  capability?: AthletePersonaCapability | null;
+  capability?: string | null;
   targetDistanceLabel?: string | null;
   personaGoalLabel?: string | null;
 }): string {
@@ -39,40 +37,42 @@ export function buildSuggestedPersonaLabel(opts: {
 }
 
 export async function suggestPersonas(opts: {
-  capability?: AthletePersonaCapability | null;
+  capability?: string | null;
   targetDistanceLabel?: string | null;
-  goalKind?: TrainingPlanGoalKind | null;
+  goalKind?: string | null;
   personaGoalLabel?: string | null;
   suggestedSlug?: string | null;
+  authorization: string;
+  staffId: string;
 }): Promise<PersonaSuggestResult> {
-  const goalKind =
-    opts.goalKind === "TRAINING_BLOCK" ? ("TRAINING_BLOCK" as const) : ("RACE" as const);
+  const goalKind = opts.goalKind === "TRAINING_BLOCK" ? "TRAINING_BLOCK" : "RACE";
 
   const suggestedSlug =
     normalizeSlug(opts.suggestedSlug ?? "") ||
     buildPersonaSlug({
-      capability: opts.capability,
+      capability: opts.capability as Parameters<typeof buildPersonaSlug>[0]["capability"],
       targetDistanceLabel: opts.targetDistanceLabel,
       goalKind,
     });
 
   const suggestedLabel = buildSuggestedPersonaLabel(opts);
+  const personas = await fetchProdPlanPersonas({
+    authorization: opts.authorization,
+    staffId: opts.staffId,
+  });
 
-  const exactRow = await findPersonaBySlug(suggestedSlug);
+  const exactRow = personas.find((p) => p.slug === suggestedSlug) ?? null;
   const exactMatch = exactRow ? serializePlanPersona(exactRow) : null;
 
-  const prefix = capabilityToSlugPrefix(opts.capability ?? null);
-  const similarRows = await prisma.training_plan_persona.findMany({
-    where: {
-      ...(exactRow ? { id: { not: exactRow.id } } : {}),
-      OR: [
-        ...(opts.capability ? [{ capability: opts.capability }] : []),
-        { slug: { startsWith: prefix } },
-      ],
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 5,
-  });
+  const prefix = capabilityToSlugPrefix(opts.capability as Parameters<typeof capabilityToSlugPrefix>[0]);
+  const similarRows = personas
+    .filter((p) => (exactRow ? p.id !== exactRow.id : true))
+    .filter(
+      (p) =>
+        (opts.capability && p.capability === opts.capability) ||
+        p.slug.startsWith(prefix),
+    )
+    .slice(0, 5);
 
   return {
     suggestedSlug,

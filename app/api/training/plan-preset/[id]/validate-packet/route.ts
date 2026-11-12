@@ -3,11 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { forwardProdPresetStaffRequest } from "@/lib/training/prod-preset-staff-proxy";
 import { resolvePlanPresetProdStaff } from "@/lib/training/plan-preset-prod-forward";
-import { loadPresetValidateRow } from "@/lib/training/preset-validate-load";
-import {
-  buildPresetValidateLlmPacket,
-  buildPresetValidateLlmPacketFromProdJson,
-} from "@/lib/training/preset-validate-llm-packet";
+import { buildPresetValidateLlmPacketFromProdJson } from "@/lib/training/preset-validate-llm-packet";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,14 +12,6 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (ctx instanceof NextResponse) return ctx;
 
   const { id } = await params;
-  const local = await loadPresetValidateRow(id);
-  if (local) {
-    return NextResponse.json({
-      success: true,
-      source: "training_manage",
-      promptText: buildPresetValidateLlmPacket(local),
-    });
-  }
 
   const prodRes = await forwardProdPresetStaffRequest({
     authorization: ctx.authorization,

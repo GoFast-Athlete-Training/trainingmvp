@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/prisma";
 import { pushPresetToProd } from "@/lib/training/push-preset-to-prod";
 
 export async function syncPresetsToProd(opts: {
@@ -22,7 +21,6 @@ export async function syncPresetsToProd(opts: {
   return { ok: true };
 }
 
-/** @deprecated fire-and-forget — prefer syncPresetsToProd on save */
 export function schedulePresetProdSync(opts: {
   presetIds: string[];
   authorization: string;
@@ -35,26 +33,14 @@ export function schedulePresetProdSync(opts: {
   });
 }
 
-export async function presetIdsLinkedToBuildPreset(buildPresetId: string): Promise<string[]> {
-  const rows = await prisma.training_plan_preset.findMany({
-    where: { OR: [{ buildPresetId }, { baseBuildPresetId: buildPresetId }] },
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
+export async function presetIdsLinkedToBuildPreset(_buildPresetId: string): Promise<string[]> {
+  return [];
 }
 
-export async function presetIdsLinkedToTaperPreset(taperPresetId: string): Promise<string[]> {
-  const rows = await prisma.training_plan_preset.findMany({
-    where: { taperPresetId },
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
+export async function presetIdsLinkedToTaperPreset(_taperPresetId: string): Promise<string[]> {
+  return [];
 }
 
-export async function presetIdsLinkedToRaceWeekPreset(raceWeekPresetId: string): Promise<string[]> {
-  const rows = await prisma.training_plan_preset.findMany({
-    where: { raceWeekPresetId },
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
+export async function presetIdsLinkedToRaceWeekPreset(_raceWeekPresetId: string): Promise<string[]> {
+  return [];
 }

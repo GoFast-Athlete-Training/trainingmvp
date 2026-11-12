@@ -1,12 +1,22 @@
-import type { training_plan_goal, training_plan_persona } from "@prisma/client";
-import { prismaKindToGoalType, type TrainingPlanGoalType } from "@/lib/training/goal-type-map";
+import {
+  prismaKindToGoalType,
+  type TrainingPlanGoalKind,
+  type TrainingPlanGoalType,
+} from "@/lib/training/goal-type-map";
+
+export type AthletePersonaCapability =
+  | "NON_RUNNER"
+  | "BEGINNER"
+  | "RECREATIONAL"
+  | "COMPETITIVE"
+  | "ELITE";
 
 export type PlanPersonaApi = {
   id: string;
   slug: string;
   title: string;
-  capability: training_plan_persona["capability"];
-  dedication: training_plan_persona["dedication"];
+  capability: AthletePersonaCapability | null;
+  dedication: string | null;
   personaGoalLabel: string | null;
   athletePersonaGoal: string | null;
   workoutFrequencyCap: number | null;
@@ -37,10 +47,10 @@ export type PlanGoalApi = {
   objectiveOfPlan: string | null;
   planDurationWeeks: number;
   timeHorizonLabel: string | null;
-  fitnessDelta: training_plan_goal["fitnessDelta"];
-  progressionAggressiveness: training_plan_goal["progressionAggressiveness"];
+  fitnessDelta: string | null;
+  progressionAggressiveness: string | null;
   intensityReasoning: string | null;
-  goalKind: training_plan_goal["goalKind"];
+  goalKind: TrainingPlanGoalKind | null;
   goalType: TrainingPlanGoalType | null;
   coachIntent: string | null;
   createdAt: string;
@@ -48,55 +58,63 @@ export type PlanGoalApi = {
   persona?: PlanPersonaApi | null;
 };
 
-export function serializePlanPersona(row: training_plan_persona): PlanPersonaApi {
+function toIso(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value) return value;
+  return new Date(0).toISOString();
+}
+
+type PersonaRow = Record<string, unknown> & Partial<PlanPersonaApi>;
+type GoalRow = Record<string, unknown> & Partial<PlanGoalApi> & { persona?: PersonaRow | null };
+
+export function serializePlanPersona(row: PersonaRow): PlanPersonaApi {
   return {
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    capability: row.capability,
-    dedication: row.dedication,
-    personaGoalLabel: row.personaGoalLabel,
-    athletePersonaGoal: row.personaGoalLabel,
-    workoutFrequencyCap: row.workoutFrequencyCap,
-    intentSummary: row.intentSummary,
-    athletePersonaSummary: row.athletePersonaSummary ?? row.intentSummary,
-    runningHistory: row.runningHistory,
-    runningHistorySummary: row.runningHistorySummary,
-    currentCapability: row.currentCapability,
-    currentCapabilitySummary: row.currentCapabilitySummary,
-    injuryAssessment: row.injuryAssessment,
-    injuryAssessmentSummary: row.injuryAssessmentSummary,
-    dedicationText: row.dedicationText,
-    dedicationSummary: row.dedicationSummary,
-    abilityToTrain: row.abilityToTrain,
-    abilityToTrainSummary: row.abilityToTrainSummary,
-    estimated5kTimeSeconds: row.estimated5kTimeSeconds,
-    estimated5kPerformanceSummary: row.estimated5kPerformanceSummary,
-    estimated5kPerformanceRationale: row.estimated5kPerformanceRationale,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id: String(row.id ?? ""),
+    slug: String(row.slug ?? ""),
+    title: String(row.title ?? ""),
+    capability: (row.capability as AthletePersonaCapability | null) ?? null,
+    dedication: (row.dedication as string | null) ?? null,
+    personaGoalLabel: (row.personaGoalLabel as string | null) ?? null,
+    athletePersonaGoal: (row.personaGoalLabel as string | null) ?? (row.athletePersonaGoal as string | null),
+    workoutFrequencyCap: (row.workoutFrequencyCap as number | null) ?? null,
+    intentSummary: (row.intentSummary as string | null) ?? null,
+    athletePersonaSummary: (row.athletePersonaSummary as string | null) ?? (row.intentSummary as string | null),
+    runningHistory: (row.runningHistory as string | null) ?? null,
+    runningHistorySummary: (row.runningHistorySummary as string | null) ?? null,
+    currentCapability: (row.currentCapability as string | null) ?? null,
+    currentCapabilitySummary: (row.currentCapabilitySummary as string | null) ?? null,
+    injuryAssessment: (row.injuryAssessment as string | null) ?? null,
+    injuryAssessmentSummary: (row.injuryAssessmentSummary as string | null) ?? null,
+    dedicationText: (row.dedicationText as string | null) ?? null,
+    dedicationSummary: (row.dedicationSummary as string | null) ?? null,
+    abilityToTrain: (row.abilityToTrain as string | null) ?? null,
+    abilityToTrainSummary: (row.abilityToTrainSummary as string | null) ?? null,
+    estimated5kTimeSeconds: (row.estimated5kTimeSeconds as number | null) ?? null,
+    estimated5kPerformanceSummary: (row.estimated5kPerformanceSummary as string | null) ?? null,
+    estimated5kPerformanceRationale: (row.estimated5kPerformanceRationale as string | null) ?? null,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
   };
 }
 
-export function serializePlanGoal(
-  row: training_plan_goal & { persona?: training_plan_persona | null },
-): PlanGoalApi {
+export function serializePlanGoal(row: GoalRow): PlanGoalApi {
+  const goalKind = (row.goalKind as TrainingPlanGoalKind | null) ?? null;
   return {
-    id: row.id,
-    slug: row.slug,
-    personaId: row.personaId,
-    targetDistanceLabel: row.targetDistanceLabel,
-    objectiveOfPlan: row.objectiveOfPlan,
-    planDurationWeeks: row.planDurationWeeks,
-    timeHorizonLabel: row.timeHorizonLabel,
-    fitnessDelta: row.fitnessDelta,
-    progressionAggressiveness: row.progressionAggressiveness,
-    intensityReasoning: row.intensityReasoning,
-    goalKind: row.goalKind,
-    goalType: prismaKindToGoalType(row.goalKind, row.goalType),
-    coachIntent: row.coachIntent,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id: String(row.id ?? ""),
+    slug: String(row.slug ?? ""),
+    personaId: String(row.personaId ?? ""),
+    targetDistanceLabel: (row.targetDistanceLabel as string | null) ?? null,
+    objectiveOfPlan: (row.objectiveOfPlan as string | null) ?? null,
+    planDurationWeeks: Number(row.planDurationWeeks ?? 0),
+    timeHorizonLabel: (row.timeHorizonLabel as string | null) ?? null,
+    fitnessDelta: (row.fitnessDelta as string | null) ?? null,
+    progressionAggressiveness: (row.progressionAggressiveness as string | null) ?? null,
+    intensityReasoning: (row.intensityReasoning as string | null) ?? null,
+    goalKind,
+    goalType: prismaKindToGoalType(goalKind, row.goalType as string | null),
+    coachIntent: (row.coachIntent as string | null) ?? null,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
     persona: row.persona ? serializePlanPersona(row.persona) : undefined,
   };
 }

@@ -54,18 +54,18 @@ function derivedBoundaryLines(row: PresetValidateRow): string[] {
   const base = row.baseBuildPreset;
   const build = row.buildPreset;
   const taper = row.taperPreset;
-  const cut = finite(row.longRunCutback) ?? finite(build?.longRunCutback);
+  const cut = finite(row.longRunCutback) ?? finite(build?.longRunCutback as unknown);
   const factor = cut != null && cut > 0 && cut < 1 ? cut : 0.2;
-  const entry = finite(row.entryLongRunMiles) ?? finite(build?.startLongRunMiles);
-  const peakLong = finite(row.peakLongRunMiles) ?? finite(build?.peakLongRunMiles);
-  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(build?.maxWeeklyMiles);
-  const taper1 = row.taperWeek1TotalMiles ?? taper?.week1TotalMiles;
-  const taper1Long = row.taperWeek1LongRunMiles ?? taper?.week1LongRunMiles;
-  const taper2 = row.taperWeek2TotalMiles ?? taper?.week2TotalMiles;
-  const taper2Long = row.taperWeek2LongRunMiles ?? taper?.week2LongRunMiles;
+  const entry = finite(row.entryLongRunMiles) ?? finite(build?.startLongRunMiles as unknown);
+  const peakLong = finite(row.peakLongRunMiles) ?? finite(build?.peakLongRunMiles as unknown);
+  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(build?.maxWeeklyMiles as unknown);
+  const taper1 = row.taperWeek1TotalMiles ?? (taper?.week1TotalMiles as unknown);
+  const taper1Long = row.taperWeek1LongRunMiles ?? (taper?.week1LongRunMiles as unknown);
+  const taper2 = row.taperWeek2TotalMiles ?? (taper?.week2TotalMiles as unknown);
+  const taper2Long = row.taperWeek2LongRunMiles ?? (taper?.week2LongRunMiles as unknown);
   return [
     `- long-run entry vs long-run peak: ${entry ?? "(missing)"} vs ${peakLong ?? "(missing)"}`,
-    `- base peak long run vs build start: ${finite(base?.peakLongRunMiles) ?? "(no base)"} vs ${finite(build?.startLongRunMiles) ?? "(missing)"}`,
+    `- base peak long run vs build start: ${finite(base?.peakLongRunMiles as unknown) ?? "(no base)"} vs ${finite(build?.startLongRunMiles as unknown) ?? "(missing)"}`,
     `- build peak long run: ${peakLong ?? "(missing)"}`,
     `- peak weekly: ${peakWeekly ?? "(missing)"}`,
     `- taper caps: W1 ${taper1 ?? "—"} / LR ${taper1Long ?? "—"} · W2 ${taper2 ?? "—"} / LR ${taper2Long ?? "—"}`,
@@ -76,8 +76,8 @@ function derivedBoundaryLines(row: PresetValidateRow): string[] {
 
 function marathonReasonablenessLines(row: PresetValidateRow): string[] {
   const warnings: string[] = [];
-  const peakLong = finite(row.peakLongRunMiles) ?? finite(row.buildPreset?.peakLongRunMiles);
-  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(row.buildPreset?.maxWeeklyMiles);
+  const peakLong = finite(row.peakLongRunMiles) ?? finite(row.buildPreset?.peakLongRunMiles as unknown);
+  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(row.buildPreset?.maxWeeklyMiles as unknown);
   if (peakLong != null && (peakLong < 16 || peakLong > 22)) {
     warnings.push(`- warning: peak long run ${peakLong} is outside the marathon band of about 16–22`);
   }
@@ -86,8 +86,8 @@ function marathonReasonablenessLines(row: PresetValidateRow): string[] {
   }
   if (peakWeekly != null && row.taperPreset) {
     for (const total of [
-      row.taperWeek1TotalMiles ?? row.taperPreset.week1TotalMiles,
-      row.taperWeek2TotalMiles ?? row.taperPreset.week2TotalMiles,
+      row.taperWeek1TotalMiles ?? (row.taperPreset.week1TotalMiles as unknown),
+      row.taperWeek2TotalMiles ?? (row.taperPreset.week2TotalMiles as unknown),
     ]) {
       if (typeof total === "number" && total >= peakWeekly) {
         warnings.push(`- warning: taper total ${total} is not below peak weekly ${peakWeekly}`);

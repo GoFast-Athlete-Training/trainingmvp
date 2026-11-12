@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { forwardProdPresetStaffRequest } from "@/lib/training/prod-preset-staff-proxy";
 import {
   PHASE_ROLES,
   SLOT_KINDS,
@@ -7,39 +7,22 @@ import {
   type SlotKind,
 } from "@/lib/training/preset-shape-columns";
 
+export type ProdStaffCredentials = {
+  authorization: string;
+  staffId: string;
+};
+
 export type PhaseShapeResult = {
   errors: string[];
   pointers: Partial<Record<PhasePointerField, string | null>>;
 };
 
-async function rotationId(kind: SlotKind, name: string): Promise<string | null> {
-  const where = { name: { equals: name, mode: "insensitive" as const } };
-  const select = { id: true };
-  if (kind === "longRun") {
-    return (await prisma.long_run_config.findFirst({ where, select }))?.id ?? null;
-  }
-  if (kind === "easy") {
-    return (await prisma.easy_config.findFirst({ where, select }))?.id ?? null;
-  }
-  if (kind === "tempo") {
-    return (await prisma.tempo_config.findFirst({ where, select }))?.id ?? null;
-  }
-  return (await prisma.intervals_config.findFirst({ where, select }))?.id ?? null;
-}
-
-async function phaseIdByName(name: string, dryRun: boolean): Promise<string | null> {
-  const existing = await prisma.phase_preset.findFirst({
-    where: { name: { equals: name, mode: "insensitive" } },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-  if (dryRun) return null;
-  const created = await prisma.phase_preset.create({
-    data: { name },
-    select: { id: true },
-  });
-  return created.id;
-}
+const ROTATION_LIST_PATH: Record<SlotKind, string> = {
+  longRun: "/api/training/long-run-config",
+  easy: "/api/training/easy-config",
+  tempo: "/api/training/tempo-config",
+  intervals: "/api/training/intervals-config",
+};
 
 const SLOT_LABEL: Record<SlotKind, string> = {
   longRun: "long run",
@@ -48,18 +31,71 @@ const SLOT_LABEL: Record<SlotKind, string> = {
   intervals: "intervals",
 };
 
+async function prodJson<T>(auth: ProdStaffCredentials, path: string, method: string, body?: unknown): Promise<T> {
+  const res = await forwardProdPresetStaffRequest({
+    authorization: auth.authorization,
+    staffId: auth.staffId,
+    path,
+    method,
+    body,
+  });
+  const json = (await res.json().catch(() => ({}))) as T;
+  if (!res.ok) {
+    throw new Error(`Prod ${method} ${path} failed (${res.status})`);
+  }
+  return json;
+}
+
+async function listPhasePresets(auth: ProdStaffCredentials): Promise<{ id: string; name: string }[]> {
+  const json = await prodJson<{ phasePresets?: { id: string; name: string }[] }>(
+    auth,
+    "/api/training/phase-preset",
+    "GET",
+  );
+  return json.phasePresets ?? [];
+}
+
+async function listRotations(kind: SlotKind, auth: ProdStaffCredentials): Promise<{ id: string; name: string }[]> {
+  const json = await prodJson<{ items?: { id: string; name: string }[] }>(
+    auth,
+    ROTATION_LIST_PATH[kind],
+    "GET",
+  );
+  return json.items ?? [];
+}
+
+async function phaseIdByName(
+  name: string,
+  auth: ProdStaffCredentials,
+  dryRun: boolean,
+): Promise<string | null> {
+  const phases = await listPhasePresets(auth);
+  const hit = phases.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (hit) return hit.id;
+  if (dryRun) return null;
+  const created = await prodJson<{ phasePreset?: { id: string } }>(auth, "/api/training/phase-preset", "POST", {
+    name,
+  });
+  return created.phasePreset?.id ?? null;
+}
+
+async function rotationId(kind: SlotKind, name: string, auth: ProdStaffCredentials): Promise<string | null> {
+  const items = await listRotations(kind, auth);
+  const hit = items.find((i) => i.name.toLowerCase() === name.toLowerCase());
+  return hit?.id ?? null;
+}
+
 /**
- * Creates any named phase preset that is missing, points the four phases, and
- * sets the rotation slots that are present in `fields`. An empty slot cell
- * clears that slot. A repeated phase name shares one row; a filled slot wins
- * over an empty cell for that same name.
+ * Resolves phase preset names and rotation slots on prod (not Training Manage DB).
  */
 export async function applyPhaseShapeFields(opts: {
   fields: Map<string, string>;
   currentPointers?: Partial<Record<PhasePointerField, string | null>>;
   dryRun?: boolean;
+  prodStaff: ProdStaffCredentials;
 }): Promise<PhaseShapeResult> {
   const dryRun = opts.dryRun === true;
+  const auth = opts.prodStaff;
   const errors: string[] = [];
   const pointers: Partial<Record<PhasePointerField, string | null>> = {};
   const current = opts.currentPointers ?? {};
@@ -85,7 +121,7 @@ export async function applyPhaseShapeFields(opts: {
       resolved.push({ role, phaseId: null, willCreate: false });
       continue;
     }
-    const existingId = await phaseIdByName(name, true);
+    const existingId = await phaseIdByName(name, auth, true);
     if (existingId) {
       pointers[role.pointer] = existingId;
       resolved.push({ role, phaseId: existingId, willCreate: false });
@@ -151,7 +187,7 @@ export async function applyPhaseShapeFields(opts: {
         next[slot.column] = null;
         continue;
       }
-      const id = await rotationId(slot.kind, desired.name);
+      const id = await rotationId(slot.kind, desired.name, auth);
       if (!id) {
         errors.push(`No ${SLOT_LABEL[slot.kind]} rotation named “${desired.name}”`);
         continue;
@@ -178,7 +214,7 @@ export async function applyPhaseShapeFields(opts: {
     const name = opts.fields.get(item.role.nameField)?.trim() ?? "";
     if (!name) continue;
     const shared = createdIds.get(name.toLowerCase());
-    const id = shared ?? (await phaseIdByName(name, false));
+    const id = shared ?? (await phaseIdByName(name, auth, false));
     if (!id) continue;
     createdIds.set(name.toLowerCase(), id);
     pointers[item.role.pointer] = id;
@@ -199,10 +235,24 @@ export async function applyPhaseShapeFields(opts: {
   for (const [phaseId, data] of resolvedSlots) {
     if (phaseId.startsWith("create:")) continue;
     if (Object.keys(data).length === 0) continue;
-    await prisma.phase_preset.update({
-      where: { id: phaseId },
-      data,
-    });
+    const patchBody: Record<string, string | null> = {};
+    for (const [col, value] of Object.entries(data)) {
+      const key =
+        col === "longRun"
+          ? "longRunConfigId"
+          : col === "easy"
+            ? "easyConfigId"
+            : col === "tempo"
+              ? "tempoConfigId"
+              : "intervalsConfigId";
+      patchBody[key] = value ?? null;
+    }
+    await prodJson(
+      auth,
+      `/api/training/phase-preset/${encodeURIComponent(phaseId)}`,
+      "PATCH",
+      patchBody,
+    );
   }
 
   return { errors, pointers };

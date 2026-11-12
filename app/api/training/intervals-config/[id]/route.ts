@@ -1,38 +1,21 @@
 export const dynamic = "force-dynamic";
 
-import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
-import {
-  deleteRotationConfig,
-  getRotationConfig,
-  patchRotationConfig,
-} from "@/lib/training/rotation-config-api";
-import { NextRequest, NextResponse } from "next/server";
+import { proxyProdTrainingRoute } from "@/lib/training/proxy-prod-training-route";
+import { NextRequest } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
   const { id } = await params;
-  const row = await getRotationConfig("intervals", id);
-  if (!row) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ success: true, config: row });
+  return proxyProdTrainingRoute(request, `/api/training/intervals-config/${encodeURIComponent(id)}`);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
   const { id } = await params;
-  const body = (await request.json().catch(() => ({}))) as Parameters<typeof patchRotationConfig>[2];
-  const row = await patchRotationConfig("intervals", id, body);
-  return NextResponse.json({ success: true, config: row });
+  return proxyProdTrainingRoute(request, `/api/training/intervals-config/${encodeURIComponent(id)}`);
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
   const { id } = await params;
-  const ok = await deleteRotationConfig("intervals", id);
-  if (!ok) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ success: true });
+  return proxyProdTrainingRoute(request, `/api/training/intervals-config/${encodeURIComponent(id)}`);
 }

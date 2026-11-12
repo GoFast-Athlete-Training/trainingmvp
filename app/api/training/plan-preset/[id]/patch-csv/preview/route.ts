@@ -18,12 +18,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ success: false, error: "csvText is required" }, { status: 400 });
   }
 
-  const row = await loadPresetValidateRow(id);
+  const row = await loadPresetValidateRow(id, {
+    authorization: ctx.authorization,
+    staffId: ctx.staffId,
+  });
   if (!row) {
-    return NextResponse.json({ success: false, error: "Preset not found in Training Manage" }, { status: 404 });
+    return NextResponse.json({ success: false, error: "Preset not found on prod" }, { status: 404 });
   }
 
-  const preview = await previewPresetPatch(row, csvText);
+  const preview = await previewPresetPatch(row, csvText, {
+    authorization: ctx.authorization,
+    staffId: ctx.staffId,
+  });
   return NextResponse.json({
     success: preview.errors.length === 0,
     preview,

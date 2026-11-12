@@ -1,4 +1,9 @@
-import type { AthletePersonaCapability } from "@prisma/client";
+export type AthletePersonaCapability =
+  | "NON_RUNNER"
+  | "BEGINNER"
+  | "RECREATIONAL"
+  | "COMPETITIVE"
+  | "ELITE";
 
 const SLUG_SAFE = /[^a-z0-9-]/g;
 
@@ -30,33 +35,22 @@ export function distanceToSlugPart(label: string | null | undefined): string {
   if (t.includes("5k") || t === "5 k") return "5k";
   if (t.includes("10k") || t === "10 k") return "10k";
   if (t.includes("half")) return "half";
-  if (t.includes("marathon")) return "marathon";
-  return normalizeSlug(t) || "general";
-}
-
-export function goalKindToSlugPart(goalKind: "RACE" | "TRAINING_BLOCK" | null | undefined): string {
-  if (goalKind === "TRAINING_BLOCK") return "block";
-  return "improve";
+  if (t.includes("marathon") && !t.includes("half")) return "marathon";
+  if (t.includes("ultra")) return "ultra";
+  return normalizeSlug(t).slice(0, 24) || "general";
 }
 
 export function buildPersonaSlug(opts: {
   capability?: AthletePersonaCapability | null;
   targetDistanceLabel?: string | null;
-  goalKind?: "RACE" | "TRAINING_BLOCK" | null;
-  override?: string | null;
+  goalKind?: "RACE" | "TRAINING_BLOCK";
 }): string {
-  if (opts.override?.trim()) {
-    const s = normalizeSlug(opts.override);
-    if (s) return s;
-  }
-  const level = capabilityToSlugPrefix(opts.capability);
+  const cap = capabilityToSlugPrefix(opts.capability);
   const dist = distanceToSlugPart(opts.targetDistanceLabel);
-  const kind = goalKindToSlugPart(opts.goalKind);
-  return `${level}-${dist}-${kind}`;
+  const kind = opts.goalKind === "TRAINING_BLOCK" ? "block" : "race";
+  return normalizeSlug(`${cap}-${dist}-${kind}`);
 }
 
 export function buildGoalSlug(personaSlug: string, planDurationWeeks: number): string {
-  const base = normalizeSlug(personaSlug) || "goal";
-  const weeks = Math.max(1, Math.round(planDurationWeeks));
-  return `${base}-${weeks}w`;
+  return normalizeSlug(`${personaSlug}-${planDurationWeeks}w`);
 }

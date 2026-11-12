@@ -12,13 +12,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (ctx instanceof NextResponse) return ctx;
 
   const { id } = await params;
-  const row = await loadPresetValidateRow(id);
+  const row = await loadPresetValidateRow(id, {
+    authorization: ctx.authorization,
+    staffId: ctx.staffId,
+  });
   if (!row) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Preset not in Training Manage — save from the wizard once or import so patch CSV can run.",
+        error: "Preset not found on prod.",
       },
       { status: 404 },
     );

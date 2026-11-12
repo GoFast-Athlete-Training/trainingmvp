@@ -1,40 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { assertTrainingManagerAuth } from "@/lib/auth/training-manager-auth";
-import { prisma } from "@/lib/prisma";
-import { serializeRaceWeekPreset } from "@/lib/training/preset-serialize";
-import { defaultRaceWeekSlots } from "@/lib/training/race-week-slots";
-import { NextRequest, NextResponse } from "next/server";
+import { prodOnlyCatalogStub } from "@/lib/training/prod-only-catalog-stub";
+import { NextRequest } from "next/server";
 
-export async function GET(request: NextRequest) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
-
-  const rows = await prisma.race_week_preset.findMany({
-    orderBy: { updatedAt: "desc" },
-  });
-
-  return NextResponse.json({
-    success: true,
-    presets: rows.map(serializeRaceWeekPreset),
-  });
+export async function GET(_request: NextRequest) {
+  return prodOnlyCatalogStub("Race week presets");
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await assertTrainingManagerAuth(request);
-  if (auth.error) return auth.error;
-
-  const body = (await request.json().catch(() => ({}))) as {
-    title?: string;
-    slots?: unknown;
-  };
-
-  const row = await prisma.race_week_preset.create({
-    data: {
-      title: body.title?.trim() || "Marathon race week",
-      slots: body.slots ?? defaultRaceWeekSlots(),
-    },
-  });
-
-  return NextResponse.json({ success: true, preset: serializeRaceWeekPreset(row) });
+export async function POST(_request: NextRequest) {
+  return prodOnlyCatalogStub("Race week presets");
 }
