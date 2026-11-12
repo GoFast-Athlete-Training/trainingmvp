@@ -22,7 +22,7 @@ const PHASE_KEYS = [
 
 /** Keep the Training Manage copy aligned so the next prodpush does not wipe prod miles or pointers. */
 export async function mirrorPlanPresetLocal(id: string, body: Record<string, unknown>) {
-  const data: Prisma.training_plan_presetUpdateManyMutationInput = {};
+  const data: Prisma.training_plan_presetUncheckedUpdateManyInput = {};
 
   for (const key of MILE_KEYS) {
     if (!(key in body)) continue;
