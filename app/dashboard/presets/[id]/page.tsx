@@ -56,6 +56,7 @@ type PresetDetail = {
   baseEndLongRunMiles: number | null;
   baseWeeklyMinMiles: number | null;
   baseWeeklyMaxMiles: number | null;
+  peakWeeklyVolumeMiles: number | null;
   taperWeek1TotalMiles: number | null;
   taperWeek1LongRunMiles: number | null;
   taperWeek2TotalMiles: number | null;
@@ -168,6 +169,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [baseEndLongRunMiles, setBaseEndLongRunMiles] = useState("");
   const [baseWeeklyMinMiles, setBaseWeeklyMinMiles] = useState("");
   const [baseWeeklyMaxMiles, setBaseWeeklyMaxMiles] = useState("");
+  const [peakWeeklyVolumeMiles, setPeakWeeklyVolumeMiles] = useState("");
   const [taperWeek1TotalMiles, setTaperWeek1TotalMiles] = useState("");
   const [taperWeek1LongRunMiles, setTaperWeek1LongRunMiles] = useState("");
   const [taperWeek2TotalMiles, setTaperWeek2TotalMiles] = useState("");
@@ -213,6 +215,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     );
     setBaseWeeklyMinMiles(numStr(preset.baseWeeklyMinMiles));
     setBaseWeeklyMaxMiles(numStr(preset.baseWeeklyMaxMiles));
+    setPeakWeeklyVolumeMiles(numStr(preset.peakWeeklyVolumeMiles));
     setTaperWeek1TotalMiles(numStr(preset.taperWeek1TotalMiles));
     setTaperWeek1LongRunMiles(numStr(preset.taperWeek1LongRunMiles));
     setTaperWeek2TotalMiles(numStr(preset.taperWeek2TotalMiles));
@@ -271,6 +274,10 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         parseOptional(baseWeeklyMinMiles) == null ? null : Math.round(parseOptional(baseWeeklyMinMiles)!),
       baseWeeklyMaxMiles:
         parseOptional(baseWeeklyMaxMiles) == null ? null : Math.round(parseOptional(baseWeeklyMaxMiles)!),
+      peakWeeklyVolumeMiles:
+        parseOptional(peakWeeklyVolumeMiles) == null
+          ? null
+          : Math.round(parseOptional(peakWeeklyVolumeMiles)!),
       taperWeek1TotalMiles: parseOptional(taperWeek1TotalMiles),
       taperWeek1LongRunMiles: parseOptional(taperWeek1LongRunMiles),
       taperWeek2TotalMiles: parseOptional(taperWeek2TotalMiles),
@@ -504,8 +511,8 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Base is a rough guide. Base to peak is fixed. Taper and race week are fixed totals. A low athlete is not lifted
-            to the floor.
+            Base is a rough guide. Base to peak is the band the athlete picks inside, plus a peak volume the peak block
+            ramps to. Taper and race week are fixed totals. A low athlete is not lifted to the floor.
           </p>
         </div>
         <div className="space-y-2">
@@ -525,7 +532,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Base to peak</h3>
           <PhaseMileageFields
-            help="Fixed. Climbs from the starting long run to the peak long run within the weekly band."
+            help="Weekly min and max are the band the athlete picks inside. The long run climbs from the start to the peak."
             weeklyMin={minWeeklyMiles}
             weeklyMax={maxWeeklyMiles}
             startLongRun={entryLongRunMiles}
@@ -535,6 +542,15 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
             onStartLongRun={setEntryLongRunMiles}
             onPeakLongRun={setPeakLongRunMiles}
           />
+          <MilesField
+            label="Peak volume"
+            value={peakWeeklyVolumeMiles}
+            onChange={setPeakWeeklyVolumeMiles}
+            step="1"
+          />
+          <p className="text-sm text-gray-600">
+            Override for the peak block. The plan stays in the band until then, then ramps here even when this is above the weekly max.
+          </p>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Taper</h3>
