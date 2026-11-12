@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
+import { mirrorPlanPresetLocal } from "@/lib/training/mirror-plan-preset-local";
 import {
   proxyPlanPresetResponse,
   resolvePlanPresetProdStaff,
@@ -25,12 +26,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (ctx instanceof NextResponse) return ctx;
 
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-  return proxyPlanPresetResponse(ctx, {
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const res = await proxyPlanPresetResponse(ctx, {
     path: `/api/training/plan-preset/${encodeURIComponent(id)}`,
     method: "PATCH",
     body,
   });
+  if (res.status >= 200 && res.status < 300) {
+    await mirrorPlanPresetLocal(id, body).catch(() => undefined);
+  }
+  return res;
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {

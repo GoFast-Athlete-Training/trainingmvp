@@ -98,6 +98,38 @@ export async function buildPresetProdPushPayload(presetId: string) {
         },
       },
       raceWeekPreset: true,
+      baseBuildPhasePreset: {
+        include: {
+          longRunConfig: rotationInclude,
+          easyConfig: rotationInclude,
+          tempoConfig: rotationInclude,
+          intervalsConfig: rotationInclude,
+        },
+      },
+      buildToPeakPhasePreset: {
+        include: {
+          longRunConfig: rotationInclude,
+          easyConfig: rotationInclude,
+          tempoConfig: rotationInclude,
+          intervalsConfig: rotationInclude,
+        },
+      },
+      taperPhasePreset: {
+        include: {
+          longRunConfig: rotationInclude,
+          easyConfig: rotationInclude,
+          tempoConfig: rotationInclude,
+          intervalsConfig: rotationInclude,
+        },
+      },
+      raceWeekPhasePreset: {
+        include: {
+          longRunConfig: rotationInclude,
+          easyConfig: rotationInclude,
+          tempoConfig: rotationInclude,
+          intervalsConfig: rotationInclude,
+        },
+      },
     },
   });
   if (!row) {
@@ -168,9 +200,45 @@ export async function buildPresetProdPushPayload(presetId: string) {
     : null;
 
   const catalogues = new Map<string, Record<string, unknown>>();
+  const serializePhase = (
+    phase:
+      | (typeof row.baseBuildPhasePreset)
+      | (typeof row.buildToPeakPhasePreset)
+      | (typeof row.taperPhasePreset)
+      | (typeof row.raceWeekPhasePreset),
+  ) =>
+    phase
+      ? {
+          id: phase.id,
+          name: phase.name,
+          longRunConfigId: phase.longRunConfigId,
+          easyConfigId: phase.easyConfigId,
+          tempoConfigId: phase.tempoConfigId,
+          intervalsConfigId: phase.intervalsConfigId,
+          longRunConfig: serializeRotationConfig(phase.longRunConfig),
+          easyConfig: serializeRotationConfig(phase.easyConfig),
+          tempoConfig: serializeRotationConfig(phase.tempoConfig),
+          intervalsConfig: serializeRotationConfig(phase.intervalsConfig),
+        }
+      : null;
+
+  const phasePresets = [
+    serializePhase(row.baseBuildPhasePreset),
+    serializePhase(row.buildToPeakPhasePreset),
+    serializePhase(row.taperPhasePreset),
+    serializePhase(row.raceWeekPhasePreset),
+  ].filter((phase): phase is NonNullable<typeof phase> => phase != null);
+  const seenPhase = new Set<string>();
+  const uniquePhasePresets = phasePresets.filter((phase) => {
+    if (seenPhase.has(phase.id)) return false;
+    seenPhase.add(phase.id);
+    return true;
+  });
+
   collectFromPhase(baseBuildPreset, catalogues);
   collectFromPhase(buildPreset, catalogues);
   collectFromPhase(taperPreset, catalogues);
+  for (const phase of uniquePhasePresets) collectFromPhase(phase, catalogues);
 
   const shakeoutIds = new Set<string>();
   if (Array.isArray(raceWeekPreset?.slots)) {
@@ -225,6 +293,20 @@ export async function buildPresetProdPushPayload(presetId: string) {
     buildPresetId: row.buildPresetId,
     taperPresetId: row.taperPresetId,
     raceWeekPresetId: row.raceWeekPresetId,
+    entryLongRunMiles: row.entryLongRunMiles,
+    peakLongRunMiles: row.peakLongRunMiles,
+    baseEndLongRunMiles: row.baseEndLongRunMiles,
+    baseEndWeeklyMiles: row.baseEndWeeklyMiles,
+    longRunCutback: row.longRunCutback,
+    taperWeek1TotalMiles: row.taperWeek1TotalMiles,
+    taperWeek1LongRunMiles: row.taperWeek1LongRunMiles,
+    taperWeek2TotalMiles: row.taperWeek2TotalMiles,
+    taperWeek2LongRunMiles: row.taperWeek2LongRunMiles,
+    raceWeekDayMiles: row.raceWeekDayMiles,
+    baseBuildPhasePresetId: row.baseBuildPhasePresetId,
+    buildToPeakPhasePresetId: row.buildToPeakPhasePresetId,
+    taperPhasePresetId: row.taperPhasePresetId,
+    raceWeekPhasePresetId: row.raceWeekPhasePresetId,
     snapPeakLongRunMiles: row.snapPeakLongRunMiles,
     snapPeakWeeklyMiles: row.snapPeakWeeklyMiles,
     snapTaperWeek1TotalMiles: row.snapTaperWeek1TotalMiles,
@@ -239,6 +321,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
     buildPreset,
     taperPreset,
     raceWeekPreset,
+    phasePresets: uniquePhasePresets,
     workoutCatalogues: [...catalogues.values()],
     shakeoutRunConfigs,
     phaseGenerate,

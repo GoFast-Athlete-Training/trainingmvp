@@ -208,6 +208,28 @@ model training_plan_preset {
   taperPreset      taper_preset?     @relation(fields: [taperPresetId], references: [id], onDelete: SetNull)
   raceWeekPreset   race_week_preset? @relation(fields: [raceWeekPresetId], references: [id], onDelete: SetNull)
 
+  /// Miles for generate. Empty falls back to the linked build, taper, or race-week row.
+  entryLongRunMiles    Float?
+  peakLongRunMiles     Float?
+  baseEndLongRunMiles  Float?
+  baseEndWeeklyMiles   Int?
+  longRunCutback       Float?
+  taperWeek1TotalMiles   Float?
+  taperWeek1LongRunMiles Float?
+  taperWeek2TotalMiles   Float?
+  taperWeek2LongRunMiles Float?
+  /// [{ offsetFromRace, prescribedMiles }]
+  raceWeekDayMiles Json?
+
+  baseBuildPhasePresetId  String?
+  buildToPeakPhasePresetId String?
+  taperPhasePresetId      String?
+  raceWeekPhasePresetId   String?
+  baseBuildPhasePreset  phase_preset? @relation("PresetBaseBuildPhase", fields: [baseBuildPhasePresetId], references: [id], onDelete: SetNull)
+  buildToPeakPhasePreset phase_preset? @relation("PresetBuildToPeakPhase", fields: [buildToPeakPhasePresetId], references: [id], onDelete: SetNull)
+  taperPhasePreset      phase_preset? @relation("PresetTaperPhase", fields: [taperPhasePresetId], references: [id], onDelete: SetNull)
+  raceWeekPhasePreset   phase_preset? @relation("PresetRaceWeekPhase", fields: [raceWeekPhasePresetId], references: [id], onDelete: SetNull)
+
   /// Copied from the linked build. Editing the build does not change this.
   snapPeakLongRunMiles Float?
   snapPeakWeeklyMiles  Int?
@@ -224,6 +246,40 @@ model training_plan_preset {
   @@index([buildPresetId])
   @@index([taperPresetId])
   @@index([raceWeekPresetId])
+  @@index([baseBuildPhasePresetId])
+  @@index([buildToPeakPhasePresetId])
+  @@index([taperPhasePresetId])
+  @@index([raceWeekPhasePresetId])
+}
+
+// ─── Phase preset: four run-type slots, no phase, no miles ─────────────────
+
+model phase_preset {
+  id   String @id @default(cuid())
+  name String
+
+  longRunConfigId   String?
+  intervalsConfigId String?
+  tempoConfigId     String?
+  easyConfigId      String?
+
+  longRunConfig   long_run_config?  @relation("PhaseLongRun", fields: [longRunConfigId], references: [id], onDelete: SetNull)
+  intervalsConfig intervals_config? @relation("PhaseIntervals", fields: [intervalsConfigId], references: [id], onDelete: SetNull)
+  tempoConfig     tempo_config?     @relation("PhaseTempo", fields: [tempoConfigId], references: [id], onDelete: SetNull)
+  easyConfig      easy_config?      @relation("PhaseEasy", fields: [easyConfigId], references: [id], onDelete: SetNull)
+
+  presetsAsBaseBuild   training_plan_preset[] @relation("PresetBaseBuildPhase")
+  presetsAsBuildToPeak training_plan_preset[] @relation("PresetBuildToPeakPhase")
+  presetsAsTaper       training_plan_preset[] @relation("PresetTaperPhase")
+  presetsAsRaceWeek    training_plan_preset[] @relation("PresetRaceWeekPhase")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([longRunConfigId])
+  @@index([intervalsConfigId])
+  @@index([tempoConfigId])
+  @@index([easyConfigId])
 }
 
 // ─── Build preset (Company HQ core + rotation bolts for build phase) ────────
@@ -381,6 +437,7 @@ model long_run_config {
   usedByPresets    training_plan_preset[]
   usedByBuildPresets build_preset[] @relation("BuildLongRun")
   usedByTaperPresets taper_preset[] @relation("TaperLongRun")
+  usedByPhasePresets phase_preset[] @relation("PhaseLongRun")
 
   @@index([name])
 }
@@ -413,6 +470,7 @@ model intervals_config {
   usedByPresets      training_plan_preset[]
   usedByBuildPresets build_preset[] @relation("BuildIntervals")
   usedByTaperPresets taper_preset[] @relation("TaperIntervals")
+  usedByPhasePresets phase_preset[] @relation("PhaseIntervals")
 
   @@index([name])
 }
@@ -445,6 +503,7 @@ model tempo_config {
   usedByPresets      training_plan_preset[]
   usedByBuildPresets build_preset[] @relation("BuildTempo")
   usedByTaperPresets taper_preset[] @relation("TaperTempo")
+  usedByPhasePresets phase_preset[] @relation("PhaseTempo")
 
   @@index([name])
 }
@@ -477,6 +536,7 @@ model easy_config {
   usedByPresets      training_plan_preset[]
   usedByBuildPresets build_preset[] @relation("BuildEasy")
   usedByTaperPresets taper_preset[] @relation("TaperEasy")
+  usedByPhasePresets phase_preset[] @relation("PhaseEasy")
 
   @@index([name])
 }

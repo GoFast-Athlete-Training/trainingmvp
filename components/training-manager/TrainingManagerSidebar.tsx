@@ -1,14 +1,9 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Layers, ListTree, Repeat } from "lucide-react";
-import { useState } from "react";
+import { Layers, ListTree, Repeat } from "lucide-react";
 
-const PHASE_LINKS = [
-  { href: "/dashboard/build", label: "Build presets" },
-  { href: "/dashboard/taper", label: "Taper presets" },
-  { href: "/dashboard/race-week", label: "Race week" },
-] as const;
+const PHASE_HREF = "/dashboard/phase-presets";
 
 function navButtonClass(active: boolean): string {
   return `w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
@@ -21,12 +16,9 @@ export default function TrainingManagerSidebar() {
   const pathname = usePathname() ?? "";
   const presetsActive =
     pathname === "/dashboard/presets" || pathname.startsWith("/dashboard/presets/");
-  const phaseActive = PHASE_LINKS.some(
-    (p) => pathname === p.href || pathname.startsWith(`${p.href}/`),
-  );
+  const phaseActive = pathname === PHASE_HREF || pathname.startsWith(`${PHASE_HREF}/`);
   const runTypeActive =
     pathname === "/dashboard/long-run-config" || pathname.startsWith("/dashboard/long-run-config/");
-  const [phaseLibsOpen, setPhaseLibsOpen] = useState(phaseActive);
 
   return (
     <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
@@ -53,38 +45,13 @@ export default function TrainingManagerSidebar() {
             <span className="font-medium">Plan presets</span>
           </button>
 
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setPhaseLibsOpen((o) => !o)}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
-            >
-              {phaseLibsOpen ? (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-              )}
-              Phase libraries
-            </button>
-            {phaseLibsOpen ? (
-              <ul className="ml-1 mt-0.5 space-y-0.5 border-l border-gray-200 pl-2">
-                {PHASE_LINKS.map((item) => {
-                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                  return (
-                    <li key={item.href}>
-                      <button
-                        type="button"
-                        onClick={() => router.push(item.href)}
-                        className={`${navButtonClass(active)} text-xs`}
-                      >
-                        {item.label}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            onClick={() => router.push(PHASE_HREF)}
+            className={navButtonClass(phaseActive)}
+          >
+            <span className="font-medium">Phase presets</span>
+          </button>
 
           <button
             type="button"
