@@ -1,14 +1,27 @@
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
+import {
+  parseRaceWeekDayMilesCell,
+  PHASE_NAME_FIELDS,
+  PHASE_SLOT_FIELDS,
+  PRESET_MILE_FIELDS,
+} from "@/lib/training/preset-shape-columns";
 
-/** Stored on prod preset + build_preset (this ingest pass). */
+/** Written onto the training preset, its phase pointers, and the named phase presets. */
 export const PRESET_INGEST_STORED_COLUMNS = [
   "title",
   "targetDistance",
+  ...PRESET_MILE_FIELDS,
+  ...PHASE_NAME_FIELDS,
+  ...PHASE_SLOT_FIELDS,
+  "personaSlug",
+] as const;
+
+export const PRESET_INGEST_REQUIRED_COLUMNS = [
+  "title",
   "minWeeklyMiles",
   "maxWeeklyMiles",
-  "startLongRunMiles",
+  "entryLongRunMiles",
   "peakLongRunMiles",
-  "personaSlug",
 ] as const;
 
 /** Shown in preview; not written to prod in this pass. */
@@ -32,8 +45,36 @@ export type PresetIngestRowInput = {
   targetDistance: string;
   minWeeklyMiles: number | null;
   maxWeeklyMiles: number | null;
-  startLongRunMiles: number | null;
+  entryLongRunMiles: number | null;
   peakLongRunMiles: number | null;
+  baseEndWeeklyMiles: number | null;
+  longRunCutback: number | null;
+  taperWeek1TotalMiles: number | null;
+  taperWeek1LongRunMiles: number | null;
+  taperWeek2TotalMiles: number | null;
+  taperWeek2LongRunMiles: number | null;
+  raceWeekDayMiles: string;
+  paceNudgeSecPerMile: number | null;
+  baseBuildPhaseName: string;
+  buildToPeakPhaseName: string;
+  taperPhaseName: string;
+  raceWeekPhaseName: string;
+  baseBuildLongRun: string;
+  baseBuildEasy: string;
+  baseBuildTempo: string;
+  baseBuildIntervals: string;
+  buildToPeakLongRun: string;
+  buildToPeakEasy: string;
+  buildToPeakTempo: string;
+  buildToPeakIntervals: string;
+  taperLongRun: string;
+  taperEasy: string;
+  taperTempo: string;
+  taperIntervals: string;
+  raceWeekLongRun: string;
+  raceWeekEasy: string;
+  raceWeekTempo: string;
+  raceWeekIntervals: string;
   personaSlug: string;
   durationWeeks: number | null;
   suggestedEasyOffsetSec: number | null;
@@ -60,8 +101,21 @@ const COLUMN_ALIASES: Record<string, PresetIngestCsvColumn> = {
   targetdistance: "targetDistance",
   minweeklymiles: "minWeeklyMiles",
   maxweeklymiles: "maxWeeklyMiles",
-  startlongrunmiles: "startLongRunMiles",
+  startlongrunmiles: "entryLongRunMiles",
+  entrylongrunmiles: "entryLongRunMiles",
   peaklongrunmiles: "peakLongRunMiles",
+  baseendweeklymiles: "baseEndWeeklyMiles",
+  longruncutback: "longRunCutback",
+  taperweek1totalmiles: "taperWeek1TotalMiles",
+  taperweek1longrunmiles: "taperWeek1LongRunMiles",
+  taperweek2totalmiles: "taperWeek2TotalMiles",
+  taperweek2longrunmiles: "taperWeek2LongRunMiles",
+  raceweekdaymiles: "raceWeekDayMiles",
+  pacenudgesecpermile: "paceNudgeSecPerMile",
+  basebuildphasename: "baseBuildPhaseName",
+  buildtopeakphasename: "buildToPeakPhaseName",
+  taperphasename: "taperPhaseName",
+  raceweekphasename: "raceWeekPhaseName",
   personaslug: "personaSlug",
   durationweeks: "durationWeeks",
   suggestedeasyoffsetsec: "suggestedEasyOffsetSec",
@@ -70,22 +124,32 @@ const COLUMN_ALIASES: Record<string, PresetIngestCsvColumn> = {
   suggestedintervaloffsetsec: "suggestedIntervalOffsetSec",
 };
 
+const TEMPLATE_EXAMPLE: Partial<Record<PresetIngestCsvColumn, string>> = {
+  title: "Marathon base 55-70",
+  targetDistance: "Marathon",
+  minWeeklyMiles: "55",
+  maxWeeklyMiles: "70",
+  entryLongRunMiles: "12",
+  peakLongRunMiles: "20",
+  baseEndWeeklyMiles: "45",
+  longRunCutback: "0.25",
+  taperWeek1TotalMiles: "40",
+  taperWeek1LongRunMiles: "12",
+  taperWeek2TotalMiles: "30",
+  taperWeek2LongRunMiles: "8",
+  raceWeekDayMiles: "-6:4;-5:5;-1:3;0:26.2",
+  paceNudgeSecPerMile: "0",
+  baseBuildPhaseName: "Base",
+  buildToPeakPhaseName: "Build",
+  taperPhaseName: "Taper",
+  raceWeekPhaseName: "Race week",
+  personaSlug: "advanced-runner",
+  durationWeeks: "18",
+};
+
 export function presetIngestTemplateCsv(): string {
   const header = PRESET_INGEST_CSV_COLUMNS.join(",");
-  const example = [
-    "Marathon base 55–70",
-    "Marathon",
-    "55",
-    "70",
-    "10",
-    "22",
-    "advanced-runner",
-    "18",
-    "0",
-    "15",
-    "20",
-    "25",
-  ].join(",");
+  const example = PRESET_INGEST_CSV_COLUMNS.map((column) => TEMPLATE_EXAMPLE[column] ?? "").join(",");
   return `${header}\n${example}\n`;
 }
 
@@ -125,12 +189,41 @@ export function normalizeTargetDistance(raw: string): { value: string; error?: s
 
 export function rowFromRecord(record: Record<string, string>): PresetIngestRowInput {
   return {
+    ...EMPTY_PRESET_INGEST_ROW,
     title: str(record.title),
     targetDistance: str(record.targetDistance ?? record.targetDistanceLabel),
     minWeeklyMiles: parseNum(record.minWeeklyMiles ?? ""),
     maxWeeklyMiles: parseNum(record.maxWeeklyMiles ?? ""),
-    startLongRunMiles: parseNum(record.startLongRunMiles ?? ""),
+    entryLongRunMiles: parseNum(record.entryLongRunMiles ?? record.startLongRunMiles ?? ""),
     peakLongRunMiles: parseNum(record.peakLongRunMiles ?? ""),
+    baseEndWeeklyMiles: parseNum(record.baseEndWeeklyMiles ?? ""),
+    longRunCutback: parseNum(record.longRunCutback ?? ""),
+    taperWeek1TotalMiles: parseNum(record.taperWeek1TotalMiles ?? ""),
+    taperWeek1LongRunMiles: parseNum(record.taperWeek1LongRunMiles ?? ""),
+    taperWeek2TotalMiles: parseNum(record.taperWeek2TotalMiles ?? ""),
+    taperWeek2LongRunMiles: parseNum(record.taperWeek2LongRunMiles ?? ""),
+    raceWeekDayMiles: str(record.raceWeekDayMiles),
+    paceNudgeSecPerMile: parseNum(record.paceNudgeSecPerMile ?? ""),
+    baseBuildPhaseName: str(record.baseBuildPhaseName),
+    buildToPeakPhaseName: str(record.buildToPeakPhaseName),
+    taperPhaseName: str(record.taperPhaseName),
+    raceWeekPhaseName: str(record.raceWeekPhaseName),
+    baseBuildLongRun: str(record.baseBuildLongRun),
+    baseBuildEasy: str(record.baseBuildEasy),
+    baseBuildTempo: str(record.baseBuildTempo),
+    baseBuildIntervals: str(record.baseBuildIntervals),
+    buildToPeakLongRun: str(record.buildToPeakLongRun),
+    buildToPeakEasy: str(record.buildToPeakEasy),
+    buildToPeakTempo: str(record.buildToPeakTempo),
+    buildToPeakIntervals: str(record.buildToPeakIntervals),
+    taperLongRun: str(record.taperLongRun),
+    taperEasy: str(record.taperEasy),
+    taperTempo: str(record.taperTempo),
+    taperIntervals: str(record.taperIntervals),
+    raceWeekLongRun: str(record.raceWeekLongRun),
+    raceWeekEasy: str(record.raceWeekEasy),
+    raceWeekTempo: str(record.raceWeekTempo),
+    raceWeekIntervals: str(record.raceWeekIntervals),
     personaSlug: str(record.personaSlug),
     durationWeeks: parseNum(record.durationWeeks ?? ""),
     suggestedEasyOffsetSec: parseNum(record.suggestedEasyOffsetSec ?? ""),
@@ -154,7 +247,7 @@ export function validatePresetIngestRow(
   for (const [label, val] of [
     ["minWeeklyMiles", row.minWeeklyMiles],
     ["maxWeeklyMiles", row.maxWeeklyMiles],
-    ["startLongRunMiles", row.startLongRunMiles],
+    ["entryLongRunMiles", row.entryLongRunMiles],
     ["peakLongRunMiles", row.peakLongRunMiles],
   ] as const) {
     if (val == null) errors.push(`${label} is required`);
@@ -170,11 +263,33 @@ export function validatePresetIngestRow(
   }
 
   if (
-    row.startLongRunMiles != null &&
+    row.entryLongRunMiles != null &&
     row.peakLongRunMiles != null &&
-    row.peakLongRunMiles < row.startLongRunMiles
+    row.peakLongRunMiles < row.entryLongRunMiles
   ) {
-    errors.push("peakLongRunMiles must be at least startLongRunMiles");
+    errors.push("peakLongRunMiles must be at least entryLongRunMiles");
+  }
+
+  for (const [label, val] of [
+    ["baseEndWeeklyMiles", row.baseEndWeeklyMiles],
+    ["taperWeek1TotalMiles", row.taperWeek1TotalMiles],
+    ["taperWeek1LongRunMiles", row.taperWeek1LongRunMiles],
+    ["taperWeek2TotalMiles", row.taperWeek2TotalMiles],
+    ["taperWeek2LongRunMiles", row.taperWeek2LongRunMiles],
+  ] as const) {
+    if (val != null && val <= 0) errors.push(`${label} must be greater than 0`);
+  }
+
+  if (row.paceNudgeSecPerMile != null && (row.paceNudgeSecPerMile < -180 || row.paceNudgeSecPerMile > 180)) {
+    errors.push("paceNudgeSecPerMile must be between -180 and 180");
+  }
+  if (row.longRunCutback != null && (row.longRunCutback < 0 || row.longRunCutback > 1)) {
+    errors.push("longRunCutback must be between 0 and 1");
+  }
+  const dayMiles = row.raceWeekDayMiles.trim();
+  if (dayMiles) {
+    const parsed = parseRaceWeekDayMilesCell(dayMiles);
+    if ("error" in parsed) errors.push(parsed.error);
   }
 
   const notStoredYet: PresetIngestPreviewRow["notStoredYet"] = [];
@@ -276,7 +391,7 @@ export function parsePresetIngestCsv(csvText: string): ParsedPresetCsv {
     headers.push(key ?? h);
   }
 
-  const required = new Set(PRESET_INGEST_STORED_COLUMNS.filter((c) => c !== "personaSlug"));
+  const required = new Set<string>(PRESET_INGEST_REQUIRED_COLUMNS);
   const present = new Set(columnKeys.filter(Boolean) as PresetIngestCsvColumn[]);
   for (const col of required) {
     if (!present.has(col)) {
@@ -293,20 +408,7 @@ export function parsePresetIngestCsv(csvText: string): ParsedPresetCsv {
     if (values.length !== rawHeaders.length) {
       rows.push(
         validatePresetIngestRow(
-          {
-            title: "",
-            targetDistance: "",
-            minWeeklyMiles: null,
-            maxWeeklyMiles: null,
-            startLongRunMiles: null,
-            peakLongRunMiles: null,
-            personaSlug: "",
-            durationWeeks: null,
-            suggestedEasyOffsetSec: null,
-            suggestedLongRunOffsetSec: null,
-            suggestedThresholdOffsetSec: null,
-            suggestedIntervalOffsetSec: null,
-          },
+          EMPTY_PRESET_INGEST_ROW,
           i + 1,
         ),
       );
@@ -336,8 +438,36 @@ export const EMPTY_PRESET_INGEST_ROW: PresetIngestRowInput = {
   targetDistance: "",
   minWeeklyMiles: null,
   maxWeeklyMiles: null,
-  startLongRunMiles: null,
+  entryLongRunMiles: null,
   peakLongRunMiles: null,
+  baseEndWeeklyMiles: null,
+  longRunCutback: null,
+  taperWeek1TotalMiles: null,
+  taperWeek1LongRunMiles: null,
+  taperWeek2TotalMiles: null,
+  taperWeek2LongRunMiles: null,
+  raceWeekDayMiles: "",
+  paceNudgeSecPerMile: null,
+  baseBuildPhaseName: "",
+  buildToPeakPhaseName: "",
+  taperPhaseName: "",
+  raceWeekPhaseName: "",
+  baseBuildLongRun: "",
+  baseBuildEasy: "",
+  baseBuildTempo: "",
+  baseBuildIntervals: "",
+  buildToPeakLongRun: "",
+  buildToPeakEasy: "",
+  buildToPeakTempo: "",
+  buildToPeakIntervals: "",
+  taperLongRun: "",
+  taperEasy: "",
+  taperTempo: "",
+  taperIntervals: "",
+  raceWeekLongRun: "",
+  raceWeekEasy: "",
+  raceWeekTempo: "",
+  raceWeekIntervals: "",
   personaSlug: "",
   durationWeeks: null,
   suggestedEasyOffsetSec: null,

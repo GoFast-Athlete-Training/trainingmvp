@@ -54,22 +54,30 @@ function derivedBoundaryLines(row: PresetValidateRow): string[] {
   const base = row.baseBuildPreset;
   const build = row.buildPreset;
   const taper = row.taperPreset;
-  const cut = finite(build?.longRunCutback);
+  const cut = finite(row.longRunCutback) ?? finite(build?.longRunCutback);
   const factor = cut != null && cut > 0 && cut < 1 ? cut : 0.2;
+  const entry = finite(row.entryLongRunMiles) ?? finite(build?.startLongRunMiles);
+  const peakLong = finite(row.peakLongRunMiles) ?? finite(build?.peakLongRunMiles);
+  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(build?.maxWeeklyMiles);
+  const taper1 = row.taperWeek1TotalMiles ?? taper?.week1TotalMiles;
+  const taper1Long = row.taperWeek1LongRunMiles ?? taper?.week1LongRunMiles;
+  const taper2 = row.taperWeek2TotalMiles ?? taper?.week2TotalMiles;
+  const taper2Long = row.taperWeek2LongRunMiles ?? taper?.week2LongRunMiles;
   return [
+    `- long-run entry vs long-run peak: ${entry ?? "(missing)"} vs ${peakLong ?? "(missing)"}`,
     `- base peak long run vs build start: ${finite(base?.peakLongRunMiles) ?? "(no base)"} vs ${finite(build?.startLongRunMiles) ?? "(missing)"}`,
-    `- build peak long run: ${finite(build?.peakLongRunMiles) ?? "(missing)"}`,
-    `- build peak weekly: ${finite(build?.maxWeeklyMiles) ?? "(missing)"}`,
-    `- taper caps: W1 ${taper?.week1TotalMiles ?? "—"} / LR ${taper?.week1LongRunMiles ?? "—"} · W2 ${taper?.week2TotalMiles ?? "—"} / LR ${taper?.week2LongRunMiles ?? "—"}`,
-    `- race-week slot sum (miles, off days excluded): ${raceWeekMilesSum(row.raceWeekPreset?.slots) ?? "(none)"}`,
+    `- build peak long run: ${peakLong ?? "(missing)"}`,
+    `- peak weekly: ${peakWeekly ?? "(missing)"}`,
+    `- taper caps: W1 ${taper1 ?? "—"} / LR ${taper1Long ?? "—"} · W2 ${taper2 ?? "—"} / LR ${taper2Long ?? "—"}`,
+    `- race-week slot sum (miles, off days excluded): ${raceWeekMilesSum(row.raceWeekDayMiles) ?? raceWeekMilesSum(row.raceWeekPreset?.slots) ?? "(none)"}`,
     `- longRunCutback ${cut ?? "(missing, defaults to 0.20)"} yields two cutbacks (weeks 4 and 7) on an 8-week build to peak at factor ${factor}`,
   ];
 }
 
 function marathonReasonablenessLines(row: PresetValidateRow): string[] {
   const warnings: string[] = [];
-  const peakLong = finite(row.buildPreset?.peakLongRunMiles);
-  const peakWeekly = finite(row.buildPreset?.maxWeeklyMiles) ?? finite(row.maxWeeklyMiles);
+  const peakLong = finite(row.peakLongRunMiles) ?? finite(row.buildPreset?.peakLongRunMiles);
+  const peakWeekly = finite(row.maxWeeklyMiles) ?? finite(row.buildPreset?.maxWeeklyMiles);
   if (peakLong != null && (peakLong < 16 || peakLong > 22)) {
     warnings.push(`- warning: peak long run ${peakLong} is outside the marathon band of about 16–22`);
   }
@@ -77,13 +85,16 @@ function marathonReasonablenessLines(row: PresetValidateRow): string[] {
     warnings.push(`- warning: peak weekly ${peakWeekly} is outside the marathon band of about 35–70`);
   }
   if (peakWeekly != null && row.taperPreset) {
-    for (const total of [row.taperPreset.week1TotalMiles, row.taperPreset.week2TotalMiles]) {
+    for (const total of [
+      row.taperWeek1TotalMiles ?? row.taperPreset.week1TotalMiles,
+      row.taperWeek2TotalMiles ?? row.taperPreset.week2TotalMiles,
+    ]) {
       if (typeof total === "number" && total >= peakWeekly) {
         warnings.push(`- warning: taper total ${total} is not below peak weekly ${peakWeekly}`);
       }
     }
   }
-  const raceSum = raceWeekMilesSum(row.raceWeekPreset?.slots);
+  const raceSum = raceWeekMilesSum(row.raceWeekDayMiles) ?? raceWeekMilesSum(row.raceWeekPreset?.slots);
   if (peakWeekly != null && raceSum != null && raceSum >= peakWeekly) {
     warnings.push(`- warning: race-week slot sum ${raceSum} is not below peak weekly ${peakWeekly}`);
   }
@@ -98,7 +109,7 @@ export const PRESET_VALIDATE_LLM_INSTRUCTION = `Instruction:
 - Split the review into stored values, derived boundaries, and athlete-specific facts. Athlete start (current weekly miles and longest recent run) is not on the preset.
 - Marathon reasonableness is a warning band (peak long run roughly 16–22, peak weekly roughly 35–70, taper and race week below the peak), not a hard fail.
 - Flag deprecated TM-only columns that still hold data — prod athlete app does not store those on the preset row.
-- Do not invent catalogue or rotation config ids. Do not request taper slots, race-week slots, or rotation ids.
+- Do not invent catalogue or rotation config ids. Do not request taper slots, race-week slots, or rotation ids. Phase slots are rotation names. An empty phase-slot cell leaves that slot empty. The same phase name may be used for more than one phase.
 - For fixes, return a CSV with columns field,value (one row per field to change). Leave value blank only when keeping on file. Writable fields: ${PRESET_PATCH_WRITABLE_FIELDS.join(", ")}.`;
 
 export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
@@ -204,6 +215,41 @@ export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
     block("Race week", [
       race ? line("title", race.title) : line("status", "(not linked)"),
       race ? line("slots", raceWeekSlotsSummary(race.slots)) : null,
+    ]),
+    "",
+    block("Preset miles", [
+      line("entryLongRunMiles", row.entryLongRunMiles),
+      line("peakLongRunMiles", row.peakLongRunMiles),
+      line("baseEndWeeklyMiles", row.baseEndWeeklyMiles),
+      line("longRunCutback", row.longRunCutback),
+      line("taperWeek1TotalMiles", row.taperWeek1TotalMiles),
+      line("taperWeek1LongRunMiles", row.taperWeek1LongRunMiles),
+      line("taperWeek2TotalMiles", row.taperWeek2TotalMiles),
+      line("taperWeek2LongRunMiles", row.taperWeek2LongRunMiles),
+      line("raceWeekDayMiles", row.raceWeekDayMiles),
+    ]),
+    "",
+    block("Phase presets", [
+      line("baseBuildPhaseName", row.baseBuildPhasePreset?.name),
+      line("baseBuildLongRun", row.baseBuildPhasePreset?.longRunConfig?.name),
+      line("baseBuildEasy", row.baseBuildPhasePreset?.easyConfig?.name),
+      line("baseBuildTempo", row.baseBuildPhasePreset?.tempoConfig?.name),
+      line("baseBuildIntervals", row.baseBuildPhasePreset?.intervalsConfig?.name),
+      line("buildToPeakPhaseName", row.buildToPeakPhasePreset?.name),
+      line("buildToPeakLongRun", row.buildToPeakPhasePreset?.longRunConfig?.name),
+      line("buildToPeakEasy", row.buildToPeakPhasePreset?.easyConfig?.name),
+      line("buildToPeakTempo", row.buildToPeakPhasePreset?.tempoConfig?.name),
+      line("buildToPeakIntervals", row.buildToPeakPhasePreset?.intervalsConfig?.name),
+      line("taperPhaseName", row.taperPhasePreset?.name),
+      line("taperLongRun", row.taperPhasePreset?.longRunConfig?.name),
+      line("taperEasy", row.taperPhasePreset?.easyConfig?.name),
+      line("taperTempo", row.taperPhasePreset?.tempoConfig?.name),
+      line("taperIntervals", row.taperPhasePreset?.intervalsConfig?.name),
+      line("raceWeekPhaseName", row.raceWeekPhasePreset?.name),
+      line("raceWeekLongRun", row.raceWeekPhasePreset?.longRunConfig?.name),
+      line("raceWeekEasy", row.raceWeekPhasePreset?.easyConfig?.name),
+      line("raceWeekTempo", row.raceWeekPhasePreset?.tempoConfig?.name),
+      line("raceWeekIntervals", row.raceWeekPhasePreset?.intervalsConfig?.name),
     ]),
     "",
     block("Stored values", [

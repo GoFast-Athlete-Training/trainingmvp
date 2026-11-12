@@ -2,6 +2,15 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { parseRaceWeekSlots } from "@/lib/training/race-week-slots";
 
+const phasePresetInclude = {
+  include: {
+    longRunConfig: { select: { name: true } },
+    easyConfig: { select: { name: true } },
+    tempoConfig: { select: { name: true } },
+    intervalsConfig: { select: { name: true } },
+  },
+} as const;
+
 export const presetValidateInclude = {
   persona: true,
   goal: { include: { persona: true } },
@@ -9,6 +18,10 @@ export const presetValidateInclude = {
   buildPreset: true,
   taperPreset: true,
   raceWeekPreset: true,
+  baseBuildPhasePreset: phasePresetInclude,
+  buildToPeakPhasePreset: phasePresetInclude,
+  taperPhasePreset: phasePresetInclude,
+  raceWeekPhasePreset: phasePresetInclude,
 } as const satisfies Prisma.training_plan_presetInclude;
 
 export type PresetValidateRow = Prisma.training_plan_presetGetPayload<{

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { authFetch } from "@/components/AppProviders";
+import { PhaseRotationBolts } from "@/components/training-manager/PhaseRotationBolts";
 import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
@@ -71,6 +72,15 @@ type PresetDetail = {
 };
 
 type PhaseOption = { id: string; name: string };
+
+type PhaseEditorState = {
+  id: string;
+  name: string;
+  longRunConfigId: string | null;
+  intervalsConfigId: string | null;
+  tempoConfigId: string | null;
+  easyConfigId: string | null;
+};
 
 const PHASE_FIELDS = [
   { key: "baseBuildPhasePresetId", label: "Base build" },
@@ -165,6 +175,9 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [llmLoading, setLlmLoading] = useState(false);
   const [patchOpen, setPatchOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [editor, setEditor] = useState<PhaseEditorState | null>(null);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [editorMessage, setEditorMessage] = useState<string | null>(null);
 
   const isDraft = presetId === "new";
   const isPersisted = Boolean(presetId && presetId !== "new");
@@ -322,6 +335,92 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
+  const refreshPhaseOptions = useCallback(async () => {
+    const res = await authFetch("/api/training/phase-preset");
+    const data = (await res.json()) as { phasePresets?: PhaseOption[] };
+    setPhaseOptions(data.phasePresets ?? []);
+  }, []);
+
+  const openPhase = useCallback(async (id: string) => {
+    setEditorMessage(null);
+    const res = await authFetch(`/api/training/phase-preset/${id}`);
+    const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
+    if (!res.ok || !data.phasePreset) {
+      setEditorMessage(data.error || "Could not open that phase preset");
+      return;
+    }
+    setEditor({
+      id: data.phasePreset.id,
+      name: data.phasePreset.name,
+      longRunConfigId: data.phasePreset.longRunConfigId,
+      intervalsConfigId: data.phasePreset.intervalsConfigId,
+      tempoConfigId: data.phasePreset.tempoConfigId,
+      easyConfigId: data.phasePreset.easyConfigId,
+    });
+  }, []);
+
+  async function buildPhase() {
+    setEditorMessage(null);
+    const res = await authFetch("/api/training/phase-preset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "New phase preset" }),
+    });
+    const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
+    if (!data.phasePreset) {
+      setEditorMessage(data.error || "Could not create the phase preset");
+      return;
+    }
+    setEditor({
+      id: data.phasePreset.id,
+      name: data.phasePreset.name,
+      longRunConfigId: data.phasePreset.longRunConfigId,
+      intervalsConfigId: data.phasePreset.intervalsConfigId,
+      tempoConfigId: data.phasePreset.tempoConfigId,
+      easyConfigId: data.phasePreset.easyConfigId,
+    });
+    if (!res.ok) setEditorMessage(data.error || "Saved in Training Manage but prod sync failed");
+    await refreshPhaseOptions();
+  }
+
+  async function savePhase() {
+    if (!editor) return;
+    setEditorSaving(true);
+    setEditorMessage(null);
+    try {
+      const res = await authFetch(`/api/training/phase-preset/${editor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editor.name.trim() || "Phase",
+          longRunConfigId: editor.longRunConfigId,
+          intervalsConfigId: editor.intervalsConfigId,
+          tempoConfigId: editor.tempoConfigId,
+          easyConfigId: editor.easyConfigId,
+        }),
+      });
+      const data = (await res.json()) as { phasePreset?: PhaseEditorState; error?: string };
+      if (data.phasePreset) {
+        setEditor({
+          id: data.phasePreset.id,
+          name: data.phasePreset.name,
+          longRunConfigId: data.phasePreset.longRunConfigId,
+          intervalsConfigId: data.phasePreset.intervalsConfigId,
+          tempoConfigId: data.phasePreset.tempoConfigId,
+          easyConfigId: data.phasePreset.easyConfigId,
+        });
+      }
+      if (!res.ok) {
+        setEditorMessage(data.error || "Phase preset save failed");
+        return;
+      }
+      setEditorMessage("Phase preset saved");
+      await refreshPhaseOptions();
+    } finally {
+      setEditorSaving(false);
+    }
+  }
+
   async function cleanupPublicDescription() {
     const draft = publicDescription.trim();
     if (!draft || !presetId || presetId === "new") return;
@@ -347,8 +446,12 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     parseOptional(maxWeeklyMiles) == null ? null : Math.round(parseOptional(maxWeeklyMiles)!),
   );
 
+  const usedBy = editor
+    ? PHASE_FIELDS.filter((field) => pointers[field.key] === editor.id).map((field) => field.label)
+    : [];
+
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <Link
         href="/dashboard/presets"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
@@ -384,7 +487,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           ) : null}
         </div>
         <p className="text-sm text-gray-600">
-          Miles live here. Each phase points at a phase preset you already built.
+          Miles and phase pointers live here. The phase preset open on the right holds the four rotation slots.
         </p>
         <SaveSyncBanner status={syncStatus} />
       </div>
@@ -399,6 +502,8 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         />
       ) : null}
 
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,34rem)]">
+      <div className="space-y-4">
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold">Preset</h2>
         <label className="block text-sm">
@@ -518,12 +623,16 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           <div>
             <h2 className="text-lg font-semibold">Phases</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Pick a saved phase preset for each phase. The same one can fill every phase.
+              Pick a saved phase preset for each phase. The same one can fill every phase. Edit slots opens it on the right.
             </p>
           </div>
-          <Link href="/dashboard/phase-presets" className="text-sm font-medium text-sky-700 hover:underline">
+          <button
+            type="button"
+            onClick={() => void buildPhase()}
+            className="text-sm font-medium text-sky-700 hover:underline"
+          >
             Build a phase preset
-          </Link>
+          </button>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           {PHASE_FIELDS.map((field) => (
@@ -532,19 +641,23 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
                 label={field.label}
                 options={options}
                 value={pointers[field.key]}
-                onChange={(id) => setPointers((current) => ({ ...current, [field.key]: id }))}
+                onChange={(id) => {
+                  setPointers((current) => ({ ...current, [field.key]: id }));
+                  if (id) void openPhase(id);
+                }}
                 placeholder="Search phase presets…"
                 emptyLabel="Not linked"
               />
               <div className="flex gap-3 text-xs">
                 {pointers[field.key] ? (
                   <>
-                    <Link
-                      href={`/dashboard/phase-presets/${pointers[field.key]}`}
+                    <button
+                      type="button"
                       className="font-medium text-sky-700 hover:underline"
+                      onClick={() => void openPhase(pointers[field.key])}
                     >
-                      Edit slots
-                    </Link>
+                      {editor?.id === pointers[field.key] ? "Editing slots" : "Edit slots"}
+                    </button>
                     <button
                       type="button"
                       className="text-gray-500 hover:underline"
@@ -568,6 +681,68 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       >
         {saving ? "Saving…" : "Save preset"}
       </button>
+      </div>
+
+      <aside className="space-y-3 xl:sticky xl:top-4">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <h2 className="text-lg font-semibold">Phase preset</h2>
+          {editor ? (
+            <div className="mt-3 space-y-3">
+              <label className="block text-sm">
+                <span className="text-gray-600">Name</span>
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={editor.name}
+                  onChange={(e) => setEditor((current) => (current ? { ...current, name: e.target.value } : current))}
+                />
+              </label>
+              <p className="text-sm text-gray-600">
+                {usedBy.length > 0
+                  ? `Selected for ${usedBy.join(", ")}. Saving slots updates every phase that points here.`
+                  : "Not selected on the left yet. Saving here updates this phase preset only."}
+              </p>
+              {editorMessage ? <p className="text-sm text-gray-700">{editorMessage}</p> : null}
+              <button
+                type="button"
+                disabled={editorSaving || !editor.name.trim()}
+                onClick={() => void savePhase()}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {editorSaving ? "Saving…" : "Save phase preset"}
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-gray-600">
+              Choose Edit slots on a phase, or build a phase preset. Each slot picks one rotation from Run Type Config.
+            </p>
+          )}
+        </div>
+        {editor ? (
+          <PhaseRotationBolts
+            value={{
+              longRunConfigId: editor.longRunConfigId ?? "",
+              easyConfigId: editor.easyConfigId ?? "",
+              tempoConfigId: editor.tempoConfigId ?? "",
+              intervalsConfigId: editor.intervalsConfigId ?? "",
+            }}
+            onBeforeManageNavigate={() => savePhase()}
+            onChange={(next) =>
+              setEditor((current) =>
+                current
+                  ? {
+                      ...current,
+                      longRunConfigId: next.longRunConfigId || null,
+                      easyConfigId: next.easyConfigId || null,
+                      tempoConfigId: next.tempoConfigId || null,
+                      intervalsConfigId: next.intervalsConfigId || null,
+                    }
+                  : current,
+              )
+            }
+          />
+        ) : null}
+      </aside>
+      </div>
     </div>
   );
 }

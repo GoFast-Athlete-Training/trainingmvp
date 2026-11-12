@@ -1,32 +1,47 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { applyPhaseShapeFields } from "@/lib/training/apply-phase-shape";
 import { normalizeSlug } from "@/lib/training/plan-entity-slugs";
 import { loadPresetValidateRow, type PresetValidateRow } from "@/lib/training/preset-validate-load";
 import { pushPresetToProd } from "@/lib/training/push-preset-to-prod";
 import { runOpenAiJsonAgent } from "@/lib/training/openai-json";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
+import {
+  formatRaceWeekDayMiles,
+  isPhaseNameField,
+  isPhaseShapeField,
+  isPhaseSlotField,
+  parseRaceWeekDayMilesCell,
+  PHASE_NAME_FIELDS,
+  PHASE_ROLES,
+  PHASE_SLOT_FIELDS,
+  PRESET_MILE_FIELDS,
+  SLOT_KINDS,
+} from "@/lib/training/preset-shape-columns";
 
 export const PRESET_PATCH_WRITABLE_FIELDS = [
   "title",
   "description",
   "publicDescription",
   "targetDistanceLabel",
-  "minWeeklyMiles",
-  "maxWeeklyMiles",
+  ...PRESET_MILE_FIELDS,
+  ...PHASE_NAME_FIELDS,
+  ...PHASE_SLOT_FIELDS,
   "personaSlug",
   "goalSlug",
   "coachIntent",
   "objectiveOfPlan",
-  "startLongRunMiles",
-  "peakLongRunMiles",
-  "buildMaxWeeklyMiles",
-  "baseStartLongRunMiles",
-  "basePeakLongRunMiles",
-  "paceNudgeSecPerMile",
 ] as const;
 
 export type PresetPatchField = (typeof PRESET_PATCH_WRITABLE_FIELDS)[number];
 
 const WRITABLE_SET = new Set<string>(PRESET_PATCH_WRITABLE_FIELDS);
+
+const FIELD_ALIASES: Record<string, PresetPatchField> = {
+  startLongRunMiles: "entryLongRunMiles",
+  buildMaxWeeklyMiles: "maxWeeklyMiles",
+  targetDistance: "targetDistanceLabel",
+};
 
 export type PresetPatchChange = {
   field: PresetPatchField;
@@ -46,7 +61,34 @@ function str(v: unknown): string {
   return String(v).trim();
 }
 
+function numField(value: number | null | undefined): string {
+  return value == null ? "" : String(value);
+}
+
+function phaseForPointer(row: PresetValidateRow, pointer: (typeof PHASE_ROLES)[number]["pointer"]) {
+  if (pointer === "baseBuildPhasePresetId") return row.baseBuildPhasePreset;
+  if (pointer === "buildToPeakPhasePresetId") return row.buildToPeakPhasePreset;
+  if (pointer === "taperPhasePresetId") return row.taperPhasePreset;
+  return row.raceWeekPhasePreset;
+}
+
 function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): string {
+  const role = PHASE_ROLES.find((item) => item.nameField === field);
+  if (role) return phaseForPointer(row, role.pointer)?.name ?? "";
+
+  const slotRole = PHASE_ROLES.find((item) =>
+    SLOT_KINDS.some((slot) => `${item.key}${slot.suffix}` === field),
+  );
+  if (slotRole) {
+    const slot = SLOT_KINDS.find((item) => `${slotRole.key}${item.suffix}` === field);
+    const phase = phaseForPointer(row, slotRole.pointer);
+    if (!phase || !slot) return "";
+    if (slot.kind === "longRun") return phase.longRunConfig?.name ?? "";
+    if (slot.kind === "easy") return phase.easyConfig?.name ?? "";
+    if (slot.kind === "tempo") return phase.tempoConfig?.name ?? "";
+    return phase.intervalsConfig?.name ?? "";
+  }
+
   switch (field) {
     case "title":
       return str(row.title);
@@ -57,9 +99,29 @@ function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): str
     case "targetDistanceLabel":
       return str(row.targetDistanceLabel);
     case "minWeeklyMiles":
-      return row.minWeeklyMiles != null ? String(row.minWeeklyMiles) : "";
+      return numField(row.minWeeklyMiles);
     case "maxWeeklyMiles":
-      return row.maxWeeklyMiles != null ? String(row.maxWeeklyMiles) : "";
+      return numField(row.maxWeeklyMiles);
+    case "entryLongRunMiles":
+      return numField(row.entryLongRunMiles);
+    case "peakLongRunMiles":
+      return numField(row.peakLongRunMiles);
+    case "baseEndWeeklyMiles":
+      return numField(row.baseEndWeeklyMiles);
+    case "longRunCutback":
+      return numField(row.longRunCutback);
+    case "taperWeek1TotalMiles":
+      return numField(row.taperWeek1TotalMiles);
+    case "taperWeek1LongRunMiles":
+      return numField(row.taperWeek1LongRunMiles);
+    case "taperWeek2TotalMiles":
+      return numField(row.taperWeek2TotalMiles);
+    case "taperWeek2LongRunMiles":
+      return numField(row.taperWeek2LongRunMiles);
+    case "raceWeekDayMiles":
+      return formatRaceWeekDayMiles(row.raceWeekDayMiles);
+    case "paceNudgeSecPerMile":
+      return numField(row.paceNudgeSecPerMile ?? 0);
     case "personaSlug":
       return row.persona?.slug ?? "";
     case "goalSlug":
@@ -68,26 +130,6 @@ function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): str
       return str(row.coachIntent);
     case "objectiveOfPlan":
       return str(row.objectiveOfPlan);
-    case "startLongRunMiles":
-      return row.buildPreset?.startLongRunMiles != null
-        ? String(row.buildPreset.startLongRunMiles)
-        : "";
-    case "peakLongRunMiles":
-      return row.buildPreset?.peakLongRunMiles != null
-        ? String(row.buildPreset.peakLongRunMiles)
-        : "";
-    case "buildMaxWeeklyMiles":
-      return row.buildPreset?.maxWeeklyMiles != null ? String(row.buildPreset.maxWeeklyMiles) : "";
-    case "baseStartLongRunMiles":
-      return row.baseBuildPreset?.startLongRunMiles != null
-        ? String(row.baseBuildPreset.startLongRunMiles)
-        : "";
-    case "basePeakLongRunMiles":
-      return row.baseBuildPreset?.peakLongRunMiles != null
-        ? String(row.baseBuildPreset.peakLongRunMiles)
-        : "";
-    case "paceNudgeSecPerMile":
-      return row.paceNudgeSecPerMile != null ? String(row.paceNudgeSecPerMile) : "0";
     default:
       return "";
   }
@@ -190,6 +232,7 @@ export async function parsePresetPatchPaste(opts: {
 Output JSON: { "rows": [ { "field": string, "value": string } ] }
 field must be one of: ${PRESET_PATCH_WRITABLE_FIELDS.join(", ")}
 Only include fields that should change. Use empty string for value when the note says to keep on file.
+An empty phase name unlinks that phase. An empty phase slot leaves that slot empty. Slot values are rotation names, and the same phase name may be repeated.
 Never output slug or matchKey as a field.`;
 
   const user = `Current preset packet:\n${opts.snapshotPacket}\n\n---\nLLM validation reply:\n${trimmed}`;
@@ -229,13 +272,15 @@ export async function previewPresetPatch(
   const pending = new Map<PresetPatchField, string>();
 
   for (const { field, value } of rows) {
-    if (!WRITABLE_SET.has(field)) {
+    const canonical = FIELD_ALIASES[field] ?? field;
+    if (!WRITABLE_SET.has(canonical)) {
       errors.push(`Unknown field: ${field}`);
       continue;
     }
-    const key = field as PresetPatchField;
-    if (value === "") {
-      unchanged.push(field);
+    const key = canonical as PresetPatchField;
+    const clearsWhenBlank = isPhaseSlotField(key) || isPhaseNameField(key) || key === "raceWeekDayMiles";
+    if (value === "" && !clearsWhenBlank) {
+      unchanged.push(key);
       continue;
     }
     pending.set(key, value);
@@ -274,6 +319,29 @@ export async function previewPresetPatch(
     if (label && !allowed.has(label.toLowerCase())) {
       errors.push(`Unknown targetDistanceLabel “${label}”`);
     }
+  }
+
+  if (pending.has("raceWeekDayMiles") && pending.get("raceWeekDayMiles")!.trim()) {
+    const parsed = parseRaceWeekDayMilesCell(pending.get("raceWeekDayMiles")!);
+    if ("error" in parsed) errors.push(parsed.error);
+  }
+
+  const phaseFields = new Map<string, string>();
+  for (const [field, value] of pending) {
+    if (isPhaseShapeField(field)) phaseFields.set(field, value);
+  }
+  if (phaseFields.size > 0) {
+    const phaseCheck = await applyPhaseShapeFields({
+      fields: phaseFields,
+      currentPointers: {
+        baseBuildPhasePresetId: row.baseBuildPhasePresetId,
+        buildToPeakPhasePresetId: row.buildToPeakPhasePresetId,
+        taperPhasePresetId: row.taperPhasePresetId,
+        raceWeekPhasePresetId: row.raceWeekPhasePresetId,
+      },
+      dryRun: true,
+    });
+    errors.push(...phaseCheck.errors);
   }
 
   return {
@@ -358,42 +426,61 @@ export async function applyPresetPatch(opts: {
     const n = Math.round(Number(valueByField.get("paceNudgeSecPerMile")));
     if (Number.isFinite(n)) planData.paceNudgeSecPerMile = Math.max(-180, Math.min(180, n));
   }
+  const optionalMiles = [
+    "entryLongRunMiles",
+    "peakLongRunMiles",
+    "longRunCutback",
+    "taperWeek1TotalMiles",
+    "taperWeek1LongRunMiles",
+    "taperWeek2TotalMiles",
+    "taperWeek2LongRunMiles",
+  ] as const;
+  for (const field of optionalMiles) {
+    if (!valueByField.has(field)) continue;
+    const n = Number(valueByField.get(field));
+    planData[field] = Number.isFinite(n) ? n : null;
+  }
+  if (valueByField.has("baseEndWeeklyMiles")) {
+    const n = Number(valueByField.get("baseEndWeeklyMiles"));
+    planData.baseEndWeeklyMiles = Number.isFinite(n) ? Math.round(n) : null;
+  }
+  if (valueByField.has("raceWeekDayMiles")) {
+    const raw = valueByField.get("raceWeekDayMiles") ?? "";
+    const parsed = raw.trim() ? parseRaceWeekDayMilesCell(raw) : [];
+    if ("error" in parsed) {
+      return { ok: false, error: parsed.error, preview };
+    }
+    planData.raceWeekDayMiles = parsed.length > 0 ? parsed : Prisma.DbNull;
+  }
   if (valueByField.has("coachIntent")) planData.coachIntent = valueByField.get("coachIntent") || null;
   if (valueByField.has("objectiveOfPlan"))
     planData.objectiveOfPlan = valueByField.get("objectiveOfPlan") || null;
   if (personaId !== undefined) planData.personaId = personaId;
   if (goalId !== undefined) planData.goalId = goalId;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.training_plan_preset.update({
-      where: { id: opts.presetId },
-      data: planData,
+  const phaseFields = new Map<string, string>();
+  for (const [field, value] of valueByField) {
+    if (isPhaseShapeField(field)) phaseFields.set(field, value);
+  }
+  if (phaseFields.size > 0) {
+    const applied = await applyPhaseShapeFields({
+      fields: phaseFields,
+      currentPointers: {
+        baseBuildPhasePresetId: row.baseBuildPhasePresetId,
+        buildToPeakPhasePresetId: row.buildToPeakPhasePresetId,
+        taperPhasePresetId: row.taperPhasePresetId,
+        raceWeekPhasePresetId: row.raceWeekPhasePresetId,
+      },
     });
+    if (applied.errors.length > 0) {
+      return { ok: false, error: applied.errors.join("; "), preview };
+    }
+    Object.assign(planData, applied.pointers);
+  }
 
-    const buildFields: Record<string, number | null> = {};
-    if (valueByField.has("startLongRunMiles")) {
-      buildFields.startLongRunMiles = Number(valueByField.get("startLongRunMiles"));
-    }
-    if (valueByField.has("peakLongRunMiles")) {
-      buildFields.peakLongRunMiles = Number(valueByField.get("peakLongRunMiles"));
-    }
-    if (valueByField.has("buildMaxWeeklyMiles")) {
-      buildFields.maxWeeklyMiles = Math.round(Number(valueByField.get("buildMaxWeeklyMiles")));
-    }
-    if (row.buildPresetId && Object.keys(buildFields).length > 0) {
-      await tx.build_preset.update({ where: { id: row.buildPresetId }, data: buildFields });
-    }
-
-    const baseFields: Record<string, number | null> = {};
-    if (valueByField.has("baseStartLongRunMiles")) {
-      baseFields.startLongRunMiles = Number(valueByField.get("baseStartLongRunMiles"));
-    }
-    if (valueByField.has("basePeakLongRunMiles")) {
-      baseFields.peakLongRunMiles = Number(valueByField.get("basePeakLongRunMiles"));
-    }
-    if (row.baseBuildPresetId && Object.keys(baseFields).length > 0) {
-      await tx.build_preset.update({ where: { id: row.baseBuildPresetId }, data: baseFields });
-    }
+  await prisma.training_plan_preset.update({
+    where: { id: opts.presetId },
+    data: planData as Prisma.training_plan_presetUncheckedUpdateInput,
   });
 
   const push = await pushPresetToProd({

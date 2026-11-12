@@ -7,8 +7,10 @@ import IntakeModePicker, { type IntakeMode } from "@/components/training-manager
 import {
   EMPTY_PRESET_INGEST_ROW,
   PRESET_INGEST_CSV_COLUMNS,
+  PRESET_INGEST_PREVIEW_ONLY_COLUMNS,
   parsePresetIngestCsv,
   validatePresetIngestRow,
+  type PresetIngestCsvColumn,
   type PresetIngestPreviewRow,
   type PresetIngestRowInput,
 } from "@/lib/training/preset-ingest-canon";
@@ -45,6 +47,7 @@ function PresetIngestPreviewTable({
             <th className="px-3 py-2">Distance</th>
             <th className="px-3 py-2">Miles band</th>
             <th className="px-3 py-2">Long run</th>
+            <th className="px-3 py-2">Phases</th>
             <th className="px-3 py-2">Preview-only</th>
             <th className="px-3 py-2">Errors</th>
           </tr>
@@ -70,7 +73,17 @@ function PresetIngestPreviewTable({
                 {r.row.minWeeklyMiles ?? "—"}–{r.row.maxWeeklyMiles ?? "—"} mpw
               </td>
               <td className="px-3 py-2 text-gray-600">
-                {r.row.startLongRunMiles ?? "—"} → {r.row.peakLongRunMiles ?? "—"} mi
+                {r.row.entryLongRunMiles ?? "—"} → {r.row.peakLongRunMiles ?? "—"} mi
+              </td>
+              <td className="px-3 py-2 text-xs text-gray-600">
+                {[
+                  r.row.baseBuildPhaseName,
+                  r.row.buildToPeakPhaseName,
+                  r.row.taperPhaseName,
+                  r.row.raceWeekPhaseName,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "—"}
               </td>
               <td className="px-3 py-2 text-xs text-amber-800">
                 {r.notStoredYet.length === 0 ? (
@@ -129,45 +142,31 @@ function PresetIngestFields({
   onChange: (row: PresetIngestRowInput) => void;
   idPrefix: string;
 }) {
-  const fields: {
-    key: keyof PresetIngestRowInput;
-    label: string;
-    type: "text" | "number" | "select";
-    previewOnly?: boolean;
-  }[] = [
-    { key: "title", label: "title", type: "text" },
-    { key: "targetDistance", label: "targetDistance", type: "select" },
-    { key: "minWeeklyMiles", label: "minWeeklyMiles", type: "number" },
-    { key: "maxWeeklyMiles", label: "maxWeeklyMiles", type: "number" },
-    { key: "startLongRunMiles", label: "startLongRunMiles", type: "number" },
-    { key: "peakLongRunMiles", label: "peakLongRunMiles", type: "number" },
-    { key: "personaSlug", label: "personaSlug (optional)", type: "text" },
-    { key: "durationWeeks", label: "durationWeeks", type: "number", previewOnly: true },
-    {
-      key: "suggestedEasyOffsetSec",
-      label: "suggestedEasyOffsetSec",
-      type: "number",
-      previewOnly: true,
-    },
-    {
-      key: "suggestedLongRunOffsetSec",
-      label: "suggestedLongRunOffsetSec",
-      type: "number",
-      previewOnly: true,
-    },
-    {
-      key: "suggestedThresholdOffsetSec",
-      label: "suggestedThresholdOffsetSec",
-      type: "number",
-      previewOnly: true,
-    },
-    {
-      key: "suggestedIntervalOffsetSec",
-      label: "suggestedIntervalOffsetSec",
-      type: "number",
-      previewOnly: true,
-    },
-  ];
+  const previewOnly = new Set<string>(PRESET_INGEST_PREVIEW_ONLY_COLUMNS);
+  const numberFields = new Set<PresetIngestCsvColumn>([
+    "minWeeklyMiles",
+    "maxWeeklyMiles",
+    "entryLongRunMiles",
+    "peakLongRunMiles",
+    "baseEndWeeklyMiles",
+    "longRunCutback",
+    "taperWeek1TotalMiles",
+    "taperWeek1LongRunMiles",
+    "taperWeek2TotalMiles",
+    "taperWeek2LongRunMiles",
+    "paceNudgeSecPerMile",
+    "durationWeeks",
+    "suggestedEasyOffsetSec",
+    "suggestedLongRunOffsetSec",
+    "suggestedThresholdOffsetSec",
+    "suggestedIntervalOffsetSec",
+  ]);
+  const fields = PRESET_INGEST_CSV_COLUMNS.map((key) => ({
+    key,
+    label: key === "personaSlug" ? "personaSlug (optional)" : key,
+    type: key === "targetDistance" ? ("select" as const) : numberFields.has(key) ? ("number" as const) : ("text" as const),
+    previewOnly: previewOnly.has(key),
+  }));
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -206,7 +205,7 @@ function PresetIngestFields({
               type="text"
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
               value={String(row[f.key] ?? "")}
-              onChange={(e) => onChange({ ...row, [f.key]: e.target.value })}
+              onChange={(e) => onChange({ ...row, [f.key]: e.target.value } as PresetIngestRowInput)}
             />
           )}
         </label>
@@ -339,8 +338,7 @@ export default function PresetIngestPage() {
         <div>
           <h1 className="text-2xl font-bold">Import plan presets</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Manual entry, AI paste, or CSV. Stored fields write to prod with a linked build preset
-            for long-run start and peak miles.
+            Manual entry, AI paste, or CSV. A row creates the training preset, any phase presets named in it, and the four rotation slots on each of those phase presets. An empty slot stays empty. Rotation names are checked on import.
           </p>
           <p className="mt-1 text-sm text-gray-600">
             Import creates new presets. To evolve an existing template without the wizard, open it from

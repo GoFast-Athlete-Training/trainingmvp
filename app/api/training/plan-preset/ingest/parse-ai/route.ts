@@ -30,7 +30,10 @@ export async function POST(request: NextRequest) {
 Return JSON: { "rows": [ ... ] }.
 Each row uses these string/number fields only (omit unknown): ${PRESET_INGEST_CSV_COLUMNS.join(", ")}.
 Use targetDistance labels like Marathon, Half Marathon, 5K, 10K.
-Numbers must be JSON numbers, not strings.`,
+Numbers must be JSON numbers, not strings.
+Phase name fields point each phase at a phase preset. The same name may be repeated.
+Phase slot fields (LongRun, Easy, Tempo, Intervals) are rotation names. Leave a slot as an empty string to keep that slot empty.
+raceWeekDayMiles looks like -6:4;-5:5;-1:3;0:26.2.`,
       userPrompt: text,
     });
 
