@@ -4,14 +4,28 @@ import { authFetch } from "@/components/AppProviders";
 import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { useEffect, useState } from "react";
 
-type Row = { id: string; label: string };
+type Row = { id: string; label: string; detail?: string };
+
+function miles(n: number | null | undefined): string {
+  return n == null || !Number.isFinite(n) ? "—" : String(n);
+}
+
+function raceWeekDetail(slots: unknown): string {
+  if (!Array.isArray(slots) || slots.length === 0) return "No days yet";
+  const withMiles = slots.filter((s) => {
+    if (!s || typeof s !== "object") return false;
+    const miles = (s as { prescribedMiles?: unknown }).prescribedMiles;
+    return typeof miles === "number" && miles > 0;
+  }).length;
+  return `${slots.length} days · ${withMiles} with miles`;
+}
 
 export function PhaseChooseOrBuild({
   phase,
   linkedId,
   onLinked,
 }: {
-  phase: "build" | "taper" | "raceWeek";
+  phase: "baseBuild" | "buildToPeak" | "taper" | "raceWeek";
   linkedId: string | null;
   onLinked: (id: string) => void;
 }) {
@@ -22,7 +36,7 @@ export function PhaseChooseOrBuild({
   const [newName, setNewName] = useState("");
 
   const listUrl =
-    phase === "build"
+    phase === "baseBuild" || phase === "buildToPeak"
       ? "/api/training/build-preset"
       : phase === "taper"
         ? "/api/training/taper-preset"
@@ -32,25 +46,46 @@ export function PhaseChooseOrBuild({
     void authFetch(listUrl)
       .then((r) => r.json())
       .then((data) => {
-        if (phase === "build") {
+        if (phase === "baseBuild" || phase === "buildToPeak") {
           setRows(
-            (data.builds ?? []).map((b: { id: string; name: string }) => ({
-              id: b.id,
-              label: b.name,
-            })),
+            (data.builds ?? []).map(
+              (b: {
+                id: string;
+                name: string;
+                startLongRunMiles: number | null;
+                peakLongRunMiles: number | null;
+                maxWeeklyMiles: number | null;
+                longRunCutback: number | null;
+              }) => ({
+                id: b.id,
+                label: b.name,
+                detail: `Start ${miles(b.startLongRunMiles)} → peak ${miles(b.peakLongRunMiles)} mi · week ${miles(b.maxWeeklyMiles)} · cutback ${miles(b.longRunCutback)}`,
+              }),
+            ),
           );
         } else if (phase === "taper") {
           setRows(
-            (data.tapers ?? []).map((t: { id: string; name: string }) => ({
-              id: t.id,
-              label: t.name,
-            })),
+            (data.tapers ?? []).map(
+              (t: {
+                id: string;
+                name: string;
+                week1TotalMiles: number | null;
+                week1LongRunMiles: number | null;
+                week2TotalMiles: number | null;
+                week2LongRunMiles: number | null;
+              }) => ({
+                id: t.id,
+                label: t.name,
+                detail: `W1 ${miles(t.week1TotalMiles)} / LR ${miles(t.week1LongRunMiles)} · W2 ${miles(t.week2TotalMiles)} / LR ${miles(t.week2LongRunMiles)}`,
+              }),
+            ),
           );
         } else {
           setRows(
-            (data.presets ?? []).map((p: { id: string; title: string }) => ({
+            (data.presets ?? []).map((p: { id: string; title: string; slots: unknown }) => ({
               id: p.id,
               label: p.title,
+              detail: raceWeekDetail(p.slots),
             })),
           );
         }
@@ -76,7 +111,7 @@ export function PhaseChooseOrBuild({
       });
       const data = await res.json();
       const id =
-        phase === "build"
+        phase === "baseBuild" || phase === "buildToPeak"
           ? (data.build?.id as string)
           : phase === "taper"
             ? (data.taper?.id as string)
@@ -92,7 +127,13 @@ export function PhaseChooseOrBuild({
   }
 
   const phaseLabel =
-    phase === "build" ? "build preset" : phase === "taper" ? "taper preset" : "race week";
+    phase === "baseBuild"
+      ? "base build"
+      : phase === "buildToPeak"
+        ? "build to peak"
+        : phase === "taper"
+          ? "taper"
+          : "race week";
 
   if (namingNew) {
     return (
@@ -137,7 +178,7 @@ export function PhaseChooseOrBuild({
   return (
     <section className="space-y-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
       <p className="text-sm text-gray-700">
-        Choose an existing {phaseLabel} or build a new one.
+        Choose an existing {phaseLabel} or create a new one.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <SearchCombobox
@@ -145,7 +186,15 @@ export function PhaseChooseOrBuild({
           options={rows}
           value={selected}
           onChange={setSelected}
-          placeholder="Search presets…"
+          placeholder={
+            phase === "baseBuild"
+              ? "Search base builds…"
+              : phase === "buildToPeak"
+                ? "Search builds to peak…"
+                : phase === "taper"
+                  ? "Search tapers…"
+                  : "Search race weeks…"
+          }
         />
         <button
           type="button"
@@ -161,7 +210,7 @@ export function PhaseChooseOrBuild({
           onClick={() => setNamingNew(true)}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          Build new
+          Create new
         </button>
       </div>
     </section>

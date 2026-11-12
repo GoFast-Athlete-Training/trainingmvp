@@ -21,6 +21,7 @@ export const PRESET_PATCH_WRITABLE_FIELDS = [
   "buildMaxWeeklyMiles",
   "baseStartLongRunMiles",
   "basePeakLongRunMiles",
+  "paceNudgeSecPerMile",
 ] as const;
 
 export type PresetPatchField = (typeof PRESET_PATCH_WRITABLE_FIELDS)[number];
@@ -85,6 +86,8 @@ function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): str
       return row.baseBuildPreset?.peakLongRunMiles != null
         ? String(row.baseBuildPreset.peakLongRunMiles)
         : "";
+    case "paceNudgeSecPerMile":
+      return row.paceNudgeSecPerMile != null ? String(row.paceNudgeSecPerMile) : "0";
     default:
       return "";
   }
@@ -350,6 +353,10 @@ export async function applyPresetPatch(opts: {
   if (valueByField.has("maxWeeklyMiles")) {
     const n = Number(valueByField.get("maxWeeklyMiles"));
     planData.maxWeeklyMiles = Number.isFinite(n) ? Math.max(1, Math.round(n)) : null;
+  }
+  if (valueByField.has("paceNudgeSecPerMile")) {
+    const n = Math.round(Number(valueByField.get("paceNudgeSecPerMile")));
+    if (Number.isFinite(n)) planData.paceNudgeSecPerMile = Math.max(-180, Math.min(180, n));
   }
   if (valueByField.has("coachIntent")) planData.coachIntent = valueByField.get("coachIntent") || null;
   if (valueByField.has("objectiveOfPlan"))

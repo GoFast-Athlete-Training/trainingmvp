@@ -50,7 +50,7 @@ export default function BuildListPage() {
         <div>
           <h1 className="text-2xl font-bold">Build presets</h1>
           <p className="text-sm text-gray-600">
-            Starting and peak long run, weekly peak, and run-type rotations. Link from a plan preset or edit here.
+            Starting and peak long run, weekly peak, and run-type rotations. The same row can be linked as a base build or as a build to peak.
           </p>
         </div>
         <button

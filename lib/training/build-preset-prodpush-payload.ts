@@ -214,6 +214,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
     longRunCycleWeeks: row.longRunCycleWeeks,
     minWeeklyMiles: row.minWeeklyMiles,
     maxWeeklyMiles: row.maxWeeklyMiles,
+    paceNudgeSecPerMile: row.paceNudgeSecPerMile,
     tempoIdealDow: row.tempoIdealDow,
     intervalIdealDow: row.intervalIdealDow,
     longRunDefaultDow: row.longRunDefaultDow,

@@ -1,5 +1,7 @@
 import type { PresetValidateRow } from "@/lib/training/preset-validate-load";
+import { PRESET_PATCH_WRITABLE_FIELDS } from "@/lib/training/preset-patch-csv";
 import { raceWeekSlotsSummary } from "./preset-validate-load";
+import { parseRaceWeekSlots } from "./race-week-slots";
 
 function hasText(v: unknown): boolean {
   return typeof v === "string" && v.trim().length > 0;
@@ -30,13 +32,74 @@ function jsonPresent(v: unknown): boolean {
   return Boolean(v);
 }
 
+function finite(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function raceWeekMilesSum(slots: unknown): number | null {
+  const rows = parseRaceWeekSlots(slots);
+  let sum = 0;
+  let any = false;
+  for (const slot of rows) {
+    if (slot.type === "off") continue;
+    if (slot.prescribedMiles != null && slot.prescribedMiles > 0) {
+      sum += slot.prescribedMiles;
+      any = true;
+    }
+  }
+  return any ? Math.round(sum * 10) / 10 : null;
+}
+
+function derivedBoundaryLines(row: PresetValidateRow): string[] {
+  const base = row.baseBuildPreset;
+  const build = row.buildPreset;
+  const taper = row.taperPreset;
+  const cut = finite(build?.longRunCutback);
+  const factor = cut != null && cut > 0 && cut < 1 ? cut : 0.2;
+  return [
+    `- base peak long run vs build start: ${finite(base?.peakLongRunMiles) ?? "(no base)"} vs ${finite(build?.startLongRunMiles) ?? "(missing)"}`,
+    `- build peak long run: ${finite(build?.peakLongRunMiles) ?? "(missing)"}`,
+    `- build peak weekly: ${finite(build?.maxWeeklyMiles) ?? "(missing)"}`,
+    `- taper caps: W1 ${taper?.week1TotalMiles ?? "—"} / LR ${taper?.week1LongRunMiles ?? "—"} · W2 ${taper?.week2TotalMiles ?? "—"} / LR ${taper?.week2LongRunMiles ?? "—"}`,
+    `- race-week slot sum (miles, off days excluded): ${raceWeekMilesSum(row.raceWeekPreset?.slots) ?? "(none)"}`,
+    `- longRunCutback ${cut ?? "(missing, defaults to 0.20)"} yields two cutbacks (weeks 4 and 7) on an 8-week build to peak at factor ${factor}`,
+  ];
+}
+
+function marathonReasonablenessLines(row: PresetValidateRow): string[] {
+  const warnings: string[] = [];
+  const peakLong = finite(row.buildPreset?.peakLongRunMiles);
+  const peakWeekly = finite(row.buildPreset?.maxWeeklyMiles) ?? finite(row.maxWeeklyMiles);
+  if (peakLong != null && (peakLong < 16 || peakLong > 22)) {
+    warnings.push(`- warning: peak long run ${peakLong} is outside the marathon band of about 16–22`);
+  }
+  if (peakWeekly != null && (peakWeekly < 35 || peakWeekly > 70)) {
+    warnings.push(`- warning: peak weekly ${peakWeekly} is outside the marathon band of about 35–70`);
+  }
+  if (peakWeekly != null && row.taperPreset) {
+    for (const total of [row.taperPreset.week1TotalMiles, row.taperPreset.week2TotalMiles]) {
+      if (typeof total === "number" && total >= peakWeekly) {
+        warnings.push(`- warning: taper total ${total} is not below peak weekly ${peakWeekly}`);
+      }
+    }
+  }
+  const raceSum = raceWeekMilesSum(row.raceWeekPreset?.slots);
+  if (peakWeekly != null && raceSum != null && raceSum >= peakWeekly) {
+    warnings.push(`- warning: race-week slot sum ${raceSum} is not below peak weekly ${peakWeekly}`);
+  }
+  if (warnings.length === 0) {
+    return ["- No marathon-band warnings. These notes are warnings, not hard failures."];
+  }
+  return warnings;
+}
+
 export const PRESET_VALIDATE_LLM_INSTRUCTION = `Instruction:
-- Say which athlete type this preset is for (persona capability + dedication, or explain if unlinked).
-- List what is missing for that athlete type (public copy, persona link, goal, weekly band, build/taper/race week).
-- Flag marketing copy such as "advanced" if it does not match persona capability (canonical: NON_RUNNER, BEGINNER, RECREATIONAL, COMPETITIVE, ELITE).
-- Flag deprecated TM-only columns that still hold data (listed below) — prod athlete app does not store those on the preset row.
-- Do not invent catalogue or rotation config ids.
-- For fixes, return a CSV with columns field,value (one row per field to change). Leave value blank only when keeping on file. Writable fields: title, description, publicDescription, targetDistanceLabel, minWeeklyMiles, maxWeeklyMiles, personaSlug, goalSlug, coachIntent, objectiveOfPlan, startLongRunMiles, peakLongRunMiles, buildMaxWeeklyMiles, baseStartLongRunMiles, basePeakLongRunMiles.`;
+- Persona is optional. Do not require a persona link. Mention one only when it is stored.
+- Split the review into stored values, derived boundaries, and athlete-specific facts. Athlete start (current weekly miles and longest recent run) is not on the preset.
+- Marathon reasonableness is a warning band (peak long run roughly 16–22, peak weekly roughly 35–70, taper and race week below the peak), not a hard fail.
+- Flag deprecated TM-only columns that still hold data — prod athlete app does not store those on the preset row.
+- Do not invent catalogue or rotation config ids. Do not request taper slots, race-week slots, or rotation ids.
+- For fixes, return a CSV with columns field,value (one row per field to change). Leave value blank only when keeping on file. Writable fields: ${PRESET_PATCH_WRITABLE_FIELDS.join(", ")}.`;
 
 export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
   const persona = row.persona;
@@ -79,6 +142,7 @@ export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
       line("targetDistanceLabel", row.targetDistanceLabel),
       line("minWeeklyMiles", row.minWeeklyMiles),
       line("maxWeeklyMiles", row.maxWeeklyMiles),
+      line("paceNudgeSecPerMile", row.paceNudgeSecPerMile ?? 0),
       line("coachIntent", row.coachIntent),
       line("objectiveOfPlan", row.objectiveOfPlan),
       line("tempoIdealDow", row.tempoIdealDow),
@@ -142,6 +206,19 @@ export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
       race ? line("slots", raceWeekSlotsSummary(race.slots)) : null,
     ]),
     "",
+    block("Stored values", [
+      "The blocks above are values stored on the preset and its linked phases.",
+      line("paceNudgeSecPerMile", row.paceNudgeSecPerMile ?? 0),
+    ]),
+    "",
+    block("Derived boundaries", derivedBoundaryLines(row)),
+    "",
+    block("Athlete-specific", [
+      "- Athlete start is not on the preset. Current weekly miles, longest recent run, and a return from injury are read from the athlete when the plan is generated.",
+    ]),
+    "",
+    block("Marathon reasonableness (warnings, not failures)", marathonReasonablenessLines(row)),
+    "",
     block("Deprecated (TM mirror only — not prod preset columns)", deprecatedLines),
     "",
     "---",
@@ -170,6 +247,7 @@ export function buildPresetValidateLlmPacketFromProdJson(
       line("targetDistanceLabel", preset.targetDistanceLabel),
       line("minWeeklyMiles", preset.minWeeklyMiles),
       line("maxWeeklyMiles", preset.maxWeeklyMiles),
+      line("paceNudgeSecPerMile", preset.paceNudgeSecPerMile ?? 0),
       line("personaId", preset.personaId),
       line("goalId", preset.goalId),
     ]),

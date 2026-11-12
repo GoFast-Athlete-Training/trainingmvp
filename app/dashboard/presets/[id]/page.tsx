@@ -73,15 +73,40 @@ type PresetDetail = {
   snapPeakWeeklyMiles: number | null;
   minWeeklyMiles: number;
   maxWeeklyMiles: number | null;
+  paceNudgeSecPerMile: number;
 };
 
 function mi(n: number | null) {
   return n == null ? "—" : `${n} mi`;
 }
 
+function blank(s: string) {
+  return s.trim() === "" ? "—" : s;
+}
+
+function buildMilesLine(v: {
+  startLongRunMiles: string;
+  peakLongRunMiles: string;
+  maxWeeklyMiles: string;
+  longRunCutback: string;
+}) {
+  return `Start ${blank(v.startLongRunMiles)} → peak ${blank(v.peakLongRunMiles)} mi · week ${blank(v.maxWeeklyMiles)} · cutback ${blank(v.longRunCutback)}`;
+}
+
+function taperMilesLine(
+  weeks: { weekIndex: number; totalMilesCap: number | null; longRunCapMiles: number | null }[],
+) {
+  const line = (index: number) => {
+    const row = weeks.find((w) => w.weekIndex === index);
+    if (!row) return "—";
+    return `${row.totalMilesCap ?? "—"} / LR ${row.longRunCapMiles ?? "—"}`;
+  };
+  return `W1 ${line(1)} · W2 ${line(2)}`;
+}
+
 const STEPS: { id: WizardStep; label: string }[] = [
   { id: "core", label: "Core" },
-  { id: "baseBuild", label: "Build" },
+  { id: "baseBuild", label: "Base build" },
   { id: "build", label: "Build to peak" },
   { id: "taper", label: "Taper" },
   { id: "raceWeek", label: "Race week" },
@@ -110,6 +135,7 @@ const DRAFT_PRESET_SHELL: PresetDetail = {
   snapPeakWeeklyMiles: null,
   minWeeklyMiles: 45,
   maxWeeklyMiles: null,
+  paceNudgeSecPerMile: 0,
 };
 
 export default function PresetWizardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -124,6 +150,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
   const [targetDistanceLabel, setTargetDistanceLabel] = useState("");
   const [minWeeklyMiles, setMinWeeklyMiles] = useState("45");
   const [maxWeeklyMiles, setMaxWeeklyMiles] = useState("55");
+  const [paceNudgeSecPerMile, setPaceNudgeSecPerMile] = useState("0");
   const [saving, setSaving] = useState(false);
   const [stepSaved, setStepSaved] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
@@ -253,6 +280,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     setTargetDistanceLabel(p.targetDistanceLabel ?? "");
     setMinWeeklyMiles(String(p.minWeeklyMiles ?? 45));
     setMaxWeeklyMiles(p.maxWeeklyMiles == null ? "" : String(p.maxWeeklyMiles));
+    setPaceNudgeSecPerMile(String(p.paceNudgeSecPerMile ?? 0));
     if (p.baseBuildPresetId) await loadBaseBuild(p.baseBuildPresetId);
     else setBaseBuildForm(null);
     if (p.buildPresetId) await loadBuild(p.buildPresetId);
@@ -275,6 +303,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       setTargetDistanceLabel("");
       setMinWeeklyMiles("45");
       setMaxWeeklyMiles("55");
+      setPaceNudgeSecPerMile("0");
       setStep("core");
       coreHydratedRef.current = false;
       coreAutoSaveSkipRef.current = true;
@@ -287,6 +316,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     const min = Math.round(Number(minWeeklyMiles) || 40);
     const maxRaw = maxWeeklyMiles.trim();
     const max = maxRaw === "" ? null : Math.round(Number(maxRaw));
+    const nudge = Math.round(Number(paceNudgeSecPerMile));
     return {
       title: title.trim(),
       description,
@@ -294,6 +324,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
       targetDistanceLabel: targetDistanceLabel || null,
       minWeeklyMiles: min,
       maxWeeklyMiles: max,
+      paceNudgeSecPerMile: Number.isFinite(nudge) ? Math.max(-180, Math.min(180, nudge)) : 0,
     };
   }
 
@@ -347,7 +378,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
     const updated = await patchPreset(coreMetaBody());
     if (updated?.slug) setSlug(updated.slug);
     return updated;
-  }, [patchPreset, title, description, publicDescription, targetDistanceLabel, minWeeklyMiles, maxWeeklyMiles]);
+  }, [patchPreset, title, description, publicDescription, targetDistanceLabel, minWeeklyMiles, maxWeeklyMiles, paceNudgeSecPerMile]);
 
   async function saveMeta() {
     setSaving(true);
@@ -710,7 +741,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
             </div>
           ) : null}
         </div>
-        <p className="text-sm text-gray-500">Core → build → build to peak → taper → race week</p>
+        <p className="text-sm text-gray-500">Core → base build → build to peak → taper → race week</p>
         <SaveSyncBanner status={syncStatus} />
       </div>
 
@@ -806,6 +837,21 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 taper and race week take over.
               </p>
               <label className="block text-sm">
+                <span className="text-gray-600">Pace nudge (sec/mile)</span>
+                <input
+                  type="number"
+                  step={1}
+                  className="mt-1 w-full max-w-xs rounded border px-3 py-2"
+                  value={paceNudgeSecPerMile}
+                  onChange={(e) => setPaceNudgeSecPerMile(e.target.value)}
+                />
+                <span className="mt-1 block text-xs text-gray-500">
+                  Added on every workout after the catalogue offset. Negative is faster (more juice).
+                  Positive is easier. Leave at 0 for the current MVP. Advanced aggressive is −10.
+                  Advanced slightly easy is +10.
+                </span>
+              </label>
+              <label className="block text-sm">
                 <span className="text-gray-600">Target distance</span>
                 <select
                   className="mt-1 w-full max-w-md rounded border px-3 py-2"
@@ -866,13 +912,16 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
             <section className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-semibold">Build</h2>
+                  <h2 className="text-lg font-semibold">Base build</h2>
                   <p className="text-xs text-gray-500">
                     Optional steady block for weeks before the 8-week ramp. Flat long run and weekly
                     miles; link only when the race is more than 8 build weeks out.
                   </p>
                   {baseBuildForm && !showBaseBuildPicker ? (
-                    <p className="mt-1 text-xs text-gray-500">Build fields auto-save while you edit.</p>
+                    <>
+                      <p className="mt-1 text-xs text-gray-700">{buildMilesLine(baseBuildForm)}</p>
+                      <p className="mt-1 text-xs text-gray-500">Base build fields auto-save while you edit.</p>
+                    </>
                   ) : null}
                 </div>
                 {preset.baseBuildPresetId && !changeBaseBuild ? (
@@ -881,13 +930,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                     className="text-sm text-sky-700 hover:underline"
                     onClick={() => setChangeBaseBuild(true)}
                   >
-                    Change build
+                    Change base build
                   </button>
                 ) : null}
               </div>
               {showBaseBuildPicker ? (
                 <PhaseChooseOrBuild
-                  phase="build"
+                  phase="baseBuild"
                   linkedId={preset.baseBuildPresetId}
                   onLinked={(id) => void linkPhase("baseBuild", id)}
                 />
@@ -908,7 +957,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                       onClick={() => void saveBaseBuildStep()}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
                     >
-                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save base build"}
                     </button>
                     <button
                       type="button"
@@ -946,7 +995,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                     ) ?? "Peak mileage appears after you save the build step"}
                   </p>
                   {buildForm && !showBuildPicker ? (
-                    <p className="mt-1 text-xs text-gray-500">Build fields auto-save while you edit.</p>
+                    <>
+                      <p className="mt-1 text-xs text-gray-700">{buildMilesLine(buildForm)}</p>
+                      <p className="mt-1 text-xs text-gray-500">Build to peak fields auto-save while you edit.</p>
+                    </>
                   ) : null}
                 </div>
                 {preset.buildPresetId && !changeBuild ? (
@@ -955,13 +1007,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                     className="text-sm text-sky-700 hover:underline"
                     onClick={() => setChangeBuild(true)}
                   >
-                    Change build
+                    Change build to peak
                   </button>
                 ) : null}
               </div>
               {showBuildPicker ? (
                 <PhaseChooseOrBuild
-                  phase="build"
+                  phase="buildToPeak"
                   linkedId={preset.buildPresetId}
                   onLinked={(id) => void linkPhase("build", id)}
                 />
@@ -982,7 +1034,7 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                       onClick={() => void saveBuildStep()}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
                     >
-                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save build"}
+                      {saving ? "Saving…" : stepSaved ? "Saved" : "Save build to peak"}
                     </button>
                     <button
                       type="button"
@@ -1004,7 +1056,10 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 <div>
                   <h2 className="text-lg font-semibold">Taper</h2>
                   {taperForm && !showTaperPicker ? (
-                    <p className="mt-1 text-xs text-gray-500">Taper fields auto-save while you edit.</p>
+                    <>
+                      <p className="mt-1 text-xs text-gray-700">{taperMilesLine(taperForm.weeks)}</p>
+                      <p className="mt-1 text-xs text-gray-500">Taper fields auto-save while you edit.</p>
+                    </>
                   ) : null}
                 </div>
                 {preset.taperPresetId && !changeTaper ? (
@@ -1056,7 +1111,13 @@ export default function PresetWizardPage({ params }: { params: Promise<{ id: str
                 <div>
                   <h2 className="text-lg font-semibold">Race week</h2>
                   {preset.raceWeekPresetId && !showRacePicker ? (
-                    <p className="mt-1 text-xs text-gray-500">Race week fields auto-save while you edit.</p>
+                    <>
+                      <p className="mt-1 text-xs text-gray-700">
+                        {(raceWeekTitle.trim() || "Untitled") +
+                          ` · ${raceWeekSlots.filter((s) => typeof s.prescribedMiles === "number" && s.prescribedMiles > 0).length} days with miles`}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">Race week fields auto-save while you edit.</p>
+                    </>
                   ) : null}
                 </div>
                 {preset.raceWeekPresetId && !changeRace ? (

@@ -11,7 +11,7 @@ export function SearchCombobox({
   emptyLabel = "None selected",
 }: {
   label: string;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; detail?: string }[];
   value: string;
   onChange: (id: string) => void;
   placeholder?: string;
@@ -30,7 +30,9 @@ export function SearchCombobox({
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    return options.filter((o) =>
+      `${o.label} ${o.detail ?? ""}`.toLowerCase().includes(q),
+    );
   }, [options, searchQuery]);
 
   const close = useCallback(() => {
@@ -80,7 +82,10 @@ export function SearchCombobox({
                     close();
                   }}
                 >
-                  {o.label}
+                  <span className="block">{o.label}</span>
+                  {o.detail ? (
+                    <span className="mt-0.5 block text-xs text-gray-500">{o.detail}</span>
+                  ) : null}
                 </button>
               </li>
             ))}
