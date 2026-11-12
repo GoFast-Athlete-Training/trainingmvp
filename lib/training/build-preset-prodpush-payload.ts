@@ -211,6 +211,7 @@ export async function buildPresetProdPushPayload(presetId: string) {
       ? {
           id: phase.id,
           name: phase.name,
+          description: phase.description,
           longRunConfigId: phase.longRunConfigId,
           easyConfigId: phase.easyConfigId,
           tempoConfigId: phase.tempoConfigId,

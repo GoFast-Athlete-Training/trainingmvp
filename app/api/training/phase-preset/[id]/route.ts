@@ -36,6 +36,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const data: Record<string, unknown> = {};
   if (typeof body.name === "string") data.name = body.name.trim() || "Phase";
+  if (typeof body.description === "string") data.description = body.description.trim() || null;
   for (const key of ["longRunConfigId", "easyConfigId", "tempoConfigId", "intervalsConfigId"] as const) {
     const value = configId(body, key);
     if (value !== undefined) data[key] = value;
@@ -54,6 +55,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       body: {
         id: row.id,
         name: row.name,
+        description: row.description,
         longRunConfigId: row.longRunConfigId,
         easyConfigId: row.easyConfigId,
         tempoConfigId: row.tempoConfigId,

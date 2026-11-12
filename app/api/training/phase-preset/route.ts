@@ -15,6 +15,7 @@ const include = {
 function serialize(row: {
   id: string;
   name: string;
+  description: string | null;
   longRunConfigId: string | null;
   easyConfigId: string | null;
   tempoConfigId: string | null;
@@ -27,6 +28,7 @@ function serialize(row: {
   return {
     id: row.id,
     name: row.name,
+    description: row.description,
     longRunConfigId: row.longRunConfigId,
     easyConfigId: row.easyConfigId,
     tempoConfigId: row.tempoConfigId,
@@ -69,9 +71,12 @@ export async function POST(request: NextRequest) {
   const auth = await assertTrainingManagerAuth(request);
   if (auth.error) return auth.error;
 
-  const body = (await request.json().catch(() => ({}))) as { name?: string };
+  const body = (await request.json().catch(() => ({}))) as { name?: string; description?: string };
   const row = await prisma.phase_preset.create({
-    data: { name: body.name?.trim() || "New phase preset" },
+    data: {
+      name: body.name?.trim() || "New phase preset",
+      description: body.description?.trim() || null,
+    },
     include,
   });
   const phase = serialize(row);
