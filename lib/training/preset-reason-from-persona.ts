@@ -2,59 +2,42 @@ import { forwardProdPresetStaffRequest } from "@/lib/training/prod-preset-staff-
 import { runOpenAiJsonAgent } from "@/lib/training/openai-json";
 import type { ProdStaffCredentials } from "@/lib/training/preset-validate-load";
 import { loadPresetValidateRow, type PresetValidateRow } from "@/lib/training/preset-validate-load";
-import {
-  PHASE_NAME_FIELDS,
-  PHASE_ROLES,
-  PHASE_SLOT_FIELDS,
-  PRESET_MILE_FIELDS,
-  SLOT_KINDS,
-  isPhaseNameField,
-  isPhaseSlotField,
-  type SlotKind,
-} from "@/lib/training/preset-shape-columns";
 
-const SKIPPED_MILES = new Set(["raceWeekDayMiles", "longRunCutback", "paceNudgeSecPerMile", "baseEndWeeklyMiles"]);
+const CAP_FIELDS = [
+  "taperWeek1TotalMiles",
+  "taperWeek1LongRunMiles",
+  "taperWeek2TotalMiles",
+  "taperWeek2LongRunMiles",
+  "raceWeekMiles",
+] as const;
 
-const INT_MILES = new Set([
+const ROUND_FIELDS = new Set<string>([
   "minWeeklyMiles",
   "maxWeeklyMiles",
-  "baseWeeklyMinMiles",
-  "baseWeeklyMaxMiles",
-  "peakWeeklyVolumeMiles",
+  ...CAP_FIELDS,
 ]);
 
 export const PERSONA_FILL_FIELDS = [
-  ...PRESET_MILE_FIELDS.filter((field) => !SKIPPED_MILES.has(field)),
-  ...PHASE_NAME_FIELDS,
-  ...PHASE_SLOT_FIELDS,
+  "minWeeklyMiles",
+  "maxWeeklyMiles",
+  "baseStartLongRunMiles",
+  "baseEndLongRunMiles",
+  "entryLongRunMiles",
+  "peakLongRunMiles",
+  ...CAP_FIELDS,
 ] as const;
 
 const FILL_SET = new Set<string>(PERSONA_FILL_FIELDS);
+const CAP_SET = new Set<string>(CAP_FIELDS);
 
 export type PersonaFillField = {
   field: (typeof PERSONA_FILL_FIELDS)[number];
   value: string;
 };
 
-function slotKindForField(field: string): SlotKind | null {
-  for (const role of PHASE_ROLES) {
-    for (const slot of SLOT_KINDS) {
-      if (`${role.key}${slot.suffix}` === field) return slot.kind;
-    }
-  }
-  return null;
-}
-
-function canonicalName(value: string, names: string[]): string | null {
-  const hit = names.find((name) => name.toLowerCase() === value.trim().toLowerCase());
-  return hit ?? null;
-}
-
 export function selectPersonaFillFields(opts: {
   proposed: { field?: string; value?: string }[];
   current: Record<string, string>;
-  phaseNames: string[];
-  rotationNames: Record<SlotKind, string[]>;
 }): PersonaFillField[] {
   const out: PersonaFillField[] = [];
   const seen = new Set<string>();
@@ -63,23 +46,11 @@ export function selectPersonaFillFields(opts: {
     if (!FILL_SET.has(field) || seen.has(field)) continue;
     const raw = typeof row.value === "string" ? row.value.trim() : "";
     if (!raw) continue;
+    if (CAP_SET.has(field) && (opts.current[field] ?? "").trim() !== "") continue;
 
-    let value = raw;
-    if (isPhaseNameField(field)) {
-      const name = canonicalName(raw, opts.phaseNames);
-      if (!name) continue;
-      value = name;
-    } else if (isPhaseSlotField(field)) {
-      const kind = slotKindForField(field);
-      const name = kind ? canonicalName(raw, opts.rotationNames[kind] ?? []) : null;
-      if (!name) continue;
-      value = name;
-    } else {
-      const n = Number(raw);
-      if (!Number.isFinite(n)) continue;
-      value = INT_MILES.has(field) ? String(Math.round(n)) : String(n);
-    }
-
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    const value = ROUND_FIELDS.has(field) ? String(Math.round(n)) : String(n);
     if ((opts.current[field] ?? "") === value) continue;
     seen.add(field);
     out.push({ field: field as PersonaFillField["field"], value });
@@ -122,80 +93,13 @@ async function personaBlock(row: PresetValidateRow, auth: ProdStaffCredentials):
   return personaText({ ...row, persona: match });
 }
 
-async function currentFields(
-  row: PresetValidateRow,
-  auth: ProdStaffCredentials,
-): Promise<Record<string, string>> {
-  const read = (key: string) => {
-    const value = row[key];
-    return value == null || value === "" ? "" : String(value);
-  };
+function currentFields(row: PresetValidateRow): Record<string, string> {
   const out: Record<string, string> = {};
   for (const field of PERSONA_FILL_FIELDS) {
-    if (!isPhaseNameField(field) && !isPhaseSlotField(field)) out[field] = read(field);
+    const value = row[field];
+    out[field] = value == null || value === "" ? "" : String(value);
   }
-
-  const phases: { key: (typeof PHASE_ROLES)[number]["key"]; id: string | null }[] = [
-    { key: "baseBuild", id: typeof row.baseBuildPhasePresetId === "string" ? row.baseBuildPhasePresetId : null },
-    { key: "buildToPeak", id: typeof row.buildToPeakPhasePresetId === "string" ? row.buildToPeakPhasePresetId : null },
-    { key: "taper", id: typeof row.taperPhasePresetId === "string" ? row.taperPhasePresetId : null },
-    { key: "raceWeek", id: typeof row.raceWeekPhasePresetId === "string" ? row.raceWeekPhasePresetId : null },
-  ];
-
-  await Promise.all(
-    phases.map(async (phase) => {
-      const role = PHASE_ROLES.find((item) => item.key === phase.key);
-      if (!role) return;
-      if (!phase.id) {
-        out[role.nameField] = "";
-        for (const slot of SLOT_KINDS) out[`${phase.key}${slot.suffix}`] = "";
-        return;
-      }
-      const res = await forwardProdPresetStaffRequest({
-        authorization: auth.authorization,
-        staffId: auth.staffId,
-        path: `/api/training/phase-preset/${encodeURIComponent(phase.id)}`,
-        method: "GET",
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        phasePreset?: {
-          name?: string;
-          longRunConfig?: { name?: string } | null;
-          easyConfig?: { name?: string } | null;
-          tempoConfig?: { name?: string } | null;
-          intervalsConfig?: { name?: string } | null;
-        };
-      };
-      const preset = json.phasePreset;
-      out[role.nameField] = preset?.name ?? "";
-      out[`${phase.key}LongRun`] = preset?.longRunConfig?.name ?? "";
-      out[`${phase.key}Easy`] = preset?.easyConfig?.name ?? "";
-      out[`${phase.key}Tempo`] = preset?.tempoConfig?.name ?? "";
-      out[`${phase.key}Intervals`] = preset?.intervalsConfig?.name ?? "";
-    }),
-  );
-
   return out;
-}
-
-async function nameList(
-  auth: ProdStaffCredentials,
-  path: string,
-  key: "phasePresets" | "items",
-): Promise<string[]> {
-  const res = await forwardProdPresetStaffRequest({
-    authorization: auth.authorization,
-    staffId: auth.staffId,
-    path,
-    method: "GET",
-  });
-  if (!res.ok) return [];
-  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const rows = json[key];
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .map((row) => (row && typeof row === "object" ? (row as { name?: unknown }).name : null))
-    .filter((name): name is string => typeof name === "string" && name.trim().length > 0);
 }
 
 export async function reasonPresetFromPersona(opts: {
@@ -205,33 +109,26 @@ export async function reasonPresetFromPersona(opts: {
   const row = await loadPresetValidateRow(opts.presetId, opts.auth);
   if (!row) throw new Error("Preset not found");
   const persona = await personaBlock(row, opts.auth);
-  if (!persona) throw new Error("Link a persona on this preset, save it, then reason from it.");
+  if (!persona) throw new Error("Link a persona on this preset, then reason from it.");
 
-  const [phaseNames, longRun, easy, tempo, intervals] = await Promise.all([
-    nameList(opts.auth, "/api/training/phase-preset", "phasePresets"),
-    nameList(opts.auth, "/api/training/long-run-config", "items"),
-    nameList(opts.auth, "/api/training/easy-config", "items"),
-    nameList(opts.auth, "/api/training/tempo-config", "items"),
-    nameList(opts.auth, "/api/training/intervals-config", "items"),
-  ]);
-  const rotationNames: Record<SlotKind, string[]> = { longRun, easy, tempo, intervals };
-  const current = await currentFields(row, opts.auth);
+  const current = currentFields(row);
 
-  const systemPrompt = `You fill a GoFast training preset from its linked persona.
+  const systemPrompt = `You check a GoFast training preset against its linked persona.
 
-The persona says who this athlete is and what the plan is trying to do. Reason about where base starts and whether build to peak matches that athlete. Then propose only the fields that should change.
+Judge only whether this athlete fits the plan.
 
-Base is a rough guide: baseWeeklyMinMiles, baseWeeklyMaxMiles, baseStartLongRunMiles, baseEndLongRunMiles.
-Build to peak is the band and the ramp: minWeeklyMiles, maxWeeklyMiles, entryLongRunMiles, peakLongRunMiles, peakWeeklyVolumeMiles.
-Taper is taperWeek1TotalMiles, taperWeek1LongRunMiles, taperWeek2TotalMiles, taperWeek2LongRunMiles.
-Race week is raceWeekMiles.
+The meta band is minWeeklyMiles and maxWeeklyMiles. One band for the whole plan, the range the athlete trains inside. Propose a change only when that band does not fit this athlete. Do not nudge it by a couple of miles.
 
-Phase names and rotation names must be copied exactly from the lists. Do not invent catalogue workouts or phase names. Omit a field to leave it unchanged. Do not change pace.
+Long runs are baseStartLongRunMiles to baseEndLongRunMiles, then entryLongRunMiles to peakLongRunMiles. Base end and build start are the same handoff, not two unrelated numbers.
+
+Taper and race week are a three-week cap that steps the week down from the band. They are not a second preference. Propose taperWeek1TotalMiles, taperWeek1LongRunMiles, taperWeek2TotalMiles, taperWeek2LongRunMiles, or raceWeekMiles only when that field is empty. Leave a filled cap alone. An empty raceWeekMiles is one mileage under the band and below taper week 2.
+
+Do not propose phase names, rotations, pace, peak volume, or a weekly min and max for base. Omit a field to leave it unchanged.
 
 Output JSON:
 {
   "reasoning": "one paragraph for staff",
-  "fields": [{ "field": "baseStartLongRunMiles", "value": "10" }]
+  "fields": [{ "field": "minWeeklyMiles", "value": "40" }]
 }`;
 
   const userPrompt = [
@@ -240,21 +137,6 @@ Output JSON:
     "",
     "## Current fields",
     JSON.stringify(current, null, 2),
-    "",
-    "## Phase names",
-    phaseNames.join("\n") || "(none)",
-    "",
-    "## Long run rotations",
-    longRun.join("\n") || "(none)",
-    "",
-    "## Easy rotations",
-    easy.join("\n") || "(none)",
-    "",
-    "## Tempo rotations",
-    tempo.join("\n") || "(none)",
-    "",
-    "## Interval rotations",
-    intervals.join("\n") || "(none)",
     "",
     `Writable fields: ${PERSONA_FILL_FIELDS.join(", ")}`,
   ].join("\n");
@@ -272,8 +154,6 @@ Output JSON:
     fields: selectPersonaFillFields({
       proposed: Array.isArray(parsed.fields) ? parsed.fields : [],
       current,
-      phaseNames,
-      rotationNames,
     }),
   };
 }

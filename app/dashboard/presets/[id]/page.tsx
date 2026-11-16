@@ -5,36 +5,49 @@ import { authFetch } from "@/components/AppProviders";
 import { SearchCombobox } from "@/components/training-manager/SearchCombobox";
 import { formatPeakMileageSummary } from "@/lib/training/preset-list-copy";
 import { TARGET_DISTANCE_OPTIONS } from "@/lib/training/race-distance-presets";
-import {
-  prodSyncMessageFromBody,
-  type SaveSyncStatus,
-} from "@/lib/training/save-sync-feedback";
+import { prodSyncMessageFromBody } from "@/lib/training/save-sync-feedback";
 import PresetPatchCsvDialog from "@/components/training-manager/PresetPatchCsvDialog";
 import type { PlanPersonaApi } from "@/lib/training/plan-entity-serialize";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-function SaveSyncBanner({ status }: { status: SaveSyncStatus }) {
+type ProdLight =
+  | { state: "idle" }
+  | { state: "unsaved" }
+  | { state: "saving" }
+  | { state: "synced" }
+  | { state: "error"; message: string };
+
+function ProdLightPill({ status }: { status: ProdLight }) {
   if (status.state === "idle") return null;
+  if (status.state === "unsaved") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-950">
+        Unsaved — auto-saves
+      </span>
+    );
+  }
   if (status.state === "saving") {
     return (
-      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-        Saving and syncing to prod…
-      </div>
+      <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-900">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Syncing prod…
+      </span>
     );
   }
   if (status.state === "synced") {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-900">
-        Saved and synced to prod
-      </div>
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-900">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        On prod
+      </span>
     );
   }
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+    <span className="inline-flex max-w-sm items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-900">
       {status.message}
-    </div>
+    </span>
   );
 }
 
@@ -126,40 +139,6 @@ function MilesField({
   );
 }
 
-function PhaseMileageFields({
-  help,
-  weeklyMin,
-  weeklyMax,
-  startLongRun,
-  peakLongRun,
-  onWeeklyMin,
-  onWeeklyMax,
-  onStartLongRun,
-  onPeakLongRun,
-}: {
-  help: string;
-  weeklyMin: string;
-  weeklyMax: string;
-  startLongRun: string;
-  peakLongRun: string;
-  onWeeklyMin: (value: string) => void;
-  onWeeklyMax: (value: string) => void;
-  onStartLongRun: (value: string) => void;
-  onPeakLongRun: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-gray-600">{help}</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MilesField label="Weekly min" value={weeklyMin} onChange={onWeeklyMin} step="1" />
-        <MilesField label="Weekly max" value={weeklyMax} onChange={onWeeklyMax} step="1" />
-        <MilesField label="Starting long run" value={startLongRun} onChange={onStartLongRun} />
-        <MilesField label="Peak long run" value={peakLongRun} onChange={onPeakLongRun} />
-      </div>
-    </div>
-  );
-}
-
 export default function PresetPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const [presetId, setPresetId] = useState<string | null>(null);
@@ -175,8 +154,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [peakLongRunMiles, setPeakLongRunMiles] = useState("");
   const [baseStartLongRunMiles, setBaseStartLongRunMiles] = useState("");
   const [baseEndLongRunMiles, setBaseEndLongRunMiles] = useState("");
-  const [baseWeeklyMinMiles, setBaseWeeklyMinMiles] = useState("");
-  const [baseWeeklyMaxMiles, setBaseWeeklyMaxMiles] = useState("");
   const [peakWeeklyVolumeMiles, setPeakWeeklyVolumeMiles] = useState("");
   const [taperWeek1TotalMiles, setTaperWeek1TotalMiles] = useState("");
   const [taperWeek1LongRunMiles, setTaperWeek1LongRunMiles] = useState("");
@@ -205,20 +182,22 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [checkIssues, setCheckIssues] = useState<{ field: string; note: string }[]>([]);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<PhaseOption[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
+  const [prodLight, setProdLight] = useState<ProdLight>({ state: "idle" });
   const [aiBusy, setAiBusy] = useState(false);
   const [patchOpen, setPatchOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   const isDraft = presetId === "new";
   const isPersisted = Boolean(presetId && presetId !== "new");
+  const skipAutosaveRef = useRef(true);
+  const saveGen = useRef(0);
 
   useEffect(() => {
     void params.then((p) => setPresetId(p.id));
   }, [params]);
 
   const applyPreset = useCallback((preset: PresetDetail) => {
+    skipAutosaveRef.current = true;
     setSlug(preset.slug ?? "");
     setTitle(preset.title);
     setDescription(preset.description ?? "");
@@ -233,8 +212,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     setBaseEndLongRunMiles(
       numStr(preset.baseEndLongRunMiles ?? preset.entryLongRunMiles),
     );
-    setBaseWeeklyMinMiles(numStr(preset.baseWeeklyMinMiles));
-    setBaseWeeklyMaxMiles(numStr(preset.baseWeeklyMaxMiles));
     setPeakWeeklyVolumeMiles(numStr(preset.peakWeeklyVolumeMiles));
     setTaperWeek1TotalMiles(numStr(preset.taperWeek1TotalMiles));
     setTaperWeek1LongRunMiles(numStr(preset.taperWeek1LongRunMiles));
@@ -299,19 +276,15 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       peakLongRunMiles: parseOptional(peakLongRunMiles),
       baseStartLongRunMiles: parseOptional(baseStartLongRunMiles),
       baseEndLongRunMiles: parseOptional(baseEndLongRunMiles),
-      baseWeeklyMinMiles:
-        parseOptional(baseWeeklyMinMiles) == null ? null : Math.round(parseOptional(baseWeeklyMinMiles)!),
-      baseWeeklyMaxMiles:
-        parseOptional(baseWeeklyMaxMiles) == null ? null : Math.round(parseOptional(baseWeeklyMaxMiles)!),
-      peakWeeklyVolumeMiles:
-        parseOptional(peakWeeklyVolumeMiles) == null
-          ? null
-          : Math.round(parseOptional(peakWeeklyVolumeMiles)!),
       taperWeek1TotalMiles: parseOptional(taperWeek1TotalMiles),
       taperWeek1LongRunMiles: parseOptional(taperWeek1LongRunMiles),
       taperWeek2TotalMiles: parseOptional(taperWeek2TotalMiles),
       taperWeek2LongRunMiles: parseOptional(taperWeek2LongRunMiles),
       raceWeekMiles: parseOptional(raceWeekMiles),
+      peakWeeklyVolumeMiles:
+        parseOptional(peakWeeklyVolumeMiles) == null
+          ? null
+          : Math.round(parseOptional(peakWeeklyVolumeMiles)!),
       baseBuildPhasePresetId: pointers.baseBuildPhasePresetId || null,
       buildToPeakPhasePresetId: pointers.buildToPeakPhasePresetId || null,
       taperPhasePresetId: pointers.taperPhasePresetId || null,
@@ -320,14 +293,15 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     };
   }
 
-  async function save() {
+  async function persist(gen: number) {
     const body = saveBody();
     if (!body.title) {
-      setSyncStatus({ state: "error", message: "Name is required before saving." });
+      if (gen === saveGen.current) {
+        setProdLight({ state: "error", message: "Name is required before saving." });
+      }
       return;
     }
-    setSaving(true);
-    setSyncStatus({ state: "saving" });
+    if (gen === saveGen.current) setProdLight({ state: "saving" });
     try {
       let id = presetId;
       if (!id || id === "new") {
@@ -337,14 +311,16 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           body: JSON.stringify({ title: body.title }),
         });
         const createdData = (await created.json()) as { preset?: PresetDetail; error?: string };
+        if (gen !== saveGen.current) return;
         if (!created.ok || !createdData.preset?.id) {
-          setSyncStatus({
+          setProdLight({
             state: "error",
             message: createdData.error || prodSyncMessageFromBody(createdData) || `Create failed (${created.status})`,
           });
           return;
         }
         id = createdData.preset.id;
+        skipAutosaveRef.current = true;
         setPresetId(id);
         router.replace(`/dashboard/presets/${id}`);
       }
@@ -355,20 +331,66 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         body: JSON.stringify(body),
       });
       const data = (await res.json()) as { preset?: PresetDetail; error?: string };
+      if (gen !== saveGen.current) return;
       if (!res.ok || !data.preset) {
-        setSyncStatus({
+        setProdLight({
           state: "error",
           message: data.error || prodSyncMessageFromBody(data) || `Save failed (${res.status})`,
         });
         return;
       }
-      applyPreset(data.preset);
-      setSyncStatus({ state: "synced" });
-      window.setTimeout(() => setSyncStatus({ state: "idle" }), 5000);
-    } finally {
-      setSaving(false);
+      setSlug(data.preset.slug ?? "");
+      setSavedPersonaId(data.preset.personaId ?? "");
+      setProdLight({ state: "synced" });
+    } catch (e) {
+      if (gen !== saveGen.current) return;
+      setProdLight({
+        state: "error",
+        message: e instanceof Error ? e.message : "Save failed",
+      });
     }
   }
+
+  const immediateKey = JSON.stringify({ personaId, targetDistanceLabel, pointers });
+  const prevImmediate = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!loaded || !presetId) return;
+    if (skipAutosaveRef.current) {
+      skipAutosaveRef.current = false;
+      prevImmediate.current = immediateKey;
+      if (presetId !== "new") setProdLight({ state: "synced" });
+      return;
+    }
+    const immediate = prevImmediate.current !== immediateKey;
+    prevImmediate.current = immediateKey;
+    const gen = ++saveGen.current;
+    setProdLight({ state: "unsaved" });
+    const handle = window.setTimeout(() => {
+      void persist(gen);
+    }, immediate ? 0 : 400);
+    return () => window.clearTimeout(handle);
+  }, [
+    loaded,
+    presetId,
+    immediateKey,
+    title,
+    description,
+    publicDescription,
+    minWeeklyMiles,
+    maxWeeklyMiles,
+    paceNudgeSecPerMile,
+    entryLongRunMiles,
+    peakLongRunMiles,
+    baseStartLongRunMiles,
+    baseEndLongRunMiles,
+    peakWeeklyVolumeMiles,
+    taperWeek1TotalMiles,
+    taperWeek1LongRunMiles,
+    taperWeek2TotalMiles,
+    taperWeek2LongRunMiles,
+    raceWeekMiles,
+  ]);
 
   async function reasonFromPersona() {
     if (!presetId || presetId === "new") return;
@@ -444,8 +466,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       }
       setReasonOpen(false);
       await load();
-      setSyncStatus({ state: "synced" });
-      window.setTimeout(() => setSyncStatus({ state: "idle" }), 5000);
     } finally {
       setAcceptingReason(false);
     }
@@ -491,6 +511,9 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{title.trim() || "Training preset"}</h1>
             <p className="text-sm text-gray-500">{peakSummary}</p>
+            <div className="mt-2">
+              <ProdLightPill status={prodLight} />
+            </div>
           </div>
           {isPersisted ? (
             <div className="flex flex-wrap gap-2">
@@ -523,7 +546,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <p className="text-sm text-gray-600">
           Miles live here. Each phase selects a phase preset. Open that preset to set its rotations.
         </p>
-        <SaveSyncBanner status={syncStatus} />
       </div>
 
       {isPersisted && presetId ? (
@@ -671,7 +693,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           <Link href="/dashboard/personas" className="font-medium text-sky-700 hover:underline">
             Build a persona
           </Link>
-          , choose it here, and save before reasoning from it.
+          , choose it here, and the link is stored on prod.
         </p>
         <label className="block text-sm">
           <span className="text-gray-600">Pace nudge (sec/mile)</span>
@@ -735,50 +757,46 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Base is a rough guide. Build to peak is the band the athlete picks inside, plus a peak volume the peak block
-            ramps to. Taper and race week are fixed totals. A low athlete is not lifted to the floor.
+            One weekly band for the whole plan. Base and build to peak are long runs. Taper and race week
+            step those three weeks down from the band.
           </p>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MilesField
+            label="Weekly min"
+            value={minWeeklyMiles}
+            onChange={setMinWeeklyMiles}
+            step="1"
+          />
+          <MilesField
+            label="Weekly max"
+            value={maxWeeklyMiles}
+            onChange={setMaxWeeklyMiles}
+            step="1"
+          />
+        </div>
+        <p className="text-sm text-gray-600">The band this athlete trains inside.</p>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Base</h3>
-          <PhaseMileageFields
-            help="A rough guide for the weeks before the peak block."
-            weeklyMin={baseWeeklyMinMiles}
-            weeklyMax={baseWeeklyMaxMiles}
-            startLongRun={baseStartLongRunMiles}
-            peakLongRun={baseEndLongRunMiles}
-            onWeeklyMin={setBaseWeeklyMinMiles}
-            onWeeklyMax={setBaseWeeklyMaxMiles}
-            onStartLongRun={setBaseStartLongRunMiles}
-            onPeakLongRun={setBaseEndLongRunMiles}
-          />
+          <p className="text-sm text-gray-600">Starting long run and the long run where base hands off to the build.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MilesField label="Starting long run" value={baseStartLongRunMiles} onChange={setBaseStartLongRunMiles} />
+            <MilesField label="End long run" value={baseEndLongRunMiles} onChange={setBaseEndLongRunMiles} />
+          </div>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Build to peak</h3>
-          <PhaseMileageFields
-            help="Weekly min and max are the band the athlete picks inside. The long run climbs from the start to the peak."
-            weeklyMin={minWeeklyMiles}
-            weeklyMax={maxWeeklyMiles}
-            startLongRun={entryLongRunMiles}
-            peakLongRun={peakLongRunMiles}
-            onWeeklyMin={setMinWeeklyMiles}
-            onWeeklyMax={setMaxWeeklyMiles}
-            onStartLongRun={setEntryLongRunMiles}
-            onPeakLongRun={setPeakLongRunMiles}
-          />
-          <MilesField
-            label="Peak volume"
-            value={peakWeeklyVolumeMiles}
-            onChange={setPeakWeeklyVolumeMiles}
-            step="1"
-          />
-          <p className="text-sm text-gray-600">
-            Override for the peak block. The plan stays in the band until then, then ramps here even when this is above the weekly max.
-          </p>
+          <p className="text-sm text-gray-600">The long run starts at the base handoff and ends at the peak.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MilesField label="Starting long run" value={entryLongRunMiles} onChange={setEntryLongRunMiles} />
+            <MilesField label="End long run" value={peakLongRunMiles} onChange={setPeakLongRunMiles} />
+          </div>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Taper</h3>
-          <p className="text-sm text-gray-600">Fixed. Two weeks, each with a total and a long run.</p>
+          <p className="text-sm text-gray-600">
+            A cap, not a second band. Two weeks that take the mileage down from the weekly min and max.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <MilesField label="Week 1 total" value={taperWeek1TotalMiles} onChange={setTaperWeek1TotalMiles} />
             <MilesField label="Week 1 long run" value={taperWeek1LongRunMiles} onChange={setTaperWeek1LongRunMiles} />
@@ -788,7 +806,9 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-800">Race week</h3>
-          <p className="text-sm text-gray-600">One mileage. No long run. The shakeout is a workout, not a mile box.</p>
+          <p className="text-sm text-gray-600">
+            One mileage under the band. No long run. The shakeout is a workout, not a mile box.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <MilesField label="Race week mileage" value={raceWeekMiles} onChange={setRaceWeekMiles} />
           </div>
@@ -841,15 +861,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           ))}
         </div>
       </section>
-
-      <button
-        type="button"
-        disabled={saving || !title.trim()}
-        onClick={() => void save()}
-        className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Save preset"}
-      </button>
     </div>
   );
 }
