@@ -93,6 +93,15 @@ export async function importPresetIngestRowToProd(opts: {
     paceNudgeSecPerMile: Number.isFinite(nudge) ? Math.max(-180, Math.min(180, nudge)) : 0,
     entryLongRunMiles: opts.row.entryLongRunMiles,
     peakLongRunMiles: opts.row.peakLongRunMiles,
+    baseStartLongRunMiles: opts.row.baseStartLongRunMiles,
+    baseEndLongRunMiles: opts.row.baseEndLongRunMiles,
+    baseWeeklyMinMiles:
+      opts.row.baseWeeklyMinMiles == null ? null : Math.round(opts.row.baseWeeklyMinMiles),
+    baseWeeklyMaxMiles:
+      opts.row.baseWeeklyMaxMiles == null ? null : Math.round(opts.row.baseWeeklyMaxMiles),
+    peakWeeklyVolumeMiles:
+      opts.row.peakWeeklyVolumeMiles == null ? null : Math.round(opts.row.peakWeeklyVolumeMiles),
+    raceWeekMiles: opts.row.raceWeekMiles,
     baseEndWeeklyMiles:
       opts.row.baseEndWeeklyMiles == null ? null : Math.round(opts.row.baseEndWeeklyMiles),
     longRunCutback: opts.row.longRunCutback,

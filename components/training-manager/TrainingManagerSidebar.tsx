@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Boxes, Layers, ListTree, Repeat, UserRound } from "lucide-react";
+import { Boxes, Layers, ListTree, Repeat, UserRound, Users } from "lucide-react";
 
 const PHASE_HREF = "/dashboard/phase-presets";
 
@@ -14,6 +14,8 @@ function navButtonClass(active: boolean): string {
 export default function TrainingManagerSidebar() {
   const router = useRouter();
   const pathname = usePathname() ?? "";
+  const athletesActive =
+    pathname === "/dashboard/athletes" || pathname.startsWith("/dashboard/athletes/");
   const presetsActive =
     pathname === "/dashboard/presets" || pathname.startsWith("/dashboard/presets/");
   const phaseActive = pathname === PHASE_HREF || pathname.startsWith(`${PHASE_HREF}/`);
@@ -36,6 +38,15 @@ export default function TrainingManagerSidebar() {
 
       <nav className="flex-1 overflow-y-auto p-2">
         <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/athletes")}
+            className={navButtonClass(athletesActive)}
+          >
+            <Users className="h-4 w-4 shrink-0" />
+            <span className="font-medium">Athletes</span>
+          </button>
+
           <button
             type="button"
             onClick={() => router.push("/dashboard/presets")}
@@ -71,7 +82,7 @@ export default function TrainingManagerSidebar() {
             )}
           >
             <UserRound className="h-4 w-4 shrink-0" />
-            <span className="font-medium">Personas (stub)</span>
+            <span className="font-medium">Personas</span>
           </button>
 
           <button

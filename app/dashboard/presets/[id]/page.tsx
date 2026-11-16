@@ -10,7 +10,7 @@ import {
   type SaveSyncStatus,
 } from "@/lib/training/save-sync-feedback";
 import PresetPatchCsvDialog from "@/components/training-manager/PresetPatchCsvDialog";
-import PresetValidateLlmDialog from "@/components/training-manager/PresetValidateLlmDialog";
+import type { PlanPersonaApi } from "@/lib/training/plan-entity-serialize";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -70,6 +70,14 @@ type PresetDetail = {
   buildToPeakPhasePreset: PhasePointer;
   taperPhasePreset: PhasePointer;
   raceWeekPhasePreset: PhasePointer;
+  personaId: string | null;
+  persona: {
+    id: string;
+    title: string;
+    capability: string | null;
+    intentSummary: string | null;
+    athletePersonaSummary: string | null;
+  } | null;
 };
 
 type PhaseOption = { id: string; name: string };
@@ -181,13 +189,20 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     taperPhasePresetId: "",
     raceWeekPhasePresetId: "",
   });
+  const [personaId, setPersonaId] = useState("");
+  const [savedPersonaId, setSavedPersonaId] = useState("");
+  const [personaSummary, setPersonaSummary] = useState("");
+  const [personas, setPersonas] = useState<PlanPersonaApi[]>([]);
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [reasonBusy, setReasonBusy] = useState(false);
+  const [reasonText, setReasonText] = useState("");
+  const [reasonFields, setReasonFields] = useState<{ field: string; value: string }[]>([]);
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [acceptingReason, setAcceptingReason] = useState(false);
   const [phaseOptions, setPhaseOptions] = useState<PhaseOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
   const [aiBusy, setAiBusy] = useState(false);
-  const [llmOpen, setLlmOpen] = useState(false);
-  const [llmPrompt, setLlmPrompt] = useState("");
-  const [llmLoading, setLlmLoading] = useState(false);
   const [patchOpen, setPatchOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -221,6 +236,9 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     setTaperWeek2TotalMiles(numStr(preset.taperWeek2TotalMiles));
     setTaperWeek2LongRunMiles(numStr(preset.taperWeek2LongRunMiles));
     setRaceWeekMiles(numStr(preset.raceWeekMiles));
+    setPersonaId(preset.personaId ?? "");
+    setSavedPersonaId(preset.personaId ?? "");
+    setPersonaSummary(preset.persona?.athletePersonaSummary ?? preset.persona?.intentSummary ?? "");
     setPointers({
       baseBuildPhasePresetId: preset.baseBuildPhasePresetId ?? "",
       buildToPeakPhasePresetId: preset.buildToPeakPhasePresetId ?? "",
@@ -231,13 +249,16 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
 
   const load = useCallback(async () => {
     if (!presetId || presetId === "new") return;
-    const [presetRes, phaseRes] = await Promise.all([
+    const [presetRes, phaseRes, personaRes] = await Promise.all([
       authFetch(`/api/training/plan-preset/${presetId}`),
       authFetch("/api/training/phase-preset"),
+      authFetch("/api/training/plan-persona?all=1"),
     ]);
     const presetData = (await presetRes.json()) as { preset?: PresetDetail };
     const phaseData = (await phaseRes.json()) as { phasePresets?: PhaseOption[] };
+    const personaData = (await personaRes.json()) as { personas?: PlanPersonaApi[] };
     setPhaseOptions(phaseData.phasePresets ?? []);
+    setPersonas(personaData.personas ?? []);
     if (presetData.preset) applyPreset(presetData.preset);
     setLoaded(true);
   }, [presetId, applyPreset]);
@@ -246,10 +267,13 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     if (!presetId) return;
     if (presetId === "new") {
       setLoaded(true);
-      void authFetch("/api/training/phase-preset")
-        .then((r) => r.json())
-        .then((data: { phasePresets?: PhaseOption[] }) => setPhaseOptions(data.phasePresets ?? []));
-      return;
+    void authFetch("/api/training/phase-preset")
+      .then((r) => r.json())
+      .then((data: { phasePresets?: PhaseOption[] }) => setPhaseOptions(data.phasePresets ?? []));
+    void authFetch("/api/training/plan-persona?all=1")
+      .then((r) => r.json())
+      .then((data: { personas?: PlanPersonaApi[] }) => setPersonas(data.personas ?? []));
+    return;
     }
     void load();
   }, [presetId, load]);
@@ -287,6 +311,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
       buildToPeakPhasePresetId: pointers.buildToPeakPhasePresetId || null,
       taperPhasePresetId: pointers.taperPhasePresetId || null,
       raceWeekPhasePresetId: pointers.raceWeekPhasePresetId || null,
+      personaId: personaId || null,
     };
   }
 
@@ -340,20 +365,56 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  async function openLlmCheck() {
+  async function reasonFromPersona() {
     if (!presetId || presetId === "new") return;
-    setLlmLoading(true);
+    setReasonBusy(true);
+    setReasonError(null);
+    setReasonText("");
+    setReasonFields([]);
     try {
-      const res = await authFetch(`/api/training/plan-preset/${presetId}/validate-packet`);
-      const data = (await res.json()) as { promptText?: string; error?: string };
-      if (!res.ok || !data.promptText) {
-        window.alert(data.error || `Could not build check packet (${res.status})`);
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/reason-from-persona`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as {
+        reasoning?: string;
+        fields?: { field: string; value: string }[];
+        error?: string;
+      };
+      if (!res.ok || !data.reasoning) {
+        setReasonError(data.error || `Could not reason from the persona (${res.status})`);
+        setReasonOpen(true);
         return;
       }
-      setLlmPrompt(data.promptText);
-      setLlmOpen(true);
+      setReasonText(data.reasoning);
+      setReasonFields(data.fields ?? []);
+      setReasonOpen(true);
     } finally {
-      setLlmLoading(false);
+      setReasonBusy(false);
+    }
+  }
+
+  async function acceptReason() {
+    if (!presetId || presetId === "new" || reasonFields.length === 0) return;
+    setAcceptingReason(true);
+    setReasonError(null);
+    try {
+      const lines = ["field,value", ...reasonFields.map((row) => `${row.field},"${row.value.replace(/"/g, '""')}"`)];
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/patch-csv/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csvText: lines.join("\n") }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        setReasonError(data.error || `Could not apply the fill (${res.status})`);
+        return;
+      }
+      setReasonOpen(false);
+      await load();
+      setSyncStatus({ state: "synced" });
+      window.setTimeout(() => setSyncStatus({ state: "idle" }), 5000);
+    } finally {
+      setAcceptingReason(false);
     }
   }
 
@@ -402,11 +463,11 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={llmLoading}
-                onClick={() => void openLlmCheck()}
+                disabled={reasonBusy || !savedPersonaId || personaId !== savedPersonaId}
+                onClick={() => void reasonFromPersona()}
                 className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
               >
-                {llmLoading ? "Loading…" : "Check with LLM"}
+                {reasonBusy ? "Reasoning…" : "Reason from persona"}
               </button>
               <button
                 type="button"
@@ -424,7 +485,6 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <SaveSyncBanner status={syncStatus} />
       </div>
 
-      <PresetValidateLlmDialog open={llmOpen} onClose={() => setLlmOpen(false)} promptText={llmPrompt} />
       {isPersisted && presetId ? (
         <PresetPatchCsvDialog
           open={patchOpen}
@@ -432,6 +492,60 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           presetId={presetId}
           onApplied={() => void load()}
         />
+      ) : null}
+      {reasonOpen ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setReasonOpen(false)}
+          />
+          <div
+            role="dialog"
+            className="relative z-[201] flex max-h-[min(90vh,720px)] w-full max-w-2xl flex-col rounded-xl border border-gray-200 bg-white shadow-xl"
+          >
+            <div className="border-b border-gray-100 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">From the persona</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Nothing is saved until you accept. Accept writes only the fields listed here.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
+              {reasonError ? <p className="text-red-700">{reasonError}</p> : null}
+              {reasonText ? <p className="text-gray-800">{reasonText}</p> : null}
+              {reasonFields.length > 0 ? (
+                <ul className="space-y-1">
+                  {reasonFields.map((row) => (
+                    <li key={row.field} className="rounded border border-gray-200 px-3 py-2">
+                      <span className="font-medium text-gray-900">{row.field}</span>
+                      <span className="text-gray-600"> → {row.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : reasonText ? (
+                <p className="text-gray-600">The miles and catalogue already match this persona.</p>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setReasonOpen(false)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={acceptingReason || reasonFields.length === 0}
+                onClick={() => void acceptReason()}
+                className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {acceptingReason ? "Saving…" : "Accept"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
@@ -449,6 +563,29 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
             Slug: <span className="font-mono text-gray-700">{slug}</span>
           </p>
         ) : null}
+        <SearchCombobox
+          label="Persona"
+          options={personas.map((persona) => ({
+            id: persona.id,
+            label: persona.title,
+            detail: [persona.capability, persona.personaGoalLabel].filter(Boolean).join(" · "),
+          }))}
+          value={personaId}
+          onChange={(id) => {
+            setPersonaId(id);
+            const match = personas.find((persona) => persona.id === id);
+            setPersonaSummary(match?.athletePersonaSummary ?? match?.intentSummary ?? "");
+          }}
+          placeholder="Search personas…"
+          emptyLabel="Not linked"
+        />
+        {personaSummary ? <p className="text-sm text-gray-600">{personaSummary}</p> : null}
+        <p className="text-xs text-gray-500">
+          <Link href="/dashboard/personas" className="font-medium text-sky-700 hover:underline">
+            Build a persona
+          </Link>
+          , choose it here, and save before reasoning from it.
+        </p>
         <label className="block text-sm">
           <span className="text-gray-600">Pace nudge (sec/mile)</span>
           <input
@@ -511,7 +648,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
         <div>
           <h2 className="text-lg font-semibold">Mileage</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Base is a rough guide. Base to peak is the band the athlete picks inside, plus a peak volume the peak block
+            Base is a rough guide. Build to peak is the band the athlete picks inside, plus a peak volume the peak block
             ramps to. Taper and race week are fixed totals. A low athlete is not lifted to the floor.
           </p>
         </div>
@@ -530,7 +667,7 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-800">Base to peak</h3>
+          <h3 className="text-sm font-medium text-gray-800">Build to peak</h3>
           <PhaseMileageFields
             help="Weekly min and max are the band the athlete picks inside. The long run climbs from the start to the peak."
             weeklyMin={minWeeklyMiles}

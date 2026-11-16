@@ -47,12 +47,18 @@ export type PresetIngestRowInput = {
   maxWeeklyMiles: number | null;
   entryLongRunMiles: number | null;
   peakLongRunMiles: number | null;
+  baseStartLongRunMiles: number | null;
+  baseEndLongRunMiles: number | null;
+  baseWeeklyMinMiles: number | null;
+  baseWeeklyMaxMiles: number | null;
+  peakWeeklyVolumeMiles: number | null;
   baseEndWeeklyMiles: number | null;
   longRunCutback: number | null;
   taperWeek1TotalMiles: number | null;
   taperWeek1LongRunMiles: number | null;
   taperWeek2TotalMiles: number | null;
   taperWeek2LongRunMiles: number | null;
+  raceWeekMiles: number | null;
   raceWeekDayMiles: string;
   paceNudgeSecPerMile: number | null;
   baseBuildPhaseName: string;
@@ -104,12 +110,18 @@ const COLUMN_ALIASES: Record<string, PresetIngestCsvColumn> = {
   startlongrunmiles: "entryLongRunMiles",
   entrylongrunmiles: "entryLongRunMiles",
   peaklongrunmiles: "peakLongRunMiles",
+  basestartlongrunmiles: "baseStartLongRunMiles",
+  baseendlongrunmiles: "baseEndLongRunMiles",
+  baseweeklyminmiles: "baseWeeklyMinMiles",
+  baseweeklymaxmiles: "baseWeeklyMaxMiles",
+  peakweeklyvolumemiles: "peakWeeklyVolumeMiles",
   baseendweeklymiles: "baseEndWeeklyMiles",
   longruncutback: "longRunCutback",
   taperweek1totalmiles: "taperWeek1TotalMiles",
   taperweek1longrunmiles: "taperWeek1LongRunMiles",
   taperweek2totalmiles: "taperWeek2TotalMiles",
   taperweek2longrunmiles: "taperWeek2LongRunMiles",
+  raceweekmiles: "raceWeekMiles",
   raceweekdaymiles: "raceWeekDayMiles",
   pacenudgesecpermile: "paceNudgeSecPerMile",
   basebuildphasename: "baseBuildPhaseName",
@@ -131,6 +143,11 @@ const TEMPLATE_EXAMPLE: Partial<Record<PresetIngestCsvColumn, string>> = {
   maxWeeklyMiles: "70",
   entryLongRunMiles: "12",
   peakLongRunMiles: "20",
+  baseStartLongRunMiles: "8",
+  baseEndLongRunMiles: "12",
+  baseWeeklyMinMiles: "30",
+  baseWeeklyMaxMiles: "40",
+  peakWeeklyVolumeMiles: "55",
   baseEndWeeklyMiles: "45",
   longRunCutback: "0.25",
   taperWeek1TotalMiles: "40",
@@ -196,12 +213,18 @@ export function rowFromRecord(record: Record<string, string>): PresetIngestRowIn
     maxWeeklyMiles: parseNum(record.maxWeeklyMiles ?? ""),
     entryLongRunMiles: parseNum(record.entryLongRunMiles ?? record.startLongRunMiles ?? ""),
     peakLongRunMiles: parseNum(record.peakLongRunMiles ?? ""),
+    baseStartLongRunMiles: parseNum(record.baseStartLongRunMiles ?? ""),
+    baseEndLongRunMiles: parseNum(record.baseEndLongRunMiles ?? ""),
+    baseWeeklyMinMiles: parseNum(record.baseWeeklyMinMiles ?? ""),
+    baseWeeklyMaxMiles: parseNum(record.baseWeeklyMaxMiles ?? ""),
+    peakWeeklyVolumeMiles: parseNum(record.peakWeeklyVolumeMiles ?? ""),
     baseEndWeeklyMiles: parseNum(record.baseEndWeeklyMiles ?? ""),
     longRunCutback: parseNum(record.longRunCutback ?? ""),
     taperWeek1TotalMiles: parseNum(record.taperWeek1TotalMiles ?? ""),
     taperWeek1LongRunMiles: parseNum(record.taperWeek1LongRunMiles ?? ""),
     taperWeek2TotalMiles: parseNum(record.taperWeek2TotalMiles ?? ""),
     taperWeek2LongRunMiles: parseNum(record.taperWeek2LongRunMiles ?? ""),
+    raceWeekMiles: parseNum(record.raceWeekMiles ?? ""),
     raceWeekDayMiles: str(record.raceWeekDayMiles),
     paceNudgeSecPerMile: parseNum(record.paceNudgeSecPerMile ?? ""),
     baseBuildPhaseName: str(record.baseBuildPhaseName),
@@ -271,6 +294,11 @@ export function validatePresetIngestRow(
   }
 
   for (const [label, val] of [
+    ["baseStartLongRunMiles", row.baseStartLongRunMiles],
+    ["baseEndLongRunMiles", row.baseEndLongRunMiles],
+    ["baseWeeklyMinMiles", row.baseWeeklyMinMiles],
+    ["baseWeeklyMaxMiles", row.baseWeeklyMaxMiles],
+    ["peakWeeklyVolumeMiles", row.peakWeeklyVolumeMiles],
     ["baseEndWeeklyMiles", row.baseEndWeeklyMiles],
     ["taperWeek1TotalMiles", row.taperWeek1TotalMiles],
     ["taperWeek1LongRunMiles", row.taperWeek1LongRunMiles],
@@ -439,12 +467,18 @@ export const EMPTY_PRESET_INGEST_ROW: PresetIngestRowInput = {
   maxWeeklyMiles: null,
   entryLongRunMiles: null,
   peakLongRunMiles: null,
+  baseStartLongRunMiles: null,
+  baseEndLongRunMiles: null,
+  baseWeeklyMinMiles: null,
+  baseWeeklyMaxMiles: null,
+  peakWeeklyVolumeMiles: null,
   baseEndWeeklyMiles: null,
   longRunCutback: null,
   taperWeek1TotalMiles: null,
   taperWeek1LongRunMiles: null,
   taperWeek2TotalMiles: null,
   taperWeek2LongRunMiles: null,
+  raceWeekMiles: null,
   raceWeekDayMiles: "",
   paceNudgeSecPerMile: null,
   baseBuildPhaseName: "",

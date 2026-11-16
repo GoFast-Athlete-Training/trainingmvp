@@ -105,6 +105,18 @@ function fieldValueFromRow(row: PresetValidateRow, field: PresetPatchField): str
       return numField(row.entryLongRunMiles);
     case "peakLongRunMiles":
       return numField(row.peakLongRunMiles);
+    case "baseStartLongRunMiles":
+      return numField(row.baseStartLongRunMiles as number | null | undefined);
+    case "baseEndLongRunMiles":
+      return numField(row.baseEndLongRunMiles as number | null | undefined);
+    case "baseWeeklyMinMiles":
+      return numField(row.baseWeeklyMinMiles as number | null | undefined);
+    case "baseWeeklyMaxMiles":
+      return numField(row.baseWeeklyMaxMiles as number | null | undefined);
+    case "peakWeeklyVolumeMiles":
+      return numField(row.peakWeeklyVolumeMiles as number | null | undefined);
+    case "raceWeekMiles":
+      return numField(row.raceWeekMiles as number | null | undefined);
     case "baseEndWeeklyMiles":
       return numField(row.baseEndWeeklyMiles);
     case "longRunCutback":
@@ -425,12 +437,21 @@ export async function applyPresetPatch(opts: {
   const optionalMiles = [
     "entryLongRunMiles",
     "peakLongRunMiles",
+    "baseStartLongRunMiles",
+    "baseEndLongRunMiles",
     "longRunCutback",
     "taperWeek1TotalMiles",
     "taperWeek1LongRunMiles",
     "taperWeek2TotalMiles",
     "taperWeek2LongRunMiles",
+    "raceWeekMiles",
   ] as const;
+  const optionalIntMiles = ["baseWeeklyMinMiles", "baseWeeklyMaxMiles", "peakWeeklyVolumeMiles"] as const;
+  for (const field of optionalIntMiles) {
+    if (!valueByField.has(field)) continue;
+    const n = Number(valueByField.get(field));
+    planData[field] = Number.isFinite(n) ? Math.round(n) : null;
+  }
   for (const field of optionalMiles) {
     if (!valueByField.has(field)) continue;
     const n = Number(valueByField.get(field));
