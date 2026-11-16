@@ -1,8 +1,9 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
+import PresetValidateLlmDialog from "@/components/training-manager/PresetValidateLlmDialog";
 import type { PresetPatchPreview } from "@/lib/training/preset-patch-csv";
-import { AlertTriangle, Check, Download, Loader2, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, ClipboardCopy, Download, Loader2, Upload, X } from "lucide-react";
 import { useCallback, useState } from "react";
 
 type Props = {
@@ -18,6 +19,8 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [applyDone, setApplyDone] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptText, setPromptText] = useState("");
 
   const resetState = useCallback(() => {
     setCsvText("");
@@ -33,6 +36,23 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
     onClose();
   };
 
+  const loadPrompt = async () => {
+    setBusy("prompt");
+    setError(null);
+    try {
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/patch-csv/prompt`);
+      const data = (await res.json().catch(() => ({}))) as { promptText?: string; error?: string };
+      if (!res.ok || !data.promptText) {
+        setError(data.error || `Prompt failed (${res.status})`);
+        return;
+      }
+      setPromptText(data.promptText);
+      setPromptOpen(true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const downloadCurrent = async () => {
     setBusy("download");
     setError(null);
@@ -44,9 +64,17 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
         return;
       }
       const text = await res.text();
-      setCsvText(text);
-      setPreview(null);
-      setApplyDone(false);
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const named = disposition.match(/filename="([^"]+)"/)?.[1];
+      const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = named || `preset-${presetId}-patch.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
     } finally {
       setBusy(null);
     }
@@ -129,14 +157,23 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <PresetValidateLlmDialog
+        open={promptOpen}
+        onClose={() => setPromptOpen(false)}
+        promptText={promptText}
+        title="LLM prompt"
+        description="Paste this into your LLM. It includes the current field,value sheet. Bring the field,value reply back here, then preview and apply."
+        layerClass="z-[260]"
+      />
       <button type="button" aria-label="Close" className="absolute inset-0 bg-black/50" onClick={close} />
       <div className="relative z-[201] flex max-h-[min(92vh,820px)] w-full max-w-3xl flex-col rounded-xl border border-gray-200 bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Patch from CSV</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Download current data, validate in your LLM, edit <code className="text-xs">value</code>{" "}
-              cells only, then preview and apply. Blank value keeps what is on file.
+              Copy the prompt into your LLM. It includes the current <code className="text-xs">field,value</code>{" "}
+              sheet and asks for a <code className="text-xs">field,value</code> reply. Download the CSV if you
+              want the file. Paste the reply, then preview and apply. A blank value keeps what is on file.
             </p>
           </div>
           <button type="button" onClick={close} className="rounded-md p-1 text-gray-500 hover:bg-gray-100">
@@ -148,14 +185,27 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
           <button
             type="button"
             disabled={busy != null}
-            onClick={() => void downloadCurrent()}
+            onClick={() => void loadPrompt()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-900 hover:bg-violet-100 disabled:opacity-50"
           >
+            {busy === "prompt" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ClipboardCopy className="h-4 w-4" />
+            )}
+            Copy LLM prompt
+          </button>
+          <button
+            type="button"
+            disabled={busy != null}
+            onClick={() => void downloadCurrent()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          >
             {busy === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Download current CSV
+            Download CSV
           </button>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50">
               <Upload className="h-4 w-4" />
               Upload CSV
@@ -174,6 +224,7 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
             >
               {busy === "parse" ? "Parsing…" : "Convert LLM notes to CSV"}
             </button>
+            <span className="text-xs text-gray-500">Only if the reply is prose, not field,value CSV.</span>
           </div>
 
           <textarea
@@ -186,7 +237,7 @@ export default function PresetPatchCsvDialog({ open, onClose, presetId, onApplie
             }}
             rows={10}
             className="w-full rounded-lg border border-gray-300 font-mono text-xs text-gray-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            placeholder="Paste field,value CSV or LLM prose to convert…"
+            placeholder="Paste the model's field,value CSV"
           />
 
           {error ? (

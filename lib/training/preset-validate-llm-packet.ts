@@ -1,5 +1,5 @@
 import type { PresetValidateRow } from "@/lib/training/preset-validate-load";
-import { PRESET_PATCH_WRITABLE_FIELDS } from "@/lib/training/preset-patch-csv";
+import { buildPresetPatchExportCsv, PRESET_PATCH_WRITABLE_FIELDS } from "@/lib/training/preset-patch-csv";
 import { raceWeekSlotsSummary } from "./preset-validate-load";
 import { parseRaceWeekSlots } from "./race-week-slots";
 
@@ -277,6 +277,25 @@ export function buildPresetValidateLlmPacket(row: PresetValidateRow): string {
   ];
 
   return parts.join("\n");
+}
+
+/** Prompt for an outside model: full sheet, then the current CSV, then the reply instruction. */
+export function buildPresetPatchLlmPrompt(row: PresetValidateRow): string {
+  const packet = buildPresetValidateLlmPacket(row);
+  const splitAt = packet.lastIndexOf(PRESET_VALIDATE_LLM_INSTRUCTION);
+  const body =
+    splitAt >= 0
+      ? packet.slice(0, splitAt).replace(/\n---\s*$/, "").trimEnd()
+      : packet.trimEnd();
+  return [
+    body,
+    "",
+    "Current field,value CSV",
+    buildPresetPatchExportCsv(row).trimEnd(),
+    "",
+    "---",
+    PRESET_VALIDATE_LLM_INSTRUCTION,
+  ].join("\n");
 }
 
 /** Minimal packet when prod is SOT and TM row is missing. */

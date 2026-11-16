@@ -8,6 +8,8 @@ type Props = {
   onClose: () => void;
   promptText: string;
   title?: string;
+  description?: string;
+  layerClass?: string;
 };
 
 export default function PresetValidateLlmDialog({
@@ -15,6 +17,8 @@ export default function PresetValidateLlmDialog({
   onClose,
   promptText,
   title = "LLM preset check",
+  description = "Paste into your LLM. Compare copy and mileage to the linked persona. Use Patch from CSV to apply field,value rows without walking the wizard.",
+  layerClass = "z-[200]",
 }: Props) {
   const [copyBusy, setCopyBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -38,7 +42,7 @@ export default function PresetValidateLlmDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${layerClass} flex items-center justify-center p-4`}>
       <button
         type="button"
         aria-label="Close"
@@ -55,10 +59,7 @@ export default function PresetValidateLlmDialog({
             <h2 id="preset-validate-llm-title" className="text-lg font-semibold text-gray-900">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Paste into your LLM. Compare copy and mileage to the linked persona. Use Patch from CSV
-              to apply field,value rows without walking the wizard.
-            </p>
+            <p className="mt-1 text-sm text-gray-600">{description}</p>
           </div>
           <button
             type="button"

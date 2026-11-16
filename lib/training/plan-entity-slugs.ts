@@ -44,11 +44,16 @@ export function buildPersonaSlug(opts: {
   capability?: AthletePersonaCapability | null;
   targetDistanceLabel?: string | null;
   goalKind?: "RACE" | "TRAINING_BLOCK";
+  title?: string | null;
 }): string {
   const cap = capabilityToSlugPrefix(opts.capability);
   const dist = distanceToSlugPart(opts.targetDistanceLabel);
   const kind = opts.goalKind === "TRAINING_BLOCK" ? "block" : "race";
-  return normalizeSlug(`${cap}-${dist}-${kind}`);
+  const base = normalizeSlug(`${cap}-${dist}-${kind}`);
+  const titlePart = opts.title ? normalizeSlug(opts.title).slice(0, 48) : "";
+  if (!titlePart) return base;
+  if (titlePart === base || titlePart.startsWith(`${base}-`)) return titlePart.slice(0, 96);
+  return normalizeSlug(`${base}-${titlePart}`).slice(0, 96);
 }
 
 export function buildGoalSlug(personaSlug: string, planDurationWeeks: number): string {

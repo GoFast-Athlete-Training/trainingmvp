@@ -199,6 +199,11 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
   const [reasonFields, setReasonFields] = useState<{ field: string; value: string }[]>([]);
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [acceptingReason, setAcceptingReason] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [checkSummary, setCheckSummary] = useState("");
+  const [checkIssues, setCheckIssues] = useState<{ field: string; note: string }[]>([]);
+  const [checkError, setCheckError] = useState<string | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<PhaseOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SaveSyncStatus>({ state: "idle" });
@@ -393,6 +398,34 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
+  async function checkFields() {
+    if (!presetId || presetId === "new") return;
+    setCheckBusy(true);
+    setCheckError(null);
+    setCheckSummary("");
+    setCheckIssues([]);
+    try {
+      const res = await authFetch(`/api/training/plan-preset/${presetId}/check-fields`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as {
+        summary?: string;
+        issues?: { field: string; note: string }[];
+        error?: string;
+      };
+      if (!res.ok || !data.summary) {
+        setCheckError(data.error || `Could not check the fields (${res.status})`);
+        setCheckOpen(true);
+        return;
+      }
+      setCheckSummary(data.summary);
+      setCheckIssues(data.issues ?? []);
+      setCheckOpen(true);
+    } finally {
+      setCheckBusy(false);
+    }
+  }
+
   async function acceptReason() {
     if (!presetId || presetId === "new" || reasonFields.length === 0) return;
     setAcceptingReason(true);
@@ -471,6 +504,14 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
               </button>
               <button
                 type="button"
+                disabled={checkBusy}
+                onClick={() => void checkFields()}
+                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+              >
+                {checkBusy ? "Checking…" : "Check fields"}
+              </button>
+              <button
+                type="button"
                 onClick={() => setPatchOpen(true)}
                 className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
               >
@@ -492,6 +533,52 @@ export default function PresetPage({ params }: { params: Promise<{ id: string }>
           presetId={presetId}
           onApplied={() => void load()}
         />
+      ) : null}
+      {checkOpen ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setCheckOpen(false)}
+          />
+          <div
+            role="dialog"
+            className="relative z-[201] flex max-h-[min(90vh,720px)] w-full max-w-2xl flex-col rounded-xl border border-gray-200 bg-white shadow-xl"
+          >
+            <div className="border-b border-gray-100 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">How the fields are filled</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                This looks at the sheet only. Nothing is written.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
+              {checkError ? <p className="text-red-700">{checkError}</p> : null}
+              {checkSummary ? <p className="text-gray-800">{checkSummary}</p> : null}
+              {checkIssues.length > 0 ? (
+                <ul className="space-y-1">
+                  {checkIssues.map((row) => (
+                    <li key={row.field} className="rounded border border-gray-200 px-3 py-2">
+                      <span className="font-medium text-gray-900">{row.field}</span>
+                      <span className="text-gray-600"> — {row.note}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : checkSummary ? (
+                <p className="text-gray-600">Nothing on the sheet looks off.</p>
+              ) : null}
+            </div>
+            <div className="flex justify-end border-t border-gray-100 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setCheckOpen(false)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
       {reasonOpen ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">

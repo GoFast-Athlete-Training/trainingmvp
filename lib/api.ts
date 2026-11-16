@@ -118,6 +118,8 @@ function axiosResponseAsFetch(response: AxiosResponse): Response {
   const headers = new Headers();
   const contentType = response.headers["content-type"];
   if (typeof contentType === "string") headers.set("content-type", contentType);
+  const disposition = response.headers["content-disposition"];
+  if (typeof disposition === "string") headers.set("content-disposition", disposition);
   return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
 

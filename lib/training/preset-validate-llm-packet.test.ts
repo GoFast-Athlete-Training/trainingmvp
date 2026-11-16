@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPresetValidateLlmPacket } from "@/lib/training/preset-validate-llm-packet";
+import {
+  buildPresetPatchLlmPrompt,
+  buildPresetValidateLlmPacket,
+} from "@/lib/training/preset-validate-llm-packet";
 import type { PresetValidateRow } from "@/lib/training/preset-validate-load";
 
 test("llm packet splits stored, derived, and athlete-specific and does not require persona", () => {
@@ -75,4 +78,13 @@ test("llm packet splits stored, derived, and athlete-specific and does not requi
   assert.doesNotMatch(packet, /Say which athlete type this preset is for/);
   assert.match(packet, /two cutbacks/);
   assert.match(packet, /Athlete start is not on the preset/);
+
+  const prompt = buildPresetPatchLlmPrompt(row);
+  const csvAt = prompt.indexOf("Current field,value CSV");
+  const instructionAt = prompt.lastIndexOf("Instruction:");
+  assert.ok(csvAt > 0);
+  assert.ok(instructionAt > csvAt);
+  assert.match(prompt, /field,value/);
+  assert.match(prompt, /advanced-marathon/);
+  assert.equal(prompt.indexOf("Instruction:"), instructionAt);
 });

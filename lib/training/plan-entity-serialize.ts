@@ -3,6 +3,10 @@ import {
   type TrainingPlanGoalKind,
   type TrainingPlanGoalType,
 } from "@/lib/training/goal-type-map";
+import {
+  coercePersonaTrainingProfile,
+  type PersonaTrainingProfile,
+} from "@/lib/training/persona-training-profile";
 
 export type AthletePersonaCapability =
   | "NON_RUNNER"
@@ -35,6 +39,7 @@ export type PlanPersonaApi = {
   estimated5kTimeSeconds: number | null;
   estimated5kPerformanceSummary: string | null;
   estimated5kPerformanceRationale: string | null;
+  trainingProfile: PersonaTrainingProfile | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -92,6 +97,7 @@ export function serializePlanPersona(row: PersonaRow): PlanPersonaApi {
     estimated5kTimeSeconds: (row.estimated5kTimeSeconds as number | null) ?? null,
     estimated5kPerformanceSummary: (row.estimated5kPerformanceSummary as string | null) ?? null,
     estimated5kPerformanceRationale: (row.estimated5kPerformanceRationale as string | null) ?? null,
+    trainingProfile: coercePersonaTrainingProfile(row.trainingProfile),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };

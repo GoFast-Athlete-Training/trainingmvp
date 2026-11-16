@@ -1,9 +1,10 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-type Lifecycle = "ACTIVE" | "PARKED" | "ARCHIVED";
+type Lifecycle = "ACTIVE" | "PAUSED" | "ARCHIVED";
 
 type RaceResult = {
   officialFinishTime: string | null;
@@ -44,7 +45,7 @@ type PlanRow = {
 const LIFECYCLE_OPTIONS: { value: "" | Lifecycle; label: string }[] = [
   { value: "", label: "All plans" },
   { value: "ACTIVE", label: "Active" },
-  { value: "PARKED", label: "Parked" },
+  { value: "PAUSED", label: "Paused" },
   { value: "ARCHIVED", label: "Archived" },
 ];
 
@@ -304,7 +305,13 @@ export default function AthletesPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <div>{plan.name}</div>
+                          <Link
+                            href={`/dashboard/athletes/${plan.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-medium text-sky-800 hover:underline"
+                          >
+                            {plan.name}
+                          </Link>
                           <div className="font-mono text-xs text-gray-500">{plan.id}</div>
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">{plan.startDay || plan.startDate}</td>
@@ -313,7 +320,9 @@ export default function AthletesPage() {
                           <div className="font-mono text-xs text-gray-500">{raceDate(plan)}</div>
                         </td>
                         <td className="px-3 py-2">{goalTime(plan) || "—"}</td>
-                        <td className="px-3 py-2">{plan.lifecycleStatus}</td>
+                        <td className="px-3 py-2">
+                          {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
+                        </td>
                         <td className={`px-3 py-2 ${achievedClass(plan.athlete_race?.athlete_race_result ?? null)}`}>
                           {achievedLabel(plan.athlete_race?.athlete_race_result ?? null)}
                         </td>
@@ -372,7 +381,7 @@ function DetailBody({ plan }: { plan: PlanRow }) {
     { label: "Location", value: place || "—" },
     { label: "Plan", value: plan.name },
     { label: "Plan id", value: plan.id },
-    { label: "State", value: plan.lifecycleStatus },
+    { label: "State", value: plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus },
     { label: "Start", value: plan.startDay || plan.startDate },
     { label: "Weeks", value: String(plan.totalWeeks) },
     { label: "Race", value: raceName(plan) || "—" },

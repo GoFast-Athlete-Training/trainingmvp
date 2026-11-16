@@ -1,6 +1,7 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
+import { PersonaProfileView } from "@/components/training-manager/PersonaProfileView";
 import type { PlanPersonaApi } from "@/lib/training/plan-entity-serialize";
 import type { PersonaDraft } from "@/lib/training/persona-draft";
 import { useCallback, useEffect, useState } from "react";
@@ -97,6 +98,8 @@ export default function PersonasPage() {
           personaGoalLabel: draft.personaGoalLabel,
           intentSummary: draft.intentSummary,
           athletePersonaSummary: draft.athletePersonaSummary,
+          workoutFrequencyCap: draft.workoutFrequencyCap,
+          trainingProfile: draft.trainingProfile,
         }),
       });
       const json = (await res.json()) as { success?: boolean; error?: string };
@@ -118,7 +121,7 @@ export default function PersonasPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Personas</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Describe the athlete. The call names the persona. Saving adds it to the library a preset can link.
+          Describe the athlete. Build persona keeps the training characteristics, then you can save the profile and link it from a plan preset.
         </p>
       </div>
 
@@ -141,15 +144,8 @@ export default function PersonasPage() {
           {building ? "Building…" : "Build persona"}
         </button>
         {draft ? (
-          <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-sm">
-            <p className="font-medium text-gray-900">{draft.title}</p>
-            <p className="text-gray-700">
-              {draft.capability.toLowerCase()}
-              {draft.dedication ? ` · ${draft.dedication.toLowerCase()} dedication` : ""}
-              {draft.personaGoalLabel ? ` · ${draft.personaGoalLabel}` : ""}
-            </p>
-            <p className="text-gray-700">{draft.athletePersonaSummary}</p>
-            <p className="text-gray-600">{draft.intentSummary}</p>
+          <div className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-sm">
+            <PersonaProfileView persona={draft} />
             {suggest?.exactMatch ? (
               <p className="font-medium text-green-800">
                 Already in the library: {suggest.exactMatch.title}. Presets can link it. This save will not overwrite it.
@@ -190,15 +186,8 @@ export default function PersonasPage() {
         ) : null}
         <ul className="mt-3 space-y-2">
           {personas.map((persona) => (
-            <li key={persona.id} className="rounded border border-gray-200 px-3 py-2 text-sm">
-              <p className="font-medium text-gray-900">{persona.title}</p>
-              <p className="text-gray-600">
-                {persona.capability?.toLowerCase() ?? "unspecified"}
-                {persona.personaGoalLabel ? ` · ${persona.personaGoalLabel}` : ""}
-              </p>
-              {persona.athletePersonaSummary ? (
-                <p className="mt-1 text-gray-700">{persona.athletePersonaSummary}</p>
-              ) : null}
+            <li key={persona.id} className="rounded border border-gray-200 px-3 py-2">
+              <PersonaProfileView persona={persona} />
             </li>
           ))}
         </ul>
