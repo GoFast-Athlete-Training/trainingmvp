@@ -5,7 +5,7 @@ import { runOpenAiJsonAgent } from "@/lib/training/openai-json";
 import { validatePersonaDraft } from "@/lib/training/persona-draft";
 import { NextRequest, NextResponse } from "next/server";
 
-export const SYSTEM_PROMPT = `You build a GoFast training persona from a staff description of an athlete.
+const SYSTEM_PROMPT = `You build a GoFast training persona from a staff description of an athlete.
 
 The persona describes who the athlete is and how they should be coached. It is not a training plan. Do not invent weekly miles, long-run distances, days per week, paces, taper, phases, or catalogue workouts.
 
