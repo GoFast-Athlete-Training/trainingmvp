@@ -220,7 +220,7 @@ export default function AthletesPage() {
                     <tr key={plan.id} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <Link
-                          href={`/dashboard/athletes/${plan.id}`}
+                          href={`/dashboard/athletes/${plan.id}/athlete`}
                           className="font-medium text-gray-900 hover:underline"
                         >
                           {athleteName(athlete)}

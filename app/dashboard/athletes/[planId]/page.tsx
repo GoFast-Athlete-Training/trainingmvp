@@ -1,7 +1,7 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
-import { DayChangeBuilder } from "@/components/training-manager/DayChangeBuilder";
+import { CatalogueDayDetail, DayChangeBuilder } from "@/components/training-manager/DayChangeBuilder";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -110,6 +110,7 @@ export default function AthletePlanPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "activities">("plan");
   const [changing, setChanging] = useState<string | null>(null);
+  const [detailKey, setDetailKey] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
   const [completedDays, setCompletedDays] = useState<CompletedDay[]>([]);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
@@ -174,6 +175,14 @@ export default function AthletePlanPage() {
 
   function openChange(day: GodDay) {
     setChanging(`${day.weekNumber}-${day.dow}`);
+    setDetailKey(null);
+    setError(null);
+  }
+
+  function openDetail(day: GodDay) {
+    const key = `${day.weekNumber}-${day.dow}`;
+    setDetailKey(detailKey === key ? null : key);
+    setChanging(null);
     setError(null);
   }
 
@@ -222,8 +231,8 @@ export default function AthletePlanPage() {
     }
   }
 
-  async function assignCatalogue(day: GodDay, catalogueWorkoutId: string) {
-    if (!plan) return;
+  async function assignCatalogue(day: GodDay, catalogueWorkoutId: string): Promise<boolean> {
+    if (!plan) return false;
     setBusy(`change-${day.weekNumber}-${day.dow}`);
     setError(null);
     try {
@@ -244,9 +253,12 @@ export default function AthletePlanPage() {
         throw new Error(data.error || "Could not change this day");
       }
       setChanging(null);
+      setDetailKey(null);
       await load();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not change this day");
+      return false;
     } finally {
       setBusy(null);
     }
@@ -363,7 +375,14 @@ export default function AthletePlanPage() {
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">{plan.name}</h1>
               <p className="mt-1 text-sm text-gray-600">
-                {athleteName(plan.Athlete)} · {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
+                <Link
+                  href={`/dashboard/athletes/${encodeURIComponent(plan.id)}/athlete`}
+                  className="font-medium text-sky-800 hover:underline"
+                >
+                  {athleteName(plan.Athlete)}
+                </Link>
+                {" · "}
+                {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -466,11 +485,22 @@ export default function AthletePlanPage() {
                                   <span className="ml-2 font-normal text-gray-500">{day.miles} mi</span>
                                 ) : null}
                               </p>
-                              <p className="mt-1 text-gray-900">
-                                {day.scheduled
-                                  ? day.workoutName || day.workoutType || "Workout"
-                                  : "No workout on this day"}
-                              </p>
+                              {day.catalogueWorkoutId ? (
+                                <button
+                                  type="button"
+                                  disabled={busy != null}
+                                  onClick={() => openDetail(day)}
+                                  className="mt-1 text-left font-medium text-sky-800 hover:underline disabled:opacity-50"
+                                >
+                                  {day.workoutName || day.workoutType || "Workout"}
+                                </button>
+                              ) : (
+                                <p className="mt-1 text-gray-900">
+                                  {day.scheduled
+                                    ? day.workoutName || day.workoutType || "Workout"
+                                    : "No workout on this day"}
+                                </p>
+                              )}
                               {day.prescribed && day.steps ? (
                                 <p className="mt-1 text-gray-600">{day.steps}</p>
                               ) : day.scheduled ? (
@@ -503,6 +533,16 @@ export default function AthletePlanPage() {
                               ) : null}
                             </div>
                           </div>
+                          {detailKey === key && day.catalogueWorkoutId ? (
+                            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                              <CatalogueDayDetail
+                                catalogueWorkoutId={day.catalogueWorkoutId}
+                                dayName={DOW[day.dow] ?? "this day"}
+                                onAssign={(catalogueWorkoutId) => assignCatalogue(day, catalogueWorkoutId)}
+                                onCancel={() => setDetailKey(null)}
+                              />
+                            </div>
+                          ) : null}
                           {open ? (
                             <DayChangeBuilder
                               dayName={DOW[day.dow] ?? "this day"}

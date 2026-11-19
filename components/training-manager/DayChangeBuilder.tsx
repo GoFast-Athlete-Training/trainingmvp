@@ -1,7 +1,7 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
-import { CatalogueEditForm } from "@/components/training-manager/CatalogueEditForm";
+import { CatalogueEditForm, type CatalogueFormItem } from "@/components/training-manager/CatalogueEditForm";
 import { CataloguePasteIngestPanel } from "@/components/training-manager/CataloguePasteIngestPanel";
 import { catalogueWarmupWorkCooldownMiles } from "@/lib/training/catalogue-bookend-miles";
 import {
@@ -50,7 +50,7 @@ export function DayChangeBuilder({
   dayName: string;
   busy: boolean;
   scheduled: boolean;
-  onAssignCatalogue: (catalogueWorkoutId: string) => Promise<void>;
+  onAssignCatalogue: (catalogueWorkoutId: string) => Promise<boolean>;
   onWriteSegments: (body: {
     title: string;
     workoutType: WorkoutType;
@@ -71,6 +71,7 @@ export function DayChangeBuilder({
   const [csvError, setCsvError] = useState<string | null>(null);
   const [csvTitle, setCsvTitle] = useState("Workout");
   const [csvType, setCsvType] = useState<WorkoutType>("Intervals");
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     if (path !== "catalogue") return;
@@ -97,6 +98,7 @@ export function DayChangeBuilder({
   }, [path]);
 
   function backToFork() {
+    setDetailId(null);
     setPath(null);
     setNote("");
     setParseError(null);
@@ -128,9 +130,8 @@ export function DayChangeBuilder({
     }
   }
 
-  async function pickCard(item: CatalogueItem) {
-    if (!window.confirm(`Change ${dayName} to "${item.name}"?`)) return;
-    await onAssignCatalogue(item.id);
+  function pickCard(item: CatalogueItem) {
+    setDetailId(item.id);
   }
 
   async function putCsvOnDay() {
@@ -233,6 +234,15 @@ export function DayChangeBuilder({
                 Open the catalogue
               </Link>
             </p>
+          ) : detailId ? (
+            <div className="mt-3">
+              <CatalogueDayDetail
+                catalogueWorkoutId={detailId}
+                dayName={dayName}
+                onAssign={onAssignCatalogue}
+                onCancel={() => setDetailId(null)}
+              />
+            </div>
           ) : (
             <div className="mt-3 flex flex-wrap gap-2">
               {visible.map((item) => (
@@ -396,6 +406,71 @@ export function DayChangeBuilder({
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+export function CatalogueDayDetail({
+  catalogueWorkoutId,
+  dayName,
+  onAssign,
+  onCancel,
+}: {
+  catalogueWorkoutId: string;
+  dayName: string;
+  onAssign: (catalogueWorkoutId: string) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [item, setItem] = useState<CatalogueFormItem | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setItem(null);
+    setError(null);
+    void (async () => {
+      try {
+        const res = await authFetch(
+          `/api/training/catalogue/${encodeURIComponent(catalogueWorkoutId)}`,
+        );
+        const data = (await res.json()) as {
+          success?: boolean;
+          error?: string;
+          item?: CatalogueFormItem;
+        };
+        if (cancelled) return;
+        if (!res.ok || data.success === false || !data.item) {
+          throw new Error(data.error || "Could not load this workout");
+        }
+        setItem(data.item);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load this workout");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogueWorkoutId]);
+
+  if (error && !item) return <p className="text-sm text-red-700">{error}</p>;
+  if (!item) return <p className="text-sm text-gray-500">Loading workout…</p>;
+
+  return (
+    <div>
+      <p className="mb-3 text-sm text-gray-600">
+        Saving updates this catalogue workout and puts it on {dayName}.
+      </p>
+      {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
+      <CatalogueEditForm
+        key={item.id}
+        initial={item}
+        onCancel={onCancel}
+        onSaved={async (saved) => {
+          const id = saved?.id ?? item.id;
+          const ok = await onAssign(id);
+          if (!ok) setError("The catalogue saved, but this day did not update.");
+        }}
+      />
     </div>
   );
 }
