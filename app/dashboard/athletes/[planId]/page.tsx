@@ -1,24 +1,12 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
-import { catalogueWarmupWorkCooldownMiles } from "@/lib/training/catalogue-bookend-miles";
+import { DayChangeBuilder } from "@/components/training-manager/DayChangeBuilder";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 const DOW = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-type CatalogueWorkout = {
-  id: string;
-  name: string;
-  workoutType: string;
-  warmupMiles?: number | null;
-  cooldownMiles?: number | null;
-  workBaseMiles?: number | null;
-  workBaseReps?: number | null;
-  workBaseRepMeters?: number | null;
-  segmentPaceDist?: unknown;
-};
 
 type GodDay = {
   weekNumber: number;
@@ -121,10 +109,7 @@ export default function AthletePlanPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "activities">("plan");
-  const [catalogue, setCatalogue] = useState<CatalogueWorkout[]>([]);
   const [changing, setChanging] = useState<string | null>(null);
-  const [pick, setPick] = useState("");
-  const [miles, setMiles] = useState("");
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
   const [completedDays, setCompletedDays] = useState<CompletedDay[]>([]);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
@@ -151,23 +136,6 @@ export default function AthletePlanPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await authFetch("/api/training/catalogue");
-        const data = (await res.json()) as { success?: boolean; items?: CatalogueWorkout[] };
-        if (!res.ok || data.success === false || !Array.isArray(data.items) || cancelled) return;
-        setCatalogue(data.items.filter((item) => item.workoutType === "Intervals"));
-      } catch {
-        /* picker stays empty */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (view !== "activities" || !planId) return;
@@ -205,18 +173,8 @@ export default function AthletePlanPage() {
   }, [view, planId]);
 
   function openChange(day: GodDay) {
-    const key = `${day.weekNumber}-${day.dow}`;
-    setChanging(key);
-    setPick(day.catalogueWorkoutId ?? "");
-    setMiles(day.miles != null ? String(day.miles) : "");
+    setChanging(`${day.weekNumber}-${day.dow}`);
     setError(null);
-  }
-
-  function chooseCatalogue(id: string) {
-    setPick(id);
-    const item = catalogue.find((row) => row.id === id);
-    const estimated = catalogueWarmupWorkCooldownMiles(item);
-    if (estimated != null) setMiles(String(estimated));
   }
 
   async function runAction(action: "pause" | "resume" | "archive" | "delete" | "regenerate") {
@@ -264,15 +222,8 @@ export default function AthletePlanPage() {
     }
   }
 
-  async function changeDay(day: GodDay) {
-    if (!plan || !pick) {
-      setError("Pick a catalogue workout");
-      return;
-    }
-    const selected = catalogue.find((row) => row.id === pick);
-    const dayName = DOW[day.dow] ?? "day";
-    if (!window.confirm(`Change ${dayName} to "${selected?.name ?? "this workout"}"?`)) return;
-    const milesNumber = miles !== "" ? Number(miles) : undefined;
+  async function assignCatalogue(day: GodDay, catalogueWorkoutId: string) {
+    if (!plan) return;
     setBusy(`change-${day.weekNumber}-${day.dow}`);
     setError(null);
     try {
@@ -284,8 +235,7 @@ export default function AthletePlanPage() {
           body: JSON.stringify({
             weekNumber: day.weekNumber,
             dow: day.dow,
-            catalogueWorkoutId: pick,
-            ...(milesNumber != null && Number.isFinite(milesNumber) ? { miles: milesNumber } : {}),
+            catalogueWorkoutId,
           }),
         },
       );
@@ -297,6 +247,41 @@ export default function AthletePlanPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not change this day");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function writeSegments(
+    day: GodDay,
+    body: { title: string; workoutType: string; steps: unknown[] },
+  ) {
+    if (!plan) return;
+    setBusy(`change-${day.weekNumber}-${day.dow}`);
+    setError(null);
+    try {
+      const res = await authFetch(
+        `/api/training/company-plans/${encodeURIComponent(plan.id)}/segments`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            weekNumber: day.weekNumber,
+            dow: day.dow,
+            title: body.title,
+            workoutType: body.workoutType,
+            steps: body.steps,
+          }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Could not put those segments on this day");
+      }
+      setChanging(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not put those segments on this day");
     } finally {
       setBusy(null);
     }
@@ -461,17 +446,6 @@ export default function AthletePlanPage() {
             </p>
           ) : (
             <div className="space-y-4">
-              {catalogue.length === 0 ? (
-                <p className="text-sm text-gray-600">
-                  No Intervals workouts in the catalogue.{" "}
-                  <Link
-                    href="/dashboard/catalogue?new=1&type=Intervals"
-                    className="font-medium text-sky-800 hover:underline"
-                  >
-                    Create a track workout
-                  </Link>
-                </p>
-              ) : null}
               {weeks.map((week) => (
                 <section key={week.weekNumber} className="rounded-lg border border-gray-200 bg-white">
                   <h2 className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-900">
@@ -530,52 +504,16 @@ export default function AthletePlanPage() {
                             </div>
                           </div>
                           {open ? (
-                            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-md bg-gray-50 p-3">
-                              <label className="text-xs text-gray-600">
-                                Catalogue workout
-                                <select
-                                  value={pick}
-                                  onChange={(e) => chooseCatalogue(e.target.value)}
-                                  className="mt-1 block max-w-xs rounded border border-gray-300 bg-white px-2 py-1 text-sm"
-                                >
-                                  <option value="">Choose a workout</option>
-                                  {catalogue.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="text-xs text-gray-600">
-                                Miles
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={0.1}
-                                  value={miles}
-                                  onChange={(e) => setMiles(e.target.value)}
-                                  className="mt-1 block w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                disabled={busy != null || !pick}
-                                onClick={() => void changeDay(day)}
-                                className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
-                              >
-                                {busy === `change-${key}` ? "Changing…" : "Change this day"}
-                              </button>
-                              {day.scheduled ? (
-                                <button
-                                  type="button"
-                                  disabled={busy != null}
-                                  onClick={() => void removeDay(day)}
-                                  className="rounded px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-                                >
-                                  {busy === `remove-${key}` ? "Removing…" : "Remove this day"}
-                                </button>
-                              ) : null}
-                            </div>
+                            <DayChangeBuilder
+                              dayName={DOW[day.dow] ?? "this day"}
+                              busy={busy != null}
+                              scheduled={day.scheduled}
+                              onAssignCatalogue={(catalogueWorkoutId) =>
+                                assignCatalogue(day, catalogueWorkoutId)
+                              }
+                              onWriteSegments={(body) => writeSegments(day, body)}
+                              onRemove={() => void removeDay(day)}
+                            />
                           ) : null}
                         </li>
                       );

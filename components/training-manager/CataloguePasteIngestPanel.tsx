@@ -10,6 +10,8 @@ type Props = {
   /** True after AI parse filled the form (not manual ?new= prefill notice). */
   parsedReady: boolean;
   onStartOver: () => void;
+  placeholder?: string;
+  hint?: string;
 };
 
 export function CataloguePasteIngestPanel({
@@ -19,6 +21,8 @@ export function CataloguePasteIngestPanel({
   onGenerate,
   parsedReady,
   onStartOver,
+  placeholder = 'e.g. "Tempo run. 1 mile easy warmup, 2 miles at marathon pace + 30 sec/mi, 1 mile cooldown. Build phase."',
+  hint = "You already have workout text — AI parses it into structured catalogue fields. Review and save.",
 }: Props) {
   return (
     <div className="mb-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -55,16 +59,13 @@ export function CataloguePasteIngestPanel({
         </section>
       ) : (
         <section className="border-t-0 p-4 sm:p-5" role="tabpanel" aria-label="Paste / parse">
-          <p className="mb-2 text-sm text-gray-600">
-            You already have workout text — AI parses it into structured catalogue fields. Review and
-            save.
-          </p>
+          <p className="mb-2 text-sm text-gray-600">{hint}</p>
           <textarea
             value={description}
             onChange={(e) => onDescriptionChange(e.target.value)}
             rows={3}
             className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            placeholder='e.g. "Tempo run. 1 mile easy warmup, 2 miles at marathon pace + 30 sec/mi, 1 mile cooldown. Build phase."'
+            placeholder={placeholder}
           />
           <button
             type="button"
