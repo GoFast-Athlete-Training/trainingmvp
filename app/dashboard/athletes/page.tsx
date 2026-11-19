@@ -68,20 +68,6 @@ function raceDate(plan: PlanRow): string {
   return plan.race_registry?.raceDate ?? plan.athlete_race?.raceDay ?? "";
 }
 
-function goalTime(plan: PlanRow): string {
-  return plan.goalRaceTime || plan.athlete_race?.goalTime || "";
-}
-
-function achievedLabel(result: RaceResult): string {
-  if (!result) return "No result";
-  return result.goalAchieved ? "Achieved" : "Missed";
-}
-
-function achievedClass(result: RaceResult): string {
-  if (!result) return "text-gray-500";
-  return result.goalAchieved ? "font-medium text-green-700" : "font-medium text-amber-700";
-}
-
 async function fetchPlans(lifecycle: "" | Lifecycle, q: string, cursor: string | null) {
   const params = new URLSearchParams();
   params.set("take", "50");
@@ -113,10 +99,6 @@ export default function AthletesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<PlanRow | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
   const listGen = useRef(0);
 
   useEffect(() => {
@@ -128,8 +110,6 @@ export default function AthletesPage() {
     const gen = ++listGen.current;
     setLoading(true);
     setLoadError(null);
-    setSelectedId(null);
-    setDetail(null);
     void fetchPlans(lifecycle, debouncedQ, null)
       .then((page) => {
         if (listGen.current !== gen) return;
@@ -146,44 +126,6 @@ export default function AthletesPage() {
         if (listGen.current === gen) setLoading(false);
       });
   }, [lifecycle, debouncedQ]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setDetail(null);
-      setDetailError(null);
-      setDetailLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailError(null);
-    void authFetch(`/api/training/company-plans/${encodeURIComponent(selectedId)}`)
-      .then(async (res) => {
-        const data = (await res.json().catch(() => ({}))) as {
-          success?: boolean;
-          error?: string;
-          plan?: PlanRow;
-        };
-        if (cancelled) return;
-        if (!res.ok || data.success === false || !data.plan) {
-          setDetail(null);
-          setDetailError(data.error || "Could not load plan");
-          return;
-        }
-        setDetail(data.plan);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setDetail(null);
-        setDetailError(e instanceof Error ? e.message : "Could not load plan");
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -203,14 +145,12 @@ export default function AthletesPage() {
     }
   }
 
-  const selected = detail ?? plans.find((plan) => plan.id === selectedId) ?? null;
-
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Athletes</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Every training plan, with start date, race goal, and whether the goal time was hit.
+          Open an athlete to see her plan, her activities, and change a day.
         </p>
       </div>
 
@@ -247,162 +187,81 @@ export default function AthletesPage() {
         </p>
       ) : null}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[52rem] text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50 text-gray-700">
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-left text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-gray-700">
+              <tr>
+                <th className="px-3 py-2 font-medium">Athlete</th>
+                <th className="px-3 py-2 font-medium">Plan</th>
+                <th className="px-3 py-2 font-medium">Race</th>
+                <th className="px-3 py-2 font-medium">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th className="px-3 py-2 font-medium">Athlete</th>
-                  <th className="px-3 py-2 font-medium">Plan</th>
-                  <th className="px-3 py-2 font-medium">Start</th>
-                  <th className="px-3 py-2 font-medium">Race</th>
-                  <th className="px-3 py-2 font-medium">Goal</th>
-                  <th className="px-3 py-2 font-medium">State</th>
-                  <th className="px-3 py-2 font-medium">Goal hit</th>
-                  <th className="px-3 py-2 text-right font-medium">Workouts</th>
+                  <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                    Loading…
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
-                      Loading…
-                    </td>
-                  </tr>
-                ) : plans.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
-                      No training plans match.
-                    </td>
-                  </tr>
-                ) : (
-                  plans.map((plan) => {
-                    const athlete = plan.Athlete;
-                    const place = locationLabel(athlete);
-                    const active = plan.id === selectedId;
-                    return (
-                      <tr
-                        key={plan.id}
-                        tabIndex={0}
-                        aria-selected={active}
-                        onClick={() => setSelectedId(plan.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedId(plan.id);
-                          }
-                        }}
-                        className={`cursor-pointer border-t border-gray-100 ${
-                          active ? "bg-sky-50" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-gray-900">{athleteName(athlete)}</div>
-                          <div className="text-xs text-gray-500">
-                            {athlete.gofastHandle ? `@${athlete.gofastHandle}` : athlete.email}
-                            {place ? ` · ${place}` : ""}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <Link
-                            href={`/dashboard/athletes/${plan.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="font-medium text-sky-800 hover:underline"
-                          >
-                            {plan.name}
-                          </Link>
-                          <div className="font-mono text-xs text-gray-500">{plan.id}</div>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">{plan.startDay || plan.startDate}</td>
-                        <td className="px-3 py-2">
-                          <div>{raceName(plan) || "—"}</div>
-                          <div className="font-mono text-xs text-gray-500">{raceDate(plan)}</div>
-                        </td>
-                        <td className="px-3 py-2">{goalTime(plan) || "—"}</td>
-                        <td className="px-3 py-2">
-                          {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
-                        </td>
-                        <td className={`px-3 py-2 ${achievedClass(plan.athlete_race?.athlete_race_result ?? null)}`}>
-                          {achievedLabel(plan.athlete_race?.athlete_race_result ?? null)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {plan.adherence.completed}/{plan.adherence.planned}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-          {nextCursor ? (
-            <div className="border-t border-gray-200 px-3 py-2">
-              <button
-                type="button"
-                disabled={loadingMore}
-                onClick={() => void loadMore()}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            </div>
-          ) : null}
+              ) : plans.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                    No training plans match.
+                  </td>
+                </tr>
+              ) : (
+                plans.map((plan) => {
+                  const athlete = plan.Athlete;
+                  const place = locationLabel(athlete);
+                  const race = [raceName(plan), raceDate(plan)].filter(Boolean).join(" · ");
+                  return (
+                    <tr key={plan.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2">
+                        <Link
+                          href={`/dashboard/athletes/${plan.id}`}
+                          className="font-medium text-gray-900 hover:underline"
+                        >
+                          {athleteName(athlete)}
+                        </Link>
+                        <div className="text-xs text-gray-500">
+                          {athlete.gofastHandle ? `@${athlete.gofastHandle}` : athlete.email}
+                          {place ? ` · ${place}` : ""}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Link
+                          href={`/dashboard/athletes/${plan.id}`}
+                          className="font-medium text-sky-800 hover:underline"
+                        >
+                          {plan.name}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-gray-800">{race || "—"}</td>
+                      <td className="px-3 py-2">
+                        {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-
-        <aside className="rounded-lg border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-gray-900">Plan detail</h2>
-          {!selectedId ? (
-            <p className="mt-2 text-sm text-gray-500">Select a plan to see the athlete and outcome.</p>
-          ) : (
-            <>
-              {detailError ? <p className="mt-2 text-sm text-red-700">{detailError}</p> : null}
-              {detailLoading && !selected ? (
-                <p className="mt-2 text-sm text-gray-500">Loading…</p>
-              ) : null}
-              {selected ? <DetailBody plan={detail ?? selected} /> : null}
-            </>
-          )}
-        </aside>
+        {nextCursor ? (
+          <div className="border-t border-gray-200 px-3 py-2">
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
-  );
-}
-
-function DetailBody({ plan }: { plan: PlanRow }) {
-  const athlete = plan.Athlete;
-  const result = plan.athlete_race?.athlete_race_result ?? null;
-  const adherence = plan.adherence ?? { planned: 0, completed: 0 };
-  const place = locationLabel(athlete);
-  const rows: { label: string; value: string }[] = [
-    { label: "Athlete", value: athleteName(athlete) },
-    { label: "Handle", value: athlete.gofastHandle ? `@${athlete.gofastHandle}` : "—" },
-    { label: "Email", value: athlete.email || "—" },
-    { label: "Location", value: place || "—" },
-    { label: "Plan", value: plan.name },
-    { label: "Plan id", value: plan.id },
-    { label: "State", value: plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus },
-    { label: "Start", value: plan.startDay || plan.startDate },
-    { label: "Weeks", value: String(plan.totalWeeks) },
-    { label: "Race", value: raceName(plan) || "—" },
-    { label: "Race date", value: raceDate(plan) || "—" },
-    { label: "Goal time", value: goalTime(plan) || "—" },
-    { label: "Finish", value: result?.officialFinishTime || "—" },
-    { label: "Goal hit", value: achievedLabel(result) },
-    {
-      label: "Workouts",
-      value: `${adherence.completed} of ${adherence.planned} completed`,
-    },
-  ];
-
-  return (
-    <dl className="mt-3 space-y-2 text-sm">
-      {rows.map((row) => (
-        <div key={row.label}>
-          <dt className="text-xs text-gray-500">{row.label}</dt>
-          <dd className="break-all text-gray-900">{row.value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }

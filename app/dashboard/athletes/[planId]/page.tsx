@@ -7,7 +7,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 const DOW = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const OPEN_DOW = [1, 2, 3, 4, 5, 6, 7];
 
 type CatalogueWorkout = {
   id: string;
@@ -21,33 +20,60 @@ type CatalogueWorkout = {
   segmentPaceDist?: unknown;
 };
 
-type PlanDay = {
+type GodDay = {
+  weekNumber: number;
+  phase: string | null;
   dow: number;
-  workoutType: string;
-  miles: number;
-  raceName?: string | null;
-  catalogueWorkoutId?: string | null;
+  dateKey: string;
+  scheduled: boolean;
+  workoutType: string | null;
+  miles: number | null;
+  catalogueWorkoutId: string | null;
+  plannedWorkoutId: string | null;
+  workoutName: string | null;
+  steps: string | null;
+  prescribed: boolean;
+  workoutPushed: boolean;
+  workoutEditedAfterPush: boolean;
+  garminWorkoutId: number | null;
+  workoutCompleted: boolean;
 };
 
-type PlanWeek = {
+type GodWeek = {
   weekNumber: number;
-  phase?: string;
-  days: PlanDay[];
+  phase: string | null;
+  days: GodDay[];
 };
 
 type PlanDetail = {
   id: string;
   name: string;
   lifecycleStatus: string;
-  totalWeeks: number;
   weeklyMileageTarget: number | null;
-  planSchedule: unknown;
+  godWeeks?: GodWeek[];
   Athlete: {
     firstName: string | null;
     lastName: string | null;
     gofastHandle: string | null;
     email: string | null;
   };
+};
+
+type ActivityRow = {
+  id: string;
+  name: string;
+  activityType: string | null;
+  startTime: string | null;
+  miles: number | null;
+  durationSeconds: number | null;
+};
+
+type CompletedDay = {
+  id: string;
+  title: string;
+  planDay: string | null;
+  workoutType: string;
+  miles: number | null;
 };
 
 function athleteName(athlete: PlanDetail["Athlete"]): string {
@@ -57,13 +83,33 @@ function athleteName(athlete: PlanDetail["Athlete"]): string {
   return athlete.email ?? "Athlete";
 }
 
-function structuredWeeks(schedule: unknown): PlanWeek[] {
-  if (!Array.isArray(schedule)) return [];
-  return schedule.filter((week): week is PlanWeek => {
-    if (!week || typeof week !== "object") return false;
-    const row = week as PlanWeek;
-    return typeof row.weekNumber === "number" && Array.isArray(row.days);
+function formatDateKey(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) return dateKey;
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null || seconds <= 0) return "";
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ${mins % 60}m`;
+}
+
+function garminLabel(day: GodDay): string {
+  if (day.workoutEditedAfterPush && day.workoutPushed) return "Changed since send";
+  if (day.workoutPushed) {
+    return day.garminWorkoutId != null
+      ? `Sent to Garmin · ${day.garminWorkoutId}`
+      : "Sent to Garmin";
+  }
+  return "Not sent to Garmin";
 }
 
 export default function AthletePlanPage() {
@@ -74,11 +120,15 @@ export default function AthletePlanPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [milesDraft, setMilesDraft] = useState<Record<string, string>>({});
-  const [milesTouched, setMilesTouched] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState<"plan" | "activities">("plan");
   const [catalogue, setCatalogue] = useState<CatalogueWorkout[]>([]);
-  const [cataloguePick, setCataloguePick] = useState<Record<string, string>>({});
-  const [addDow, setAddDow] = useState<Record<number, number>>({});
+  const [changing, setChanging] = useState<string | null>(null);
+  const [pick, setPick] = useState("");
+  const [miles, setMiles] = useState("");
+  const [activities, setActivities] = useState<ActivityRow[] | null>(null);
+  const [completedDays, setCompletedDays] = useState<CompletedDay[]>([]);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -111,13 +161,63 @@ export default function AthletePlanPage() {
         if (!res.ok || data.success === false || !Array.isArray(data.items) || cancelled) return;
         setCatalogue(data.items.filter((item) => item.workoutType === "Intervals"));
       } catch {
-        /* picker stays empty; create link remains */
+        /* picker stays empty */
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (view !== "activities" || !planId) return;
+    let cancelled = false;
+    setActivitiesLoading(true);
+    setActivitiesError(null);
+    void (async () => {
+      try {
+        const res = await authFetch(
+          `/api/training/company-plans/${encodeURIComponent(planId)}/activities`,
+        );
+        const data = (await res.json()) as {
+          success?: boolean;
+          error?: string;
+          activities?: ActivityRow[];
+          completedDays?: CompletedDay[];
+        };
+        if (cancelled) return;
+        if (!res.ok || data.success === false) {
+          throw new Error(data.error || "Could not load activities");
+        }
+        setActivities(data.activities ?? []);
+        setCompletedDays(data.completedDays ?? []);
+      } catch (e) {
+        if (cancelled) return;
+        setActivities(null);
+        setActivitiesError(e instanceof Error ? e.message : "Could not load activities");
+      } finally {
+        if (!cancelled) setActivitiesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, planId]);
+
+  function openChange(day: GodDay) {
+    const key = `${day.weekNumber}-${day.dow}`;
+    setChanging(key);
+    setPick(day.catalogueWorkoutId ?? "");
+    setMiles(day.miles != null ? String(day.miles) : "");
+    setError(null);
+  }
+
+  function chooseCatalogue(id: string) {
+    setPick(id);
+    const item = catalogue.find((row) => row.id === id);
+    const estimated = catalogueWarmupWorkCooldownMiles(item);
+    if (estimated != null) setMiles(String(estimated));
+  }
 
   async function runAction(action: "pause" | "resume" | "archive" | "delete" | "regenerate") {
     if (!plan) return;
@@ -164,74 +264,16 @@ export default function AthletePlanPage() {
     }
   }
 
-  async function saveMiles(weekNumber: number, dow: number, miles: number) {
-    if (!plan) return;
-    const key = `${weekNumber}-${dow}`;
-    if (!Number.isFinite(miles)) return;
-    setBusy(key);
-    setError(null);
-    try {
-      const res = await authFetch(
-        `/api/training/company-plans/${encodeURIComponent(plan.id)}/runs`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ weekNumber, dow, miles }),
-        },
-      );
-      const data = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        error?: string;
-        planSchedule?: unknown;
-      };
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not save run");
-      }
-      setPlan((current) =>
-        current ? { ...current, planSchedule: data.planSchedule ?? current.planSchedule } : current,
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save run");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function pickCatalogue(key: string, catalogueWorkoutId: string) {
-    setCataloguePick((current) => ({ ...current, [key]: catalogueWorkoutId }));
-    setMilesTouched((current) => ({ ...current, [key]: false }));
-    setMilesDraft((current) => {
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-  }
-
-  function milesShown(key: string, fallback: number | null): string {
-    if (milesTouched[key]) return milesDraft[key] ?? "";
-    const picked = catalogue.find((row) => row.id === cataloguePick[key]);
-    const estimated = catalogueWarmupWorkCooldownMiles(picked);
-    if (estimated != null) return String(estimated);
-    if (milesDraft[key] != null) return milesDraft[key];
-    return fallback == null ? "" : String(fallback);
-  }
-
-  async function swapDay(weekNumber: number, dow: number, stateKey = `${weekNumber}-${dow}`) {
-    if (!plan) return;
-    const catalogueWorkoutId = cataloguePick[stateKey];
-    if (!catalogueWorkoutId) {
+  async function changeDay(day: GodDay) {
+    if (!plan || !pick) {
       setError("Pick a catalogue workout");
       return;
     }
-    const selected = catalogue.find((row) => row.id === catalogueWorkoutId);
-    const dayName = DOW[dow] ?? "day";
-    if (!window.confirm(`Swap ${dayName} in week ${weekNumber} to "${selected?.name ?? "this workout"}"?`)) {
-      return;
-    }
-    const milesRaw = milesShown(stateKey, null);
-    const miles = milesRaw !== "" ? Number(milesRaw) : undefined;
-    const busyKey = `swap-${weekNumber}-${dow}`;
-    setBusy(busyKey);
+    const selected = catalogue.find((row) => row.id === pick);
+    const dayName = DOW[day.dow] ?? "day";
+    if (!window.confirm(`Change ${dayName} to "${selected?.name ?? "this workout"}"?`)) return;
+    const milesNumber = miles !== "" ? Number(miles) : undefined;
+    setBusy(`change-${day.weekNumber}-${day.dow}`);
     setError(null);
     try {
       const res = await authFetch(
@@ -240,47 +282,31 @@ export default function AthletePlanPage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            weekNumber,
-            dow,
-            catalogueWorkoutId,
-            ...(miles != null && Number.isFinite(miles) ? { miles } : {}),
+            weekNumber: day.weekNumber,
+            dow: day.dow,
+            catalogueWorkoutId: pick,
+            ...(milesNumber != null && Number.isFinite(milesNumber) ? { miles: milesNumber } : {}),
           }),
         },
       );
-      const data = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        error?: string;
-        planSchedule?: unknown;
-      };
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not swap workout");
+        throw new Error(data.error || "Could not change this day");
       }
-      setPlan((current) =>
-        current ? { ...current, planSchedule: data.planSchedule ?? current.planSchedule } : current,
-      );
-      setCataloguePick((current) => {
-        const next = { ...current };
-        delete next[stateKey];
-        return next;
-      });
-      setMilesTouched((current) => ({ ...current, [stateKey]: false }));
-      setMilesDraft((current) => {
-        const next = { ...current };
-        delete next[stateKey];
-        return next;
-      });
+      setChanging(null);
+      await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not swap workout");
+      setError(e instanceof Error ? e.message : "Could not change this day");
     } finally {
       setBusy(null);
     }
   }
 
-  async function deleteRun(weekNumber: number, dow: number) {
+  async function removeDay(day: GodDay) {
     if (!plan) return;
-    if (!window.confirm(`Delete the ${DOW[dow] ?? "day"} run in week ${weekNumber}?`)) return;
-    const key = `delete-${weekNumber}-${dow}`;
-    setBusy(key);
+    const dayName = DOW[day.dow] ?? "day";
+    if (!window.confirm(`Remove the workout on ${dayName}?`)) return;
+    setBusy(`remove-${day.weekNumber}-${day.dow}`);
     setError(null);
     try {
       const res = await authFetch(
@@ -288,28 +314,54 @@ export default function AthletePlanPage() {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ weekNumber, dow, remove: true }),
+          body: JSON.stringify({ weekNumber: day.weekNumber, dow: day.dow, remove: true }),
         },
       );
-      const data = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        error?: string;
-        planSchedule?: unknown;
-      };
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not delete run");
+        throw new Error(data.error || "Could not remove this day");
       }
-      setPlan((current) =>
-        current ? { ...current, planSchedule: data.planSchedule ?? current.planSchedule } : current,
-      );
+      setChanging(null);
+      await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete run");
+      setError(e instanceof Error ? e.message : "Could not remove this day");
     } finally {
       setBusy(null);
     }
   }
 
-  const weeks = structuredWeeks(plan?.planSchedule);
+  async function sendGarmin(day: GodDay) {
+    if (!plan) return;
+    const dayName = formatDateKey(day.dateKey);
+    if (!window.confirm(`Send ${dayName} to her Garmin?`)) return;
+    setBusy(`garmin-${day.weekNumber}-${day.dow}`);
+    setError(null);
+    try {
+      const res = await authFetch(
+        `/api/training/company-plans/${encodeURIComponent(plan.id)}/garmin`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ weekNumber: day.weekNumber, dow: day.dow }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        garminWorkoutId?: number | null;
+      };
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Garmin did not accept this workout");
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Garmin did not accept this workout");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const weeks = plan?.godWeeks ?? [];
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -318,9 +370,7 @@ export default function AthletePlanPage() {
       </Link>
       {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
       {plan ? (
         <>
@@ -375,33 +425,54 @@ export default function AthletePlanPage() {
             </div>
           </div>
 
-          {catalogue.length === 0 ? (
-            <p className="text-sm text-gray-600">
-              No Intervals workouts in the catalogue.{" "}
-              <Link href="/dashboard/catalogue?new=1&type=Intervals" className="font-medium text-sky-800 hover:underline">
-                Create a track workout
-              </Link>
-            </p>
-          ) : null}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setView("plan")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                view === "plan" ? "bg-gray-900 text-white" : "border border-gray-300 text-gray-800"
+              }`}
+            >
+              See plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("activities")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                view === "activities" ? "bg-gray-900 text-white" : "border border-gray-300 text-gray-800"
+              }`}
+            >
+              See activities
+            </button>
+          </div>
 
-          {weeks.length === 0 ? (
+          {view === "activities" ? (
+            <ActivitiesPanel
+              loading={activitiesLoading}
+              error={activitiesError}
+              activities={activities}
+              completedDays={completedDays}
+            />
+          ) : plan.godWeeks == null ? (
+            <p className="text-sm text-gray-500">This plan did not include workout days.</p>
+          ) : weeks.length === 0 ? (
             <p className="text-sm text-gray-500">
               No schedule on this plan yet. Regenerate writes the schedule onto this same plan.
             </p>
           ) : (
             <div className="space-y-4">
-              {weeks.map((week) => {
-                const used = new Set(week.days.map((day) => day.dow));
-                const openDows = OPEN_DOW.filter((dow) => !used.has(dow));
-                const addKey = `add-${week.weekNumber}`;
-                const storedAddDow = addDow[week.weekNumber];
-                const chosenAddDow =
-                  storedAddDow != null && openDows.includes(storedAddDow)
-                    ? storedAddDow
-                    : openDows.includes(4)
-                      ? 4
-                      : openDows[0];
-                return (
+              {catalogue.length === 0 ? (
+                <p className="text-sm text-gray-600">
+                  No Intervals workouts in the catalogue.{" "}
+                  <Link
+                    href="/dashboard/catalogue?new=1&type=Intervals"
+                    className="font-medium text-sky-800 hover:underline"
+                  >
+                    Create a track workout
+                  </Link>
+                </p>
+              ) : null}
+              {weeks.map((week) => (
                 <section key={week.weekNumber} className="rounded-lg border border-gray-200 bg-white">
                   <h2 className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-900">
                     Week {week.weekNumber}
@@ -409,140 +480,179 @@ export default function AthletePlanPage() {
                   </h2>
                   <ul>
                     {week.days.map((day) => {
-                      const key = `${week.weekNumber}-${day.dow}`;
-                      const draft = milesShown(key, day.miles);
-                      const assigned = catalogue.find((row) => row.id === day.catalogueWorkoutId);
+                      const key = `${day.weekNumber}-${day.dow}`;
+                      const open = changing === key;
                       return (
-                        <li
-                          key={key}
-                          className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-3 py-2 text-sm"
-                        >
-                          <span className="w-10 font-medium text-gray-700">{DOW[day.dow] ?? day.dow}</span>
-                          <span className="min-w-24 text-gray-900">
-                            {day.raceName || assigned?.name || day.workoutType}
-                          </span>
-                          <label className="flex items-center gap-1 text-gray-600">
-                            <input
-                              type="number"
-                              min={0}
-                              step={0.1}
-                              value={draft}
-                              onChange={(e) => {
-                                setMilesTouched((current) => ({ ...current, [key]: true }));
-                                setMilesDraft((current) => ({ ...current, [key]: e.target.value }));
-                              }}
-                              className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                            />
-                            mi
-                          </label>
-                          <select
-                            aria-label={`Catalogue workout for ${DOW[day.dow] ?? "day"} week ${week.weekNumber}`}
-                            value={cataloguePick[key] ?? ""}
-                            onChange={(e) => pickCatalogue(key, e.target.value)}
-                            className="max-w-xs rounded border border-gray-300 px-2 py-1 text-sm"
-                          >
-                            <option value="">Catalogue workout</option>
-                            {catalogue.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={busy != null || !cataloguePick[key]}
-                            onClick={() => void swapDay(week.weekNumber, day.dow)}
-                            className="rounded border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50 disabled:opacity-50"
-                          >
-                            {busy === `swap-${week.weekNumber}-${day.dow}` ? "Swapping…" : "Swap"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy != null || Boolean(cataloguePick[key])}
-                            onClick={() => void saveMiles(week.weekNumber, day.dow, Number(draft))}
-                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {busy === key ? "Saving…" : "Save"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy != null}
-                            onClick={() => void deleteRun(week.weekNumber, day.dow)}
-                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            {busy === `delete-${key}` ? "Deleting…" : "Delete run"}
-                          </button>
+                        <li key={key} className="border-t border-gray-100 px-3 py-3 text-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900">
+                                {formatDateKey(day.dateKey)}
+                                {day.miles != null && day.scheduled ? (
+                                  <span className="ml-2 font-normal text-gray-500">{day.miles} mi</span>
+                                ) : null}
+                              </p>
+                              <p className="mt-1 text-gray-900">
+                                {day.scheduled
+                                  ? day.workoutName || day.workoutType || "Workout"
+                                  : "No workout on this day"}
+                              </p>
+                              {day.prescribed && day.steps ? (
+                                <p className="mt-1 text-gray-600">{day.steps}</p>
+                              ) : day.scheduled ? (
+                                <p className="mt-1 text-gray-500">
+                                  No workout prescribed yet. The schedule only has {day.workoutType ?? "a day"}.
+                                </p>
+                              ) : null}
+                              {day.scheduled ? (
+                                <p className="mt-1 text-xs text-gray-500">{garminLabel(day)}</p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy != null}
+                                onClick={() => (open ? setChanging(null) : openChange(day))}
+                                className="rounded border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                              >
+                                {open ? "Close" : "Change"}
+                              </button>
+                              {day.scheduled ? (
+                                <button
+                                  type="button"
+                                  disabled={busy != null}
+                                  onClick={() => void sendGarmin(day)}
+                                  className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                  {busy === `garmin-${key}` ? "Sending…" : "Send to Garmin"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                          {open ? (
+                            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-md bg-gray-50 p-3">
+                              <label className="text-xs text-gray-600">
+                                Catalogue workout
+                                <select
+                                  value={pick}
+                                  onChange={(e) => chooseCatalogue(e.target.value)}
+                                  className="mt-1 block max-w-xs rounded border border-gray-300 bg-white px-2 py-1 text-sm"
+                                >
+                                  <option value="">Choose a workout</option>
+                                  {catalogue.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="text-xs text-gray-600">
+                                Miles
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.1}
+                                  value={miles}
+                                  onChange={(e) => setMiles(e.target.value)}
+                                  className="mt-1 block w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={busy != null || !pick}
+                                onClick={() => void changeDay(day)}
+                                className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
+                              >
+                                {busy === `change-${key}` ? "Changing…" : "Change this day"}
+                              </button>
+                              {day.scheduled ? (
+                                <button
+                                  type="button"
+                                  disabled={busy != null}
+                                  onClick={() => void removeDay(day)}
+                                  className="rounded px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  {busy === `remove-${key}` ? "Removing…" : "Remove this day"}
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </li>
                       );
                     })}
-                    {openDows.length > 0 ? (
-                      <li className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-3 py-2 text-sm">
-                        <select
-                          aria-label={`Day to add in week ${week.weekNumber}`}
-                          value={chosenAddDow ?? ""}
-                          onChange={(e) =>
-                            setAddDow((current) => ({
-                              ...current,
-                              [week.weekNumber]: Number(e.target.value),
-                            }))
-                          }
-                          className="rounded border border-gray-300 px-2 py-1 text-sm"
-                        >
-                          {openDows.map((dow) => (
-                            <option key={dow} value={dow}>
-                              {DOW[dow]}
-                            </option>
-                          ))}
-                        </select>
-                        <label className="flex items-center gap-1 text-gray-600">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.1}
-                            value={milesShown(addKey, null)}
-                            placeholder="mi"
-                            onChange={(e) => {
-                              setMilesTouched((current) => ({ ...current, [addKey]: true }));
-                              setMilesDraft((current) => ({ ...current, [addKey]: e.target.value }));
-                            }}
-                            className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                          />
-                          mi
-                        </label>
-                        <select
-                          aria-label={`Catalogue workout to add in week ${week.weekNumber}`}
-                          value={cataloguePick[addKey] ?? ""}
-                          onChange={(e) => pickCatalogue(addKey, e.target.value)}
-                          className="max-w-xs rounded border border-gray-300 px-2 py-1 text-sm"
-                        >
-                          <option value="">Catalogue workout</option>
-                          {catalogue.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={busy != null || !cataloguePick[addKey] || chosenAddDow == null}
-                          onClick={() => {
-                            if (chosenAddDow == null) return;
-                            void swapDay(week.weekNumber, chosenAddDow, addKey);
-                          }}
-                          className="rounded border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50 disabled:opacity-50"
-                        >
-                          {busy === `swap-${week.weekNumber}-${chosenAddDow}` ? "Adding…" : "Add workout"}
-                        </button>
-                      </li>
-                    ) : null}
                   </ul>
                 </section>
-                );
-              })}
+              ))}
             </div>
           )}
         </>
       ) : null}
+    </div>
+  );
+}
+
+function ActivitiesPanel({
+  loading,
+  error,
+  activities,
+  completedDays,
+}: {
+  loading: boolean;
+  error: string | null;
+  activities: ActivityRow[] | null;
+  completedDays: CompletedDay[];
+}) {
+  if (loading) return <p className="text-sm text-gray-500">Loading activities…</p>;
+  if (error) {
+    return <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
+  }
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border border-gray-200 bg-white">
+        <h2 className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-900">Activities</h2>
+        {activities && activities.length > 0 ? (
+          <ul>
+            {activities.map((row) => (
+              <li key={row.id} className="border-t border-gray-100 px-3 py-2 text-sm">
+                <p className="font-medium text-gray-900">{row.name}</p>
+                <p className="text-gray-600">
+                  {[
+                    row.startTime ? formatDateKey(row.startTime.slice(0, 10)) : null,
+                    row.miles != null ? `${row.miles} mi` : null,
+                    formatDuration(row.durationSeconds),
+                    row.activityType,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3 py-3 text-sm text-gray-500">No activities yet.</p>
+        )}
+      </section>
+      <section className="rounded-lg border border-gray-200 bg-white">
+        <h2 className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-900">
+          Completed plan days
+        </h2>
+        {completedDays.length > 0 ? (
+          <ul>
+            {completedDays.map((row) => (
+              <li key={row.id} className="border-t border-gray-100 px-3 py-2 text-sm">
+                <p className="font-medium text-gray-900">{row.title}</p>
+                <p className="text-gray-600">
+                  {[row.planDay ? formatDateKey(row.planDay) : null, row.workoutType, row.miles != null ? `${row.miles} mi` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3 py-3 text-sm text-gray-500">No completed plan days.</p>
+        )}
+      </section>
     </div>
   );
 }
