@@ -124,7 +124,7 @@ const WC_HELP = {
   intervalBlockRepeatWork:
     "Run each segment in order as one cycle, then repeat the whole cycle N times (ABAB pattern). Use this for rolling 400s—fast stride then float/recovery stride—plus optional timed rest only BETWEEN full cycles—not progressive mile blocks.",
   intervalRepLadderRecovery:
-    "Use timed recovery OR jog distance — the builder needs one for a scripted recovery step between work reps (when positive, time wins over distance; leave both unset for default 400 m jog). Pace offset blank = no pace target on watch.",
+    "Use timed recovery or jog distance. When time is greater than 0 it wins over distance. Blank or 0 on both means no scripted jog between reps. Pace offset blank = no pace target on watch.",
 } as const;
 
 function str(v: unknown): string {
@@ -391,7 +391,7 @@ export function CatalogueEditForm({
   aiPrefill?: Record<string, unknown> | null;
   prefillNotice?: string | null;
   onCancel: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (saved?: { id: string }) => Promise<void>;
 }) {
   const p = aiPrefill;
   const [lockSlugFromName, setLockSlugFromName] = useState(() => !initial);
@@ -733,17 +733,26 @@ export function CatalogueEditForm({
       const res = await authFetch(
         initial ? `/api/training/catalogue/${initial.id}` : "/api/training/catalogue",
         {
-          method: initial ? "PUT" : "POST",
+          method: initial ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         },
       );
-      const data = (await res.json()) as { success?: boolean; error?: string; details?: string };
+      const text = await res.text();
+      let data: { success?: boolean; error?: string; details?: string; item?: { id?: string } } = {};
+      if (text) {
+        try {
+          data = JSON.parse(text) as { success?: boolean; error?: string; details?: string; item?: { id?: string } };
+        } catch {
+          setErr(`Save failed (${res.status})`);
+          return;
+        }
+      }
       if (!res.ok || !data.success) {
-        setErr(data.error || data.details || "Save failed");
+        setErr(data.error || data.details || `Save failed (${res.status})`);
         return;
       }
-      await onSaved();
+      await onSaved(typeof data.item?.id === "string" ? { id: data.item.id } : undefined);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -801,7 +810,7 @@ export function CatalogueEditForm({
                 setLockSlugFromName(false);
                 setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }));
               }}
-              pattern="[a-z0-9-]*"
+              pattern="[a-z0-9\\-]*"
             />
           </label>
           <label>
