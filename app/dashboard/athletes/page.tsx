@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 type Lifecycle = "ACTIVE" | "PAUSED" | "ARCHIVED";
+type Bar = "athletes" | "plans";
 
 type RaceResult = {
   officialFinishTime: string | null;
@@ -42,13 +43,6 @@ type PlanRow = {
   adherence: { planned: number; completed: number };
 };
 
-const LIFECYCLE_OPTIONS: { value: "" | Lifecycle; label: string }[] = [
-  { value: "", label: "All plans" },
-  { value: "ACTIVE", label: "Active" },
-  { value: "PAUSED", label: "Paused" },
-  { value: "ARCHIVED", label: "Archived" },
-];
-
 function athleteName(athlete: AthleteSnap): string {
   const name = [athlete.firstName, athlete.lastName].filter(Boolean).join(" ");
   if (name) return name;
@@ -66,6 +60,17 @@ function raceName(plan: PlanRow): string {
 
 function raceDate(plan: PlanRow): string {
   return plan.race_registry?.raceDate ?? plan.athlete_race?.raceDay ?? "";
+}
+
+function oneActivePlanPerAthlete(plans: PlanRow[]): PlanRow[] {
+  const seen = new Set<string>();
+  const rows: PlanRow[] = [];
+  for (const plan of plans) {
+    if (seen.has(plan.Athlete.id)) continue;
+    seen.add(plan.Athlete.id);
+    rows.push(plan);
+  }
+  return rows;
 }
 
 async function fetchPlans(lifecycle: "" | Lifecycle, q: string, cursor: string | null) {
@@ -93,7 +98,7 @@ async function fetchPlans(lifecycle: "" | Lifecycle, q: string, cursor: string |
 export default function AthletesPage() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [lifecycle, setLifecycle] = useState<"" | Lifecycle>("");
+  const [bar, setBar] = useState<Bar>("athletes");
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,6 +115,7 @@ export default function AthletesPage() {
     const gen = ++listGen.current;
     setLoading(true);
     setLoadError(null);
+    const lifecycle = bar === "athletes" ? "ACTIVE" : "";
     void fetchPlans(lifecycle, debouncedQ, null)
       .then((page) => {
         if (listGen.current !== gen) return;
@@ -125,7 +131,7 @@ export default function AthletesPage() {
       .finally(() => {
         if (listGen.current === gen) setLoading(false);
       });
-  }, [lifecycle, debouncedQ]);
+  }, [bar, debouncedQ]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -133,6 +139,7 @@ export default function AthletesPage() {
     setLoadingMore(true);
     setLoadError(null);
     try {
+      const lifecycle = bar === "athletes" ? "ACTIVE" : "";
       const page = await fetchPlans(lifecycle, debouncedQ, nextCursor);
       if (listGen.current !== gen) return;
       setPlans((prev) => [...prev, ...page.plans]);
@@ -145,6 +152,8 @@ export default function AthletesPage() {
     }
   }
 
+  const rows = bar === "athletes" ? oneActivePlanPerAthlete(plans) : plans;
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <div>
@@ -154,32 +163,37 @@ export default function AthletesPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block min-w-[16rem] flex-1 text-sm">
-          <span className="mb-1 block font-medium text-gray-700">Search</span>
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Name, email, or handle"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-gray-700">Plan state</span>
-          <select
-            value={lifecycle}
-            onChange={(e) => setLifecycle(e.target.value as "" | Lifecycle)}
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-          >
-            {LIFECYCLE_OPTIONS.map((option) => (
-              <option key={option.label} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setBar("athletes")}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            bar === "athletes" ? "bg-gray-900 text-white" : "border border-gray-300 text-gray-800"
+          }`}
+        >
+          Athletes
+        </button>
+        <button
+          type="button"
+          onClick={() => setBar("plans")}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            bar === "plans" ? "bg-gray-900 text-white" : "border border-gray-300 text-gray-800"
+          }`}
+        >
+          Plans
+        </button>
       </div>
+
+      <label className="block max-w-md text-sm">
+        <span className="mb-1 block font-medium text-gray-700">Search</span>
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Name, email, or handle"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"
+        />
+      </label>
 
       {loadError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -195,34 +209,32 @@ export default function AthletesPage() {
                 <th className="px-3 py-2 font-medium">Athlete</th>
                 <th className="px-3 py-2 font-medium">Plan</th>
                 <th className="px-3 py-2 font-medium">Race</th>
-                <th className="px-3 py-2 font-medium">State</th>
+                {bar === "plans" ? <th className="px-3 py-2 font-medium">State</th> : null}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={bar === "plans" ? 4 : 3} className="px-3 py-8 text-center text-gray-500">
                     Loading…
                   </td>
                 </tr>
-              ) : plans.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
-                    No training plans match.
+                  <td colSpan={bar === "plans" ? 4 : 3} className="px-3 py-8 text-center text-gray-500">
+                    {bar === "athletes" ? "No active athletes." : "No training plans match."}
                   </td>
                 </tr>
               ) : (
-                plans.map((plan) => {
+                rows.map((plan) => {
                   const athlete = plan.Athlete;
                   const place = locationLabel(athlete);
                   const race = [raceName(plan), raceDate(plan)].filter(Boolean).join(" · ");
+                  const href = `/dashboard/athletes/${plan.id}`;
                   return (
                     <tr key={plan.id} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2">
-                        <Link
-                          href={`/dashboard/athletes/${plan.id}/athlete`}
-                          className="font-medium text-gray-900 hover:underline"
-                        >
+                        <Link href={href} className="font-medium text-gray-900 hover:underline">
                           {athleteName(athlete)}
                         </Link>
                         <div className="text-xs text-gray-500">
@@ -231,17 +243,16 @@ export default function AthletesPage() {
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <Link
-                          href={`/dashboard/athletes/${plan.id}`}
-                          className="font-medium text-sky-800 hover:underline"
-                        >
+                        <Link href={href} className="font-medium text-sky-800 hover:underline">
                           {plan.name}
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-gray-800">{race || "—"}</td>
-                      <td className="px-3 py-2">
-                        {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
-                      </td>
+                      {bar === "plans" ? (
+                        <td className="px-3 py-2">
+                          {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })

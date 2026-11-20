@@ -1,12 +1,11 @@
 "use client";
 
 import { authFetch } from "@/components/AppProviders";
-import { CatalogueDayDetail, DayChangeBuilder } from "@/components/training-manager/DayChangeBuilder";
+import AthleteBaselines from "@/components/training-manager/AthleteBaselines";
+import PlannedWorkoutPace from "@/components/training-manager/PlannedWorkoutPace";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-
-const DOW = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type GodDay = {
   weekNumber: number;
@@ -64,13 +63,6 @@ type CompletedDay = {
   miles: number | null;
 };
 
-function athleteName(athlete: PlanDetail["Athlete"]): string {
-  const name = [athlete.firstName, athlete.lastName].filter(Boolean).join(" ");
-  if (name) return name;
-  if (athlete.gofastHandle) return `@${athlete.gofastHandle}`;
-  return athlete.email ?? "Athlete";
-}
-
 function formatDateKey(dateKey: string): string {
   const [year, month, day] = dateKey.split("-").map(Number);
   if (!year || !month || !day) return dateKey;
@@ -109,8 +101,11 @@ export default function AthletePlanPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "activities">("plan");
-  const [changing, setChanging] = useState<string | null>(null);
-  const [detailKey, setDetailKey] = useState<string | null>(null);
+  const [workoutFocus, setWorkoutFocus] = useState<{
+    key: string;
+    plannedWorkoutId: string;
+    editing: boolean;
+  } | null>(null);
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
   const [completedDays, setCompletedDays] = useState<CompletedDay[]>([]);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
@@ -173,16 +168,10 @@ export default function AthletePlanPage() {
     };
   }, [view, planId]);
 
-  function openChange(day: GodDay) {
-    setChanging(`${day.weekNumber}-${day.dow}`);
-    setDetailKey(null);
-    setError(null);
-  }
-
-  function openDetail(day: GodDay) {
+  function openWorkout(day: GodDay, editing: boolean) {
+    if (!day.plannedWorkoutId) return;
     const key = `${day.weekNumber}-${day.dow}`;
-    setDetailKey(detailKey === key ? null : key);
-    setChanging(null);
+    setWorkoutFocus({ key, plannedWorkoutId: day.plannedWorkoutId, editing });
     setError(null);
   }
 
@@ -226,102 +215,6 @@ export default function AthletePlanPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Could not ${action}`);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function assignCatalogue(day: GodDay, catalogueWorkoutId: string): Promise<boolean> {
-    if (!plan) return false;
-    setBusy(`change-${day.weekNumber}-${day.dow}`);
-    setError(null);
-    try {
-      const res = await authFetch(
-        `/api/training/company-plans/${encodeURIComponent(plan.id)}/runs`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            weekNumber: day.weekNumber,
-            dow: day.dow,
-            catalogueWorkoutId,
-          }),
-        },
-      );
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not change this day");
-      }
-      setChanging(null);
-      setDetailKey(null);
-      await load();
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not change this day");
-      return false;
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function writeSegments(
-    day: GodDay,
-    body: { title: string; workoutType: string; steps: unknown[] },
-  ) {
-    if (!plan) return;
-    setBusy(`change-${day.weekNumber}-${day.dow}`);
-    setError(null);
-    try {
-      const res = await authFetch(
-        `/api/training/company-plans/${encodeURIComponent(plan.id)}/segments`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            weekNumber: day.weekNumber,
-            dow: day.dow,
-            title: body.title,
-            workoutType: body.workoutType,
-            steps: body.steps,
-          }),
-        },
-      );
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not put those segments on this day");
-      }
-      setChanging(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not put those segments on this day");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function removeDay(day: GodDay) {
-    if (!plan) return;
-    const dayName = DOW[day.dow] ?? "day";
-    if (!window.confirm(`Remove the workout on ${dayName}?`)) return;
-    setBusy(`remove-${day.weekNumber}-${day.dow}`);
-    setError(null);
-    try {
-      const res = await authFetch(
-        `/api/training/company-plans/${encodeURIComponent(plan.id)}/runs`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ weekNumber: day.weekNumber, dow: day.dow, remove: true }),
-        },
-      );
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Could not remove this day");
-      }
-      setChanging(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove this day");
     } finally {
       setBusy(null);
     }
@@ -371,17 +264,11 @@ export default function AthletePlanPage() {
       ) : null}
       {plan ? (
         <>
+          <AthleteBaselines planId={plan.id} />
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">{plan.name}</h1>
+              <h2 className="text-lg font-semibold text-gray-900">{plan.name}</h2>
               <p className="mt-1 text-sm text-gray-600">
-                <Link
-                  href={`/dashboard/athletes/${encodeURIComponent(plan.id)}/athlete`}
-                  className="font-medium text-sky-800 hover:underline"
-                >
-                  {athleteName(plan.Athlete)}
-                </Link>
-                {" · "}
                 {plan.lifecycleStatus === "PAUSED" ? "Paused" : plan.lifecycleStatus}
               </p>
             </div>
@@ -474,7 +361,7 @@ export default function AthletePlanPage() {
                   <ul>
                     {week.days.map((day) => {
                       const key = `${day.weekNumber}-${day.dow}`;
-                      const open = changing === key;
+                      const focused = workoutFocus?.key === key;
                       return (
                         <li key={key} className="border-t border-gray-100 px-3 py-3 text-sm">
                           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -485,22 +372,11 @@ export default function AthletePlanPage() {
                                   <span className="ml-2 font-normal text-gray-500">{day.miles} mi</span>
                                 ) : null}
                               </p>
-                              {day.catalogueWorkoutId ? (
-                                <button
-                                  type="button"
-                                  disabled={busy != null}
-                                  onClick={() => openDetail(day)}
-                                  className="mt-1 text-left font-medium text-sky-800 hover:underline disabled:opacity-50"
-                                >
-                                  {day.workoutName || day.workoutType || "Workout"}
-                                </button>
-                              ) : (
-                                <p className="mt-1 text-gray-900">
-                                  {day.scheduled
-                                    ? day.workoutName || day.workoutType || "Workout"
-                                    : "No workout on this day"}
-                                </p>
-                              )}
+                              <p className="mt-1 text-gray-900">
+                                {day.scheduled
+                                  ? day.workoutName || day.workoutType || "Workout"
+                                  : "No workout on this day"}
+                              </p>
                               {day.prescribed && day.steps ? (
                                 <p className="mt-1 text-gray-600">{day.steps}</p>
                               ) : day.scheduled ? (
@@ -513,14 +389,26 @@ export default function AthletePlanPage() {
                               ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={busy != null}
-                                onClick={() => (open ? setChanging(null) : openChange(day))}
-                                className="rounded border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50 disabled:opacity-50"
-                              >
-                                {open ? "Close" : "Change"}
-                              </button>
+                              {day.plannedWorkoutId ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={busy != null}
+                                    onClick={() => openWorkout(day, false)}
+                                    className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    See workout
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy != null}
+                                    onClick={() => openWorkout(day, true)}
+                                    className="rounded border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50 disabled:opacity-50"
+                                  >
+                                    Edit
+                                  </button>
+                                </>
+                              ) : null}
                               {day.scheduled ? (
                                 <button
                                   type="button"
@@ -533,26 +421,16 @@ export default function AthletePlanPage() {
                               ) : null}
                             </div>
                           </div>
-                          {detailKey === key && day.catalogueWorkoutId ? (
-                            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                              <CatalogueDayDetail
-                                catalogueWorkoutId={day.catalogueWorkoutId}
-                                dayName={DOW[day.dow] ?? "this day"}
-                                onAssign={(catalogueWorkoutId) => assignCatalogue(day, catalogueWorkoutId)}
-                                onCancel={() => setDetailKey(null)}
-                              />
-                            </div>
-                          ) : null}
-                          {open ? (
-                            <DayChangeBuilder
-                              dayName={DOW[day.dow] ?? "this day"}
-                              busy={busy != null}
-                              scheduled={day.scheduled}
-                              onAssignCatalogue={(catalogueWorkoutId) =>
-                                assignCatalogue(day, catalogueWorkoutId)
+                          {workoutFocus && focused && day.plannedWorkoutId ? (
+                            <PlannedWorkoutPace
+                              planId={plan.id}
+                              plannedWorkoutId={day.plannedWorkoutId}
+                              editing={workoutFocus.editing}
+                              onEditing={(editing) =>
+                                setWorkoutFocus((current) =>
+                                  current && current.key === key ? { ...current, editing } : current,
+                                )
                               }
-                              onWriteSegments={(body) => writeSegments(day, body)}
-                              onRemove={() => void removeDay(day)}
                             />
                           ) : null}
                         </li>
